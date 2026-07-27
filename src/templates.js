@@ -631,7 +631,113 @@ export function renderCustomPage(page, parsedContentHtml, lang = 'zh') {
 }
 
 // 5. Render Admin Login Page
-export { renderLogin } from './templates.js';
+export function renderLogin(errorMessage = '') {
+    return `
+    <!DOCTYPE html>
+    <html lang="zh-TW">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>後台登入 | 北科無人機社</title>
+        <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+        <script src="https://unpkg.com/lucide@latest"></script>
+        <link rel="stylesheet" href="/style.css">
+        <style>
+            body {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+                background: #07090e;
+            }
+            .login-container {
+                width: 100%;
+                max-width: 400px;
+                padding: 40px 30px;
+                background: rgba(18, 24, 38, 0.65);
+                border: 1px solid var(--border-glass);
+                border-radius: 24px;
+                backdrop-filter: blur(16px);
+                box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 30px rgba(0, 240, 255, 0.05);
+            }
+            .form-group {
+                margin-bottom: 20px;
+            }
+            .form-group label {
+                display: block;
+                font-size: 0.85rem;
+                color: var(--text-secondary);
+                margin-bottom: 8px;
+                font-weight: 500;
+            }
+            .form-control {
+                width: 100%;
+                padding: 12px 16px;
+                background: rgba(255,255,255,0.03);
+                border: 1px solid var(--border-glass);
+                border-radius: 12px;
+                color: #fff;
+                font-family: inherit;
+                font-size: 1rem;
+                transition: var(--transition-fast);
+            }
+            .form-control:focus {
+                outline: none;
+                border-color: var(--color-cyan);
+                box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+            }
+        </style>
+    </head>
+    <body>
+        <canvas id="telemetry-bg"></canvas>
+        <div class="login-container">
+            <div class="text-center" style="margin-bottom: 30px;">
+                <div class="logo-icon" style="margin: 0 auto 16px auto; width: 50px; height: 50px; border-radius: 12px;">
+                    <i data-lucide="lock" style="width: 24px; height: 24px;"></i>
+                </div>
+                <h2 style="font-size: 1.5rem; font-weight: 800; letter-spacing: 0.5px;">系統後台登入</h2>
+                <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">北科無人機社官方網站後台</p>
+            </div>
+            
+            ${errorMessage ? `<div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; padding: 12px; border-radius: 12px; font-size: 0.875rem; margin-bottom: 20px; text-align: center;"><i data-lucide="alert-circle" style="width: 16px; height: 16px; display: inline; vertical-align: middle; margin-right: 6px;"></i> ${errorMessage}</div>` : ''}
+            
+            <form action="/api/login" method="POST">
+                <div class="form-group">
+                    <label for="password">管理員密碼</label>
+                    <input type="password" name="password" id="password" class="form-control" placeholder="請輸入後台密碼" required autofocus>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; border-radius: 12px; padding: 14px; margin-top: 10px;">安全登入</button>
+            </form>
+            <div class="text-center" style="margin-top: 24px;">
+                <a href="/" style="font-size: 0.85rem; color: var(--text-muted);"><i data-lucide="arrow-left" style="width: 12px; height: 12px; display: inline; vertical-align: middle;"></i> 返回網站首頁</a>
+            </div>
+        </div>
+        <script>
+            lucide.createIcons();
+            // Background grid telemetry drawing
+            const canvas = document.getElementById('telemetry-bg');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; draw(); }
+                function draw() {
+                    ctx.clearRect(0,0,canvas.width,canvas.height);
+                    ctx.strokeStyle = 'rgba(0, 240, 255, 0.015)';
+                    ctx.lineWidth = 1;
+                    for (let x = 0; x < canvas.width; x += 80) {
+                        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+                    }
+                    for (let y = 0; y < canvas.height; y += 80) {
+                        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+                    }
+                }
+                window.addEventListener('resize', resize);
+                resize();
+            }
+        </script>
+    </body>
+    </html>
+    `;
+}
 
 // 6. Render Admin Dashboard Page with i18n Post Creation
 export function renderAdminDashboard(posts = [], pages = []) {
