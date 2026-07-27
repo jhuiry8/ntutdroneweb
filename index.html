@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="北科無人機社 (NTUT Drone Club) - 探索天空的無限可能。我們提供模擬器練習、FPV 穿越機飛行、空拍體驗與專業組裝考照課程，歡迎對無人機有興趣的北科同學加入！">
+    <meta name="keywords" content="北科無人機社, NTUT Drone Club, 無人機, FPV, 穿越機, 空拍, 模擬器, 台北科技大學, 社團">
+    <meta property="og:title" content="北科無人機社 | NTUT Drone Club">
+    <meta property="og:description" content="探索天空的無限可能，啟動你的飛行夢想！北科無人機社提供模擬飛行、FPV 穿越機、空拍創作與證照輔導。">
+    <meta property="og:image" content="assets/images/fpv_drone_hero.jpg">
+    <meta property="og:type" content="website">
+    <title>北科無人機社 | NTUT Drone Club</title>
+    
+    <!-- Google Fonts: Outfit (English) & Noto Sans TC (Chinese) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background Canvas for Particles -->
+    <canvas id="telemetry-bg"></canvas>
+
+    <!-- Header / Navbar -->
+    <header class="navbar">
+        <div class="nav-container">
+            <a href="#" class="logo">
+                <span class="logo-icon"><i data-lucide="navigation"></i></span>
+                <div class="logo-text">
+                    <span class="brand-en">NTUT DRONE</span>
+                    <span class="brand-zh">北科無人機社</span>
+                </div>
+            </a>
+            
+            <nav class="nav-links">
+                <a href="#about" class="nav-link">關於我們</a>
+                <a href="#features" class="nav-link">社團特色</a>
+                <a href="#gallery" class="nav-link">活動剪影</a>
+                <a href="#faq" class="nav-link">常見問題</a>
+            </nav>
+
+            <div class="nav-socials">
+                <a href="https://www.instagram.com/ntut_drone/" target="_blank" aria-label="Instagram" class="social-icon-btn ig">
+                    <i data-lucide="instagram"></i>
+                </a>
+                <a href="https://lin.ee/s5YJgGI" target="_blank" aria-label="LINE" class="social-icon-btn line">
+                    <i data-lucide="message-square"></i>
+                </a>
+                <a href="https://lin.ee/s5YJgGI" target="_blank" class="cta-nav-btn">加入我們</a>
+                
+                <!-- Mobile Menu Toggle -->
+                <button class="mobile-menu-toggle" aria-label="Toggle menu">
+                    <i data-lucide="menu"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Mobile Navigation Drawer -->
+    <div class="mobile-drawer">
+        <div class="drawer-header">
+            <span class="drawer-logo"><i data-lucide="navigation"></i> NTUT DRONE</span>
+            <button class="drawer-close"><i data-lucide="x"></i></button>
+        </div>
+        <nav class="drawer-links">
+            <a href="#about" class="drawer-link">關於我們</a>
+            <a href="#features" class="drawer-link">社團特色</a>
+            <a href="#gallery" class="drawer-link">活動剪影</a>
+            <a href="#faq" class="drawer-link">常見問題</a>
+            <hr class="drawer-divider">
+            <a href="https://lin.ee/s5YJgGI" target="_blank" class="drawer-cta-btn"><i data-lucide="message-square"></i> LINE 聯絡加入</a>
+            <a href="https://www.instagram.com/ntut_drone/" target="_blank" class="drawer-cta-btn secondary"><i data-lucide="instagram"></i> 追蹤 Instagram</a>
+        </nav>
+    </div>
+
+    <!-- Hero Section -->
+    <section class="hero-section" id="home">
+        <div class="hero-container">
+            <div class="hero-content">
+                <div class="badge glow-pulse">
+                    <span class="badge-dot"></span> 2026 新生招生中
+                </div>
+                <h1 class="hero-title">
+                    <span class="gradient-text">NTUT DRONE</span>
+                    <span class="sub-title">北科無人機社</span>
+                </h1>
+                <p class="hero-description">
+                    探索上帝視角的無限精彩，啟動你的飛翔夢想！我們是一群對無人機、FPV 穿越機、模擬器練習與空拍創作充滿熱情的北科人。無論你是零基礎的飛行小白，還是喜愛電控調參的技術極客，這裡都有你的藍天！
+                </p>
+                <div class="hero-actions">
+                    <a href="https://lin.ee/s5YJgGI" target="_blank" class="btn btn-primary">
+                        <i data-lucide="user-plus"></i> 立即加入 LINE 群
+                    </a>
+                    <a href="https://www.instagram.com/ntut_drone/" target="_blank" class="btn btn-secondary">
+                        <i data-lucide="instagram"></i> 追蹤 Instagram
+                    </a>
+                </div>
+            </div>
+            
+            <div class="hero-image-wrapper">
+                <div class="drone-glowing-ring"></div>
+                <img src="assets/images/fpv_drone_hero.jpg" alt="FPV Racing Drone Concept" class="hero-drone-img" id="hero-drone">
+                <div class="drone-stats-card">
+                    <div class="stats-icon"><i data-lucide="cpu"></i></div>
+                    <div class="stats-info">
+                        <span class="stats-label">Telemetry Status</span>
+                        <span class="stats-value">CONNECTED (100%)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Bar -->
+    <section class="stats-bar-section">
+        <div class="stats-bar-container">
+            <div class="stat-item">
+                <span class="stat-num" data-val="100">0</span><span class="stat-plus">+</span>
+                <span class="stat-label">累積模擬飛行時數</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-num" data-val="30">0</span><span class="stat-plus">+</span>
+                <span class="stat-label">戶外實飛活動</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-num" data-val="25">0</span><span class="stat-plus">+</span>
+                <span class="stat-label">現役活躍社員</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-num" data-val="4">0</span><span class="stat-plus"></span>
+                <span class="stat-label">核心專業培訓領域</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section class="about-section" id="about">
+        <div class="section-container">
+            <div class="section-header text-center">
+                <h2 class="section-title">關於北科無人機社</h2>
+                <p class="section-subtitle">我們不僅僅是在空中飛行，更是將科技、美學與極限運動完美融合。</p>
+            </div>
+            
+            <div class="about-grid">
+                <div class="about-card">
+                    <div class="about-card-icon"><i data-lucide="shield-check"></i></div>
+                    <h3>安全第一的飛行教育</h3>
+                    <p>社團擁有完備的初學者安全防護指引，並從電競級電腦模擬器開始，協助社員熟悉遙控器操縱桿手感與氣流反應，大幅降低實機飛行時的「摔機」率與風險。</p>
+                </div>
+                
+                <div class="about-card">
+                    <div class="about-card-icon"><i data-lucide="wrench"></i></div>
+                    <h3>動手實作的創客精神</h3>
+                    <p>我們鼓勵社員探索無人機內部的奧秘。從碳纖維機架安裝、無刷馬達配線焊接，到 Betaflight 與 ArduPilot 的 PID 調參，親手組裝專屬於你獨一無二的無人機。</p>
+                </div>
+                
+                <div class="about-card">
+                    <div class="about-card-icon"><i data-lucide="users"></i></div>
+                    <h3>緊密的飛友社群</h3>
+                    <p>社團不定期發起戶外「飛行局」，在符合民航局法規的安全合法飛場進行實地切磋交流，不論是休閒空拍還是高速穿越，大家都是你最可靠的僚機。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features-section" id="features">
+        <div class="section-container">
+            <div class="section-header text-center">
+                <h2 class="section-title">四大核心特色</h2>
+                <p class="section-subtitle">從模擬訓練到實機操作，從娛樂航拍到專業考照，提供最全方位的無人機學習地圖。</p>
+            </div>
+
+            <div class="features-grid">
+                <!-- Feature 1 -->
+                <div class="feature-item-card">
+                    <div class="feature-visual">
+                        <div class="feature-icon-wrapper cyan">
+                            <i data-lucide="monitor-play"></i>
+                        </div>
+                    </div>
+                    <div class="feature-info">
+                        <h3 class="feature-name">模擬器飛行訓練</h3>
+                        <p class="feature-desc">使用 Liftoff、Velocidrone 等專業飛行模擬軟體，配合真實航模遙控器。在零成本、零摔機風險的環境下，迅速建立大腦與手指的肌肉記憶，掌握 3D 空間姿態控制。</p>
+                    </div>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="feature-item-card">
+                    <div class="feature-visual">
+                        <div class="feature-icon-wrapper purple">
+                            <i data-lucide="eye"></i>
+                        </div>
+                    </div>
+                    <div class="feature-info">
+                        <h3 class="feature-name">FPV 穿越機飛行</h3>
+                        <p class="feature-desc">戴上 FPV 飛行眼鏡，以第一人稱視角坐進虛擬駕駛艙！以超過時速 100 公里的極速穿梭於障礙物之間，體驗翻滾、俯衝等高難度花式特技，感受絕對的自由與速度感。</p>
+                    </div>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="feature-item-card">
+                    <div class="feature-visual">
+                        <div class="feature-icon-wrapper green">
+                            <i data-lucide="aperture"></i>
+                        </div>
+                    </div>
+                    <div class="feature-info">
+                        <h3 class="feature-name">空拍與視覺創作</h3>
+                        <p class="feature-desc">教授 DJI 等多軸航拍機的操作、智能飛行模式應用與安全空域申報。結合鏡頭語言與運鏡技巧，帶領大家捕捉壯麗的山海與校園美景，並分享影片後製與 Vlog 剪輯工作流。</p>
+                    </div>
+                </div>
+
+                <!-- Feature 4 -->
+                <div class="feature-item-card">
+                    <div class="feature-visual">
+                        <div class="feature-icon-wrapper yellow">
+                            <i data-lucide="award"></i>
+                        </div>
+                    </div>
+                    <div class="feature-info">
+                        <h3 class="feature-name">機體組裝與證照輔導</h3>
+                        <p class="feature-desc">從零教學無人機電路結構、馬達、電調（ESC）與圖傳系統的原理與焊接組裝。同時輔導民航局 CAA 遙控無人機操作證照（學科與術科），協助社員取得專業執照。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Gallery / Showcase Section -->
+    <section class="gallery-section" id="gallery">
+        <div class="section-container">
+            <div class="section-header text-center">
+                <h2 class="section-title">活動剪影</h2>
+                <p class="section-subtitle">跟著我們的視角，看看社員們精彩的活動花絮與空拍作品。</p>
+            </div>
+
+            <div class="gallery-grid">
+                <div class="gallery-item large">
+                    <div class="gallery-img-container">
+                        <img src="assets/images/fpv_drone_hero.jpg" alt="活動花絮 - 模擬器訓練" class="gallery-img">
+                        <div class="gallery-overlay">
+                            <span class="gallery-tag">社課培訓</span>
+                            <h4>電競級模擬器實機特訓</h4>
+                            <p>社員們正在進行 Liftoff 模擬器計時挑戰賽</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="gallery-item">
+                    <div class="gallery-img-container">
+                        <!-- We will style these placeholders with css gradient patterns + icons if images don't load, making it look beautiful regardless -->
+                        <div class="gallery-placeholder p-blue">
+                            <i data-lucide="plane-takeoff"></i>
+                        </div>
+                        <div class="gallery-overlay">
+                            <span class="gallery-tag">戶外實飛</span>
+                            <h4>新北大都會公園飛行局</h4>
+                            <p>大合照與現場穿越機拉煙測試</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="gallery-item">
+                    <div class="gallery-img-container">
+                        <div class="gallery-placeholder p-purple">
+                            <i data-lucide="hammer"></i>
+                        </div>
+                        <div class="gallery-overlay">
+                            <span class="gallery-tag">工作坊</span>
+                            <h4>手把手穿越機組裝營</h4>
+                            <p>完成人生第一台 5 吋穿越機組裝與解調</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="gallery-item double-width">
+                    <div class="gallery-img-container">
+                        <div class="gallery-placeholder p-dark">
+                            <i data-lucide="video"></i>
+                        </div>
+                        <div class="gallery-overlay">
+                            <span class="gallery-tag">空拍作品</span>
+                            <h4>上帝視角下的北科大校園</h4>
+                            <p>使用三軸穩定航拍機記錄北科地標紅樓與校園風光</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="faq-section" id="faq">
+        <div class="section-container">
+            <div class="section-header text-center">
+                <h2 class="section-title">常見問題 FAQ</h2>
+                <p class="section-subtitle">為你解答關於加入社團的所有疑惑。</p>
+            </div>
+
+            <div class="faq-accordion-wrapper">
+                <div class="faq-card">
+                    <button class="faq-question">
+                        <span>Q1. 加入社團需要自己購買無人機或昂貴設備嗎？</span>
+                        <span class="faq-icon"><i data-lucide="chevron-down"></i></span>
+                    </button>
+                    <div class="faq-answer">
+                        <p>不需要！社團內備有專業的多軸無人機、FPV 穿越機、模擬器練習專用遙控器以及飛行眼鏡等設備，供社員在課堂與飛行局中練習使用。建議等推動熟悉後，再根據個人興趣在學長姐協助下購買合適的設備。</p>
+                    </div>
+                </div>
+
+                <div class="faq-card">
+                    <button class="faq-question">
+                        <span>Q2. 完全沒有飛行經驗的「零基礎小白」可以加入嗎？</span>
+                        <span class="faq-icon"><i data-lucide="chevron-down"></i></span>
+                    </button>
+                    <div class="faq-answer">
+                        <p>非常歡迎！社團大部分的新社員都是從零開始。我們有一套完善的「新手培訓流程」：先在電腦模擬器上累積足夠的安全操作時數，學會修正航向與起降技巧後，才會在幹部的陪同指導下進行實機操作，安全又好上手！</p>
+                    </div>
+                </div>
+
+                <div class="faq-card">
+                    <button class="faq-question">
+                        <span>Q3. 無人機社的課表跟時間通常怎麼安排？</span>
+                        <span class="faq-icon"><i data-lucide="chevron-down"></i></span>
+                    </button>
+                    <div class="faq-answer">
+                        <p>我們的室內社課（包含模擬器特訓、組裝教學、法規與學科知識）通常安排在每週三的晚上。而戶外實飛活動（飛行局）則多選在週末白天，帶大家前往新北或桃園等合法合規的綠地飛場進行實地空拍與穿越機飛行。</p>
+                    </div>
+                </div>
+
+                <div class="faq-card">
+                    <button class="faq-question">
+                        <span>Q4. 社團會輔導民航局 CAA 證照嗎？</span>
+                        <span class="faq-icon"><i data-lucide="chevron-down"></i></span>
+                    </button>
+                    <div class="faq-answer">
+                        <p>是的！針對想要將無人機技能專業化的社員，社團會提供民航局無人機操作證照（學科與術科）的考試指南與練習指導，幫助大家合法合規地在專業領域進行空拍與飛行業務。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Call to Action Banner -->
+    <section class="cta-section">
+        <div class="cta-glow-bg"></div>
+        <div class="cta-container">
+            <h2 class="cta-title">準備好與我們一起起飛了嗎？</h2>
+            <p class="cta-text">不論你想成為空拍導演、賽道穿越機車手，還是無人機工程師，北科無人機社都是你的起點！現在就加入我們的官方 LINE 社群，第一時間獲取期初大會與體驗課訊息！</p>
+            <div class="cta-buttons">
+                <a href="https://lin.ee/s5YJgGI" target="_blank" class="btn btn-line btn-large glow-pulse">
+                    <i data-lucide="message-square"></i> 點我加入官方 LINE 社群
+                </a>
+                <a href="https://www.instagram.com/ntut_drone/" target="_blank" class="btn btn-secondary btn-large">
+                    <i data-lucide="instagram"></i> 追蹤社團 Instagram
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-container">
+            <div class="footer-brand">
+                <a href="#" class="logo">
+                    <span class="logo-icon"><i data-lucide="navigation"></i></span>
+                    <span class="logo-text">
+                        <span class="brand-en">NTUT DRONE</span>
+                        <span class="brand-zh">北科無人機社</span>
+                    </span>
+                </a>
+                <p class="footer-desc">國立臺北科技大學學生社團 - 提供最專業的無人機飛行體驗、FPV 技術交流與空拍藝術創作平台。</p>
+                <div class="footer-socials">
+                    <a href="https://www.instagram.com/ntut_drone/" target="_blank" aria-label="Instagram"><i data-lucide="instagram"></i></a>
+                    <a href="https://lin.ee/s5YJgGI" target="_blank" aria-label="LINE"><i data-lucide="message-square"></i></a>
+                </div>
+            </div>
+            
+            <div class="footer-links-group">
+                <div class="footer-col">
+                    <h4>快速導覽</h4>
+                    <a href="#home">回到首頁</a>
+                    <a href="#about">關於我們</a>
+                    <a href="#features">社團特色</a>
+                    <a href="#gallery">活動剪影</a>
+                </div>
+                <div class="footer-col">
+                    <h4>聯絡資訊</h4>
+                    <span>社辦地點：活動中心 (學生活動大樓)</span>
+                    <span>聯絡信箱：ntutdrone@gmail.com</span>
+                    <a href="https://lin.ee/s5YJgGI" target="_blank" class="footer-highlight-link">官方 LINE 諮詢 <i data-lucide="arrow-up-right"></i></a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 國立臺北科技大學無人機社 NTUT Drone Club. All rights reserved.</p>
+            <p class="developer-tag">Designed with <i data-lucide="heart" class="heart-icon"></i> for NTUT</p>
+        </div>
+    </footer>
+
+    <!-- Main JavaScript -->
+    <script src="main.js"></script>
+</body>
+</html>

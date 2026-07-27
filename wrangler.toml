@@ -1,0 +1,11 @@
+name = "ntut-drone-web"
+main = "src/worker.js"
+compatibility_date = "2024-05-02"
+
+# Modern Static Assets Hosting (Wrangler 3+)
+[assets]
+directory = "./public"
+
+[[kv_namespaces]]
+binding = "DRONE_DB"
+id = "YOUR_KV_NAMESPACE_ID" # Replace with your Cloudflare KV Namespace ID after creation

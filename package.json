@@ -1,0 +1,19 @@
+{
+  "name": "ntut-drone-web",
+  "version": "1.0.0",
+  "description": "NTUT Drone Club Website and dynamic CMS running on Cloudflare Workers",
+  "main": "src/worker.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "marked": "^9.1.6"
+  },
+  "devDependencies": {
+    "wrangler": "^3.57.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
