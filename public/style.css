@@ -2,29 +2,29 @@
 
 /* --- Design Tokens (GOV.UK & University Authority Style) --- */
 :root {
-    --bg-page: #ffffff;
-    --bg-section: #f3f2f1;
-    --bg-card: #ffffff;
-    --bg-card-hover: #fafbfc;
+    --bg-page: #0b0f19;
+    --bg-section: #0f172a;
+    --bg-card: #1e293b;
+    --bg-card-hover: #334155;
     
-    --color-primary: #1d70b8; /* GOV.UK Royal Blue */
-    --color-primary-hover: #003078;
-    --color-primary-light: #e8f1f8;
+    --color-primary: #3b82f6; /* Modern Electric Sapphire */
+    --color-primary-hover: #60a5fa;
+    --color-primary-light: rgba(59, 130, 246, 0.15);
     
-    --color-navy: #0b0c10;
-    --color-slate: #0f172a;
+    --color-navy: #f8fafc;
+    --color-slate: #f1f5f9;
     
-    --color-success: #00703c; /* GOV.UK Green */
-    --color-danger: #d4351c; /* GOV.UK Red */
-    --color-focus: #ffdd00; /* GOV.UK Focus Yellow */
+    --color-success: #10b981;
+    --color-danger: #ef4444;
+    --color-focus: #facc15;
     
-    --text-primary: #0b0c10; /* GOV.UK Black */
-    --text-secondary: #505a5f; /* GOV.UK Dark Grey */
-    --text-muted: #6f777b;
-    --text-inverse: #ffffff;
+    --text-primary: #f8fafc; /* Pure Crisp White */
+    --text-secondary: #94a3b8; /* Cool Slate Grey */
+    --text-muted: #64748b;
+    --text-inverse: #0f172a;
     
-    --border-color: #b1b4b6; /* GOV.UK Mid Grey */
-    --border-light: #e0e4e8;
+    --border-color: rgba(255, 255, 255, 0.15);
+    --border-light: rgba(255, 255, 255, 0.08);
     
     --transition-smooth: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     --transition-fast: all 0.15s ease;
@@ -213,18 +213,26 @@ img {
 .social-icon-btn {
     width: 38px;
     height: 38px;
-    border-radius: 4px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--bg-section);
-    color: var(--text-primary);
-    border: 1px solid var(--border-light);
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-decoration: none !important;
+    transition: var(--transition-fast);
 }
 .social-icon-btn:hover {
-    background: var(--color-primary-light);
-    color: var(--color-primary);
-    border-color: var(--color-primary);
+    background: #3b82f6;
+    color: #ffffff !important;
+    border-color: #60a5fa;
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+}
+.social-icon-btn svg + .fallback-text {
+    display: none;
 }
 
 .cta-nav-btn {
@@ -247,10 +255,11 @@ img {
 
 /* --- GOV.UK Style Hero Section --- */
 .hero-section {
-    background-color: var(--color-primary);
-    color: var(--text-inverse);
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0b0f19 100%);
+    color: #ffffff;
     padding: 70px 0 80px 0;
-    border-bottom: 10px solid var(--color-navy);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
 }
 
 .hero-container {
@@ -294,10 +303,11 @@ img {
 .hero-search-box {
     display: flex;
     max-width: 650px;
-    background: #fff;
-    border-radius: 4px;
+    background: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
 }
 
 .hero-search-input {
@@ -305,16 +315,20 @@ img {
     padding: 16px 20px;
     border: none;
     font-size: 1.1rem;
-    color: var(--text-primary);
+    color: #f8fafc;
+    background: #1e293b;
     font-family: inherit;
     outline: none;
 }
+.hero-search-input::placeholder {
+    color: #64748b;
+}
 .hero-search-input:focus {
-    box-shadow: inset 0 0 0 3px var(--color-focus);
+    box-shadow: inset 0 0 0 2px var(--color-primary);
 }
 
 .hero-search-btn {
-    background: var(--color-navy);
+    background: var(--color-primary);
     color: #fff;
     border: none;
     padding: 0 32px;
@@ -327,7 +341,7 @@ img {
     transition: var(--transition-fast);
 }
 .hero-search-btn:hover {
-    background: #000;
+    background: var(--color-primary-hover);
 }
 
 /* --- "Popular on NTUT Drone" Grid (GOV.UK Style) --- */
@@ -355,14 +369,15 @@ img {
     align-items: flex-start;
     gap: 16px;
     padding: 16px;
-    border-radius: 4px;
+    border-radius: 8px;
     transition: var(--transition-fast);
-    background: var(--bg-page);
-    border: 1px solid transparent;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
 }
 .popular-item:hover {
-    background: var(--bg-section);
-    border-color: var(--border-light);
+    background: var(--bg-card-hover);
+    border-color: var(--color-primary);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
 }
 
 .popular-icon {
@@ -678,12 +693,13 @@ footer {
     margin-top: 8px;
 }
 .cta-section {
-    background: var(--color-primary);
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
     color: #fff;
     padding: 60px 24px;
     text-align: center;
-    border-top: 8px solid var(--color-navy);
-    border-bottom: 8px solid var(--color-navy);
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
 }
 .cta-title {
     font-size: 2.25rem;
@@ -701,17 +717,21 @@ footer {
     display: flex;
     justify-content: center;
     gap: 16px;
+    flex-wrap: wrap;
 }
 .btn-line, .btn-large {
     padding: 14px 28px;
     font-size: 1.1rem;
 }
 .btn-line {
-    background: var(--color-navy);
+    background: #10b981;
     color: #fff !important;
+    border-radius: 8px;
+    font-weight: 700;
 }
 .btn-line:hover {
-    background: #000;
+    background: #059669;
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
 }
 
 /* --- Responsive & Mobile Drawer --- */

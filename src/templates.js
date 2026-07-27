@@ -21,7 +21,7 @@ function getHeader(title, lang = 'zh') {
         <header class="navbar scrolled">
             <div class="nav-container">
                 <a href="/?lang=${lang}" class="logo">
-                    <span class="logo-icon"><i data-lucide="navigation"></i></span>
+                    <img src="/assets/images/logo_ntut.jpg" alt="NTUT Drone Logo" style="height: 40px; width: 40px; object-fit: contain; border-radius: 6px; margin-right: 8px;">
                     <div class="logo-text">
                         <span class="brand-en">NTUT DRONE</span>
                         <span class="brand-zh">北科無人機社</span>
@@ -35,13 +35,14 @@ function getHeader(title, lang = 'zh') {
                 </nav>
                 <div class="nav-socials">
                     <!-- Language Toggle Link -->
-                    <a href="?lang=${t.langToggleQuery}" class="cta-nav-btn" style="background:none; border-color:var(--border-color); color:var(--color-primary); margin-right:8px;">
-                        <i data-lucide="languages" style="width:14px; height:14px; display:inline; vertical-align:middle; margin-right:4px;"></i> ${t.langToggleText}
+                    <a href="?lang=${t.langToggleQuery}" class="cta-nav-btn" style="background:none; border: 1px solid var(--border-color); color:var(--text-primary); margin-right:8px; padding: 6px 12px;">
+                        <span style="font-size: 1.1rem; margin-right: 4px;">🌐</span> ${t.langToggleText}
                     </a>
                     
-                    <a href="https://www.instagram.com/ntut_drone/" target="_blank" class="social-icon-btn ig"><i data-lucide="instagram"></i></a>
-                    <a href="https://lin.ee/s5YJgGI" target="_blank" class="social-icon-btn line"><i data-lucide="message-square"></i></a>
-                    <a href="/admin" class="cta-nav-btn"><i data-lucide="user"></i> ${t.navAdmin}</a>
+                    <a href="mailto:ntut.droneclub@gmail.com" class="social-icon-btn email" title="官方信箱: ntut.droneclub@gmail.com"><i data-lucide="mail"></i><span class="fallback-text">✉️</span></a>
+                    <a href="https://www.instagram.com/ntut_drone/" target="_blank" class="social-icon-btn ig" title="Instagram"><i data-lucide="instagram"></i><span class="fallback-text">IG</span></a>
+                    <a href="https://lin.ee/s5YJgGI" target="_blank" class="social-icon-btn line" title="LINE 官方社群"><i data-lucide="message-square"></i><span class="fallback-text">LINE</span></a>
+                    <a href="/admin" class="cta-nav-btn" style="margin-left: 4px;"><i data-lucide="user"></i> ${t.navAdmin}</a>
                 </div>
             </div>
         </header>
@@ -56,7 +57,7 @@ function getFooter(lang = 'zh') {
             <div class="footer-container">
                 <div class="footer-brand">
                     <a href="#" class="logo">
-                        <span class="logo-icon"><i data-lucide="navigation"></i></span>
+                        <img src="/assets/images/logo_ntut.jpg" alt="NTUT Drone Logo" style="height: 38px; width: 38px; object-fit: contain; border-radius: 6px; margin-right: 8px;">
                         <span class="logo-text">
                             <span class="brand-en">NTUT DRONE</span>
                             <span class="brand-zh">北科無人機社</span>
@@ -136,7 +137,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh') {
         <header class="navbar">
             <div class="nav-container">
                 <a href="/?lang=${lang}" class="logo">
-                    <span class="logo-icon"><i data-lucide="navigation"></i></span>
+                    <img src="/assets/images/logo_ntut.jpg" alt="NTUT Drone Logo" style="height: 40px; width: 40px; object-fit: contain; border-radius: 6px; margin-right: 8px;">
                     <div class="logo-text">
                         <span class="brand-en">NTUT DRONE</span>
                         <span class="brand-zh">北科無人機社</span>
@@ -152,17 +153,20 @@ export function renderLandingPage(latestPosts = [], lang = 'zh') {
 
                 <div class="nav-socials">
                     <!-- Language Toggle Link -->
-                    <a href="?lang=${t.langToggleQuery}" class="cta-nav-btn" style="background:none; border-color:rgba(0, 240, 255, 0.2); color:var(--color-cyan); margin-right:8px;">
-                        <i data-lucide="languages" style="width:14px; height:14px; display:inline; vertical-align:middle; margin-right:4px;"></i> ${t.langToggleText}
+                    <a href="?lang=${t.langToggleQuery}" class="cta-nav-btn" style="background:none; border: 1px solid var(--border-color); color:var(--text-primary); margin-right:8px; padding: 6px 12px;">
+                        <span style="font-size: 1.1rem; margin-right: 4px;">🌐</span> ${t.langToggleText}
                     </a>
                     
-                    <a href="https://www.instagram.com/ntut_drone/" target="_blank" aria-label="Instagram" class="social-icon-btn ig">
-                        <i data-lucide="instagram"></i>
+                    <a href="mailto:ntut.droneclub@gmail.com" class="social-icon-btn email" title="官方信箱: ntut.droneclub@gmail.com" aria-label="Email">
+                        <i data-lucide="mail"></i><span class="fallback-text">✉️</span>
                     </a>
-                    <a href="https://lin.ee/s5YJgGI" target="_blank" aria-label="LINE" class="social-icon-btn line">
-                        <i data-lucide="message-square"></i>
+                    <a href="https://www.instagram.com/ntut_drone/" target="_blank" aria-label="Instagram" class="social-icon-btn ig" title="Instagram">
+                        <i data-lucide="instagram"></i><span class="fallback-text">IG</span>
                     </a>
-                    <a href="https://lin.ee/s5YJgGI" target="_blank" class="cta-nav-btn">${t.navJoin}</a>
+                    <a href="https://lin.ee/s5YJgGI" target="_blank" aria-label="LINE" class="social-icon-btn line" title="LINE 官方社群">
+                        <i data-lucide="message-square"></i><span class="fallback-text">LINE</span>
+                    </a>
+                    <a href="https://lin.ee/s5YJgGI" target="_blank" class="cta-nav-btn" style="margin-left: 4px;">${t.navJoin}</a>
                     <button class="mobile-menu-toggle" aria-label="Toggle menu">
                         <i data-lucide="menu"></i>
                     </button>
@@ -172,7 +176,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh') {
 
         <div class="mobile-drawer">
             <div class="drawer-header">
-                <span class="drawer-logo"><i data-lucide="navigation"></i> NTUT DRONE</span>
+                <span class="drawer-logo"><img src="/assets/images/logo_ntut.jpg" alt="NTUT Drone Logo" style="height: 28px; width: 28px; object-fit: contain; border-radius: 4px; vertical-align: middle; margin-right: 6px;"> NTUT DRONE</span>
                 <button class="drawer-close"><i data-lucide="x"></i></button>
             </div>
             <nav class="drawer-links">
@@ -180,24 +184,32 @@ export function renderLandingPage(latestPosts = [], lang = 'zh') {
                 <a href="#features" class="drawer-link">${t.navFeatures}</a>
                 <a href="#dynamic-blog" class="drawer-link">${lang === 'zh' ? '最新文章' : 'Latest Posts'}</a>
                 <a href="#faq" class="drawer-link">${t.navFaq}</a>
-                <a href="?lang=${t.langToggleQuery}" class="drawer-link" style="color: var(--color-cyan);"><i data-lucide="languages" style="width:16px; height:16px; display:inline; vertical-align:middle; margin-right:6px;"></i> ${t.langToggleText}</a>
+                <a href="?lang=${t.langToggleQuery}" class="drawer-link" style="color: var(--color-primary);"><span style="margin-right: 6px;">🌐</span> ${t.langToggleText}</a>
                 <hr class="drawer-divider">
+                <a href="mailto:ntut.droneclub@gmail.com" class="drawer-cta-btn" style="background: #3b82f6;"><i data-lucide="mail"></i> ntut.droneclub@gmail.com</a>
                 <a href="https://lin.ee/s5YJgGI" target="_blank" class="drawer-cta-btn"><i data-lucide="message-square"></i> ${t.heroBtnLine}</a>
                 <a href="https://www.instagram.com/ntut_drone/" target="_blank" class="drawer-cta-btn secondary"><i data-lucide="instagram"></i> Instagram</a>
             </nav>
         </div>
 
         <section class="hero-section" id="home">
-            <div class="hero-container">
-                <div class="hero-badge-top">
-                    國立臺北科技大學 | 學務處課外活動指導組核可學術性社團
+            <div class="hero-container" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 40px;">
+                <div class="hero-content-left" style="flex: 1; min-width: 300px;">
+                    <div class="hero-badge-top">
+                        國立臺北科技大學 | 學務處課外活動指導組核可康樂性社團
+                    </div>
+                    <h1 class="hero-title">${t.heroTitleZh}</h1>
+                    <p class="hero-description">${t.heroDesc}</p>
+                    
+                    <div class="hero-search-box">
+                        <input type="text" class="hero-search-input" placeholder="搜尋飛行教學、考照題庫、器材出借與社團活動..." id="hero-search-input" onkeydown="if(event.key==='Enter'){ window.location.href='/blog?lang=${lang}'; }">
+                        <button class="hero-search-btn" onclick="window.location.href='/blog?lang=${lang}';"><i data-lucide="search"></i> ${lang === 'zh' ? '搜尋' : 'Search'}</button>
+                    </div>
                 </div>
-                <h1 class="hero-title">${t.heroTitleZh}</h1>
-                <p class="hero-description">${t.heroDesc}</p>
-                
-                <div class="hero-search-box">
-                    <input type="text" class="hero-search-input" placeholder="搜尋飛行教學、考照題庫、器材出借與社團活動..." id="hero-search-input" onkeydown="if(event.key==='Enter'){ window.location.href='/blog?lang=${lang}'; }">
-                    <button class="hero-search-btn" onclick="window.location.href='/blog?lang=${lang}';"><i data-lucide="search"></i> ${lang === 'zh' ? '搜尋' : 'Search'}</button>
+                <div class="hero-logo-right" style="flex: 0 0 auto; display: flex; justify-content: center; align-items: center;">
+                    <div style="background: #ffffff; padding: 24px 32px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.12); border: 1px solid #e0e4e8; max-width: 380px; text-align: center;">
+                        <img src="/assets/images/logo_drone.png" alt="NTUT Drone Official Emblem" style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
+                    </div>
                 </div>
             </div>
         </section>
@@ -432,16 +444,17 @@ export function renderLandingPage(latestPosts = [], lang = 'zh') {
             <div class="footer-container">
                 <div class="footer-brand">
                     <a href="#" class="logo">
-                        <span class="logo-icon"><i data-lucide="navigation"></i></span>
+                        <img src="/assets/images/logo_ntut.jpg" alt="NTUT Drone Logo" style="height: 38px; width: 38px; object-fit: contain; border-radius: 6px; margin-right: 8px;">
                         <span class="logo-text">
                             <span class="brand-en">NTUT DRONE</span>
                             <span class="brand-zh">北科無人機社</span>
                         </span>
                     </a>
                     <p class="footer-desc">${t.footerDesc}</p>
-                    <div class="footer-socials">
-                        <a href="https://www.instagram.com/ntut_drone/" target="_blank" aria-label="Instagram"><i data-lucide="instagram"></i></a>
-                        <a href="https://lin.ee/s5YJgGI" target="_blank" aria-label="LINE"><i data-lucide="message-square"></i></a>
+                    <div class="footer-socials" style="display: flex; gap: 10px; margin-top: 12px;">
+                        <a href="mailto:ntut.droneclub@gmail.com" class="social-icon-btn" title="ntut.droneclub@gmail.com" aria-label="Email"><i data-lucide="mail"></i><span class="fallback-text">✉️</span></a>
+                        <a href="https://www.instagram.com/ntut_drone/" target="_blank" class="social-icon-btn" aria-label="Instagram"><i data-lucide="instagram"></i><span class="fallback-text">IG</span></a>
+                        <a href="https://lin.ee/s5YJgGI" target="_blank" class="social-icon-btn" aria-label="LINE"><i data-lucide="message-square"></i><span class="fallback-text">LINE</span></a>
                     </div>
                 </div>
                 
@@ -456,7 +469,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh') {
                     <div class="footer-col">
                         <h4>聯絡資訊</h4>
                         <span>${t.footerLocation}</span>
-                        <span>${t.footerMail}</span>
+                        <a href="mailto:ntut.droneclub@gmail.com" style="color: var(--color-primary); font-weight: 700; margin-bottom: 8px;">${t.footerMail}</a>
                         <a href="https://lin.ee/s5YJgGI" target="_blank" class="footer-highlight-link">${t.footerLineChat} <i data-lucide="arrow-up-right"></i></a>
                         <a href="/admin" class="footer-highlight-link" style="color: var(--color-purple) !important; margin-top: 10px;">${t.footerAdmin} <i data-lucide="lock"></i></a>
                     </div>
@@ -698,8 +711,8 @@ export function renderLogin(errorMessage = '') {
     <body>
         <div class="login-container">
             <div class="text-center" style="margin-bottom: 30px;">
-                <div class="logo-icon" style="margin: 0 auto 16px auto; width: 50px; height: 50px; border-radius: 12px;">
-                    <i data-lucide="lock" style="width: 24px; height: 24px;"></i>
+                <div style="margin: 0 auto 16px auto; width: 64px; height: 64px;">
+                    <img src="/assets/images/logo_ntut.jpg" alt="NTUT Drone Logo" style="width: 100%; height: 100%; object-fit: contain; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
                 </div>
                 <h2 style="font-size: 1.5rem; font-weight: 800; letter-spacing: 0.5px;">系統後台登入</h2>
                 <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">北科無人機社官方網站後台</p>
@@ -1002,7 +1015,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
         <div class="sidebar">
             <div>
                 <div class="sidebar-logo">
-                    <i data-lucide="navigation" style="transform: rotate(45deg);"></i> NTUT DRONE 後台
+                    <img src="/assets/images/logo_ntut.jpg" alt="NTUT Drone" style="width: 28px; height: 28px; object-fit: contain; border-radius: 6px; vertical-align: middle; margin-right: 8px;"> NTUT DRONE 後台
                 </div>
                 <div class="sidebar-nav">
                     <button class="nav-item active" onclick="showPanel('posts')"><i data-lucide="book-open"></i> 文章管理</button>

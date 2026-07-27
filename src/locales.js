@@ -58,6 +58,8 @@ export const locales = {
         faqA3: "我們的室內社課（包含模擬器特訓、組裝教學、法規與學科知識）通常安排在每週三的晚上。而戶外實飛活動（飛行局）則多選在週末白天，帶大家前往新北或桃園等合法合規的綠地飛場進行實地空拍與穿越機飛行。",
         faqQ4: "Q4. 社團會輔導民航局 CAA 證照嗎？",
         faqA4: "是的！針對想要將無人機技能專業化的社員，社團會提供民航局無人機操作證照（學科與術科）的考試指南與練習指導，幫助大家合法合規地在專業領域進行空拍與飛行業務。",
+        faqQ5: "Q5. 學校各系所或外校友社想找無人機社辦理活動、合作或器材借用，該如何洽詢？",
+        faqA5: "歡迎隨時與我們聯絡！無論是社團聯誼、迎新活動、校園影片宣傳拍攝或康樂交流，都歡迎寄信至社團官方洽詢信箱：ntut.droneclub@gmail.com，或透過 LINE 官方帳號與 IG 私訊，我們會有幹部專人為您安排！",
         
         ctaTitle: "準備好與我們一起起飛了嗎？",
         ctaDesc: "不論你想成為空拍導演、賽道穿越機車手，還是無人機工程師，北科無人機社都是你的起點！現在就加入我們的官方 LINE 社群，第一時間獲取期初大會與體驗課訊息！",
@@ -66,7 +68,7 @@ export const locales = {
         
         footerDesc: "國立臺北科技大學學生社團 - 提供最專業的無人機飛行體驗、FPV 技術交流與空拍藝術創作平台。",
         footerLocation: "社辦地點：活動中心 (學生活動大樓)",
-        footerMail: "聯絡信箱：ntutdrone@gmail.com",
+        footerMail: "聯絡信箱：ntut.droneclub@gmail.com",
         footerLineChat: "官方 LINE 諮詢",
         footerAdmin: "管理後台",
         footerCopyright: "國立臺北科技大學無人機社 NTUT Drone Club. All rights reserved.",
@@ -131,6 +133,8 @@ export const locales = {
         faqA3: "Our indoor classes (simulators, assembly workshops, and flight regulations) are held on Wednesday evenings. Outdoor flying events (flying sessions) are organized on weekends.",
         faqQ4: "Q4. Does the club support CAA license prep?",
         faqA4: "Yes! For members looking to turn drone skills into a profession, we provide guides and practice sessions for the Civil Aeronautics Administration (CAA) drone pilot tests.",
+        faqQ5: "Q5. How can other clubs or departments contact NTUT Drone Club for events or collaboration?",
+        faqA5: "We welcome all collaborations, event performances, and joint activities! Please feel free to email our official inbox at ntut.droneclub@gmail.com or message us via Instagram / LINE. Our team will get back to you promptly!",
         
         ctaTitle: "Ready to Take Off With Us?",
         ctaDesc: "Whether you want to be an aerial director, an FPV racer, or a drone engineer, NTUT Drone Club is your starting point! Join our official LINE community today for the latest event updates!",
@@ -139,7 +143,7 @@ export const locales = {
         
         footerDesc: "NTUT Student Club - providing professional drone flight experiences, FPV technology exchange, and aerial photography platforms.",
         footerLocation: "Location: Student Activity Center",
-        footerMail: "Email: ntutdrone@gmail.com",
+        footerMail: "Email: ntut.droneclub@gmail.com",
         footerLineChat: "LINE Chat",
         footerAdmin: "Admin Panel",
         footerCopyright: "NTUT Drone Club. All rights reserved.",
