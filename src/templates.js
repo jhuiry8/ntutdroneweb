@@ -14,7 +14,7 @@ function getHeader(title, lang = 'zh') {
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-        <script src="https://unpkg.com/lucide@latest"></script>
+        <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
         <link rel="stylesheet" href="/style.css">
     </head>
     <body>
@@ -128,7 +128,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh') {
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-        <script src="https://unpkg.com/lucide@latest"></script>
+        <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
         <link rel="stylesheet" href="/style.css">
     </head>
     <body>
@@ -640,7 +640,7 @@ export function renderLogin(errorMessage = '') {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>後台登入 | 北科無人機社</title>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
-        <script src="https://unpkg.com/lucide@latest"></script>
+        <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
         <link rel="stylesheet" href="/style.css">
         <style>
             body {
@@ -713,7 +713,7 @@ export function renderLogin(errorMessage = '') {
             </div>
         </div>
         <script>
-            lucide.createIcons();
+            if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
             // Background grid telemetry drawing
             const canvas = document.getElementById('telemetry-bg');
             if (canvas) {
@@ -749,7 +749,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>後台管理面板 | 北科無人機社</title>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
-        <script src="https://unpkg.com/lucide@latest"></script>
+        <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
         <style>
             :root {
                 --bg-deep: #07090e;
@@ -954,6 +954,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
             /* Toast Message */
             #toast {
                 position: fixed;
+                pointer-events: none;
                 bottom: 30px;
                 right: 30px;
                 background: rgba(18, 24, 38, 0.95);
@@ -972,6 +973,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
             #toast.show {
                 transform: translateY(0);
                 opacity: 1;
+                pointer-events: auto;
             }
             
             /* Uploader */
@@ -1212,7 +1214,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
         </div>
 
         <script>
-            lucide.createIcons();
+            if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
 
             function showPanel(panelName) {
                 document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -1241,7 +1243,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     toast.style.borderColor = 'var(--color-cyan)';
                     toast.innerHTML = '<i data-lucide="check-circle" style="color:var(--color-cyan); width:20px; height:20px;"></i> <span>' + text + '</span>';
                 }
-                lucide.createIcons();
+                if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
                 
                 toast.classList.add('show');
                 setTimeout(() => {
@@ -1456,7 +1458,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     '<button class="btn btn-secondary" onclick="copyText(\'' + markdownText + '\')" style="width:100%; padding:6px; font-size:0.75rem; justify-content:center;"><i data-lucide="copy" style="width:12px; height:12px;"></i> 複製 MD</button>';
                 
                 grid.insertBefore(card, grid.firstChild);
-                lucide.createIcons();
+                if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
             }
 
             function copyText(text) {
