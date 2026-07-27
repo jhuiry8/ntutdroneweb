@@ -23,11 +23,13 @@ jobs:
 
       - name: Inject KV Namespace ID
         run: |
-          if [ -z "${{ secrets.CLOUDFLARE_KV_ID }}" ]; then
+          KV_ID=$(echo "${{ secrets.CLOUDFLARE_KV_ID }}" | tr -d '[:space:]')
+          if [ -z "$KV_ID" ]; then
             echo "::error::CLOUDFLARE_KV_ID secret is not set in GitHub Repository Secrets! Please add it in Settings -> Secrets and variables -> Actions."
             exit 1
           fi
-          sed -i 's/YOUR_KV_NAMESPACE_ID/${{ secrets.CLOUDFLARE_KV_ID }}/g' wrangler.toml
+          sed -i "s/YOUR_KV_NAMESPACE_ID/$KV_ID/g" wrangler.toml
+          echo "KV Namespace ID successfully injected."
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
