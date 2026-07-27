@@ -1,4 +1,4 @@
-// NTUT Drone Club - Cloudflare Worker Entry Point
+// NTUT Drone Club - Cloudflare Worker Entry Point (with i18n support)
 import { marked } from 'marked';
 import {
     renderLandingPage,
@@ -10,7 +10,7 @@ import {
 } from './templates.js';
 
 // Configuration Defaults
-const DEFAULT_PASS = 'admin123'; // Initial password. Recommended to change in settings.
+const DEFAULT_PASS = 'admin123';
 const SALT = 'ntut_drone_salt_123';
 
 // Helper: Hashing password
@@ -43,7 +43,6 @@ async function isAuthenticated(request, env) {
     const sessionToken = cookies.session;
     if (!sessionToken) return false;
 
-    // Check session in KV
     const sessionUser = await env.DRONE_DB.get(`session:${sessionToken}`);
     return !!sessionUser;
 }
@@ -54,18 +53,44 @@ export default {
         const path = url.pathname;
         const method = request.method;
 
-        // Static files (style.css, main.js, images) are served automatically by Cloudflare Workers Assets.
-        // The fetch handler only processes routes not matching static files, or we can route explicitly.
-
         try {
+            // ==================== LANGUAGE DETECTION ====================
+            const cookieLang = parseCookies(request).lang;
+            const queryLang = url.searchParams.get('lang');
+            
+            let lang = 'zh';
+            if (queryLang === 'en' || queryLang === 'zh') {
+                lang = queryLang;
+            } else if (cookieLang === 'en' || cookieLang === 'zh') {
+                lang = cookieLang;
+            } else {
+                const acceptLang = request.headers.get('Accept-Language') || '';
+                if (acceptLang.toLowerCase().includes('en')) {
+                    lang = 'en';
+                }
+            }
+
+            // Headers helper to append language cookie if updated via query
+            const getResponseHeaders = (contentType = 'text/html; charset=utf-8') => {
+                const headers = { 'Content-Type': contentType };
+                if (queryLang === 'en' || queryLang === 'zh') {
+                    // Set language cookie (expires in 1 year)
+                    headers['Set-Cookie'] = `lang=${lang}; Path=/; Max-Age=31536000; Secure; SameSite=Lax`;
+                }
+                return headers;
+            };
+
             // ==================== ROUTE: Home Landing Page ====================
             if (path === '/' && method === 'GET') {
                 const postsListJson = await env.DRONE_DB.get('posts_list');
                 const postsList = postsListJson ? JSON.parse(postsListJson) : [];
-                // Get latest 3 posts
-                const latestPosts = postsList.slice(0, 3);
-                return new Response(renderLandingPage(latestPosts), {
-                    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+                
+                // Filter posts by language (match post.lang with current lang, default to 'zh')
+                const filteredPosts = postsList.filter(p => (p.lang || 'zh') === lang);
+                const latestPosts = filteredPosts.slice(0, 3);
+                
+                return new Response(renderLandingPage(latestPosts, lang), {
+                    headers: getResponseHeaders()
                 });
             }
 
@@ -73,8 +98,12 @@ export default {
             if (path === '/blog' && method === 'GET') {
                 const postsListJson = await env.DRONE_DB.get('posts_list');
                 const postsList = postsListJson ? JSON.parse(postsListJson) : [];
-                return new Response(renderBlogList(postsList), {
-                    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+                
+                // Filter by language
+                const filteredPosts = postsList.filter(p => (p.lang || 'zh') === lang);
+                
+                return new Response(renderBlogList(filteredPosts, lang), {
+                    headers: getResponseHeaders()
                 });
             }
 
@@ -86,10 +115,13 @@ export default {
                     return new Response('文章未找到 Article Not Found', { status: 404 });
                 }
                 const post = JSON.parse(postJson);
-                // Parse markdown content
+                
+                // Set page lang from post lang if available
+                const postLang = post.lang || 'zh';
+                
                 const contentHtml = marked.parse(post.content || '');
-                return new Response(renderBlogPost(post, contentHtml), {
-                    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+                return new Response(renderBlogPost(post, contentHtml, postLang), {
+                    headers: getResponseHeaders()
                 });
             }
 
@@ -101,9 +133,10 @@ export default {
                     return new Response('頁面未找到 Page Not Found', { status: 404 });
                 }
                 const page = JSON.parse(pageJson);
+                const pageLang = page.lang || 'zh';
                 const contentHtml = marked.parse(page.content || '');
-                return new Response(renderCustomPage(page, contentHtml), {
-                    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+                return new Response(renderCustomPage(page, contentHtml, pageLang), {
+                    headers: getResponseHeaders()
                 });
             }
 
@@ -124,7 +157,6 @@ export default {
                     return Response.redirect(`${url.origin}/admin`, 302);
                 }
 
-                // Fetch posts and pages lists to display
                 const postsListJson = await env.DRONE_DB.get('posts_list');
                 const postsList = postsListJson ? JSON.parse(postsListJson) : [];
                 
@@ -141,7 +173,6 @@ export default {
                 const formData = await request.formData();
                 const password = formData.get('password');
 
-                // Get password hash from KV or set default
                 let passHash = await env.DRONE_DB.get('admin_password_hash');
                 if (!passHash) {
                     passHash = await hashPassword(DEFAULT_PASS);
@@ -150,12 +181,9 @@ export default {
 
                 const inputHash = await hashPassword(password);
                 if (inputHash === passHash) {
-                    // Create session
                     const token = crypto.randomUUID();
-                    // Set session token in KV with 1-day expiration (86400 seconds)
                     await env.DRONE_DB.put(`session:${token}`, 'admin', { expirationTtl: 86400 });
 
-                    // Set Cookie and Redirect
                     return new Response('', {
                         status: 302,
                         headers: {
@@ -190,10 +218,9 @@ export default {
             if (path.startsWith('/api/posts') && ['POST', 'DELETE', 'GET'].includes(method)) {
                 const authed = await isAuthenticated(request, env);
                 if (!authed) {
-                    return new Response(JSON.stringify({ error: '未授權 Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+                    return new Response(JSON.stringify({ error: '未授權' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
                 }
 
-                // API: GET specific post
                 if (method === 'GET') {
                     const slug = path.substring(11);
                     const postJson = await env.DRONE_DB.get(`post:${slug}`);
@@ -201,12 +228,10 @@ export default {
                     return new Response(postJson, { headers: { 'Content-Type': 'application/json' } });
                 }
 
-                // API: DELETE post
                 if (method === 'DELETE') {
                     const slug = path.substring(11);
                     await env.DRONE_DB.delete(`post:${slug}`);
                     
-                    // Update posts list
                     const postsListJson = await env.DRONE_DB.get('posts_list');
                     let postsList = postsListJson ? JSON.parse(postsListJson) : [];
                     postsList = postsList.filter(p => p.slug !== slug);
@@ -215,38 +240,34 @@ export default {
                     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
                 }
 
-                // API: POST create/update post
                 if (method === 'POST') {
-                    const { title, slug, summary, content, originalSlug } = await request.json();
+                    const { title, lang: postLang, slug, summary, content, originalSlug } = await request.json();
                     
                     if (!title || !slug || !content) {
                         return new Response(JSON.stringify({ error: '標題、路徑與內容為必填！' }), { status: 400 });
                     }
 
-                    // Check if slug already exists (only for new posts)
                     if (!originalSlug) {
                         const existing = await env.DRONE_DB.get(`post:${slug}`);
                         if (existing) {
-                            return new Response(JSON.stringify({ error: '該網址代稱已存在，請使用不同的代稱。' }), { status: 400 });
+                            return new Response(JSON.stringify({ error: '該網址代稱已存在。' }), { status: 400 });
                         }
                     }
 
                     const postData = {
                         title,
+                        lang: postLang || 'zh',
                         slug,
                         summary,
                         content,
                         date: new Date().toISOString()
                     };
 
-                    // Save post content
                     await env.DRONE_DB.put(`post:${slug}`, JSON.stringify(postData));
 
-                    // Update listing
                     const postsListJson = await env.DRONE_DB.get('posts_list');
                     let postsList = postsListJson ? JSON.parse(postsListJson) : [];
                     
-                    // Remove old record if editing
                     if (originalSlug) {
                         postsList = postsList.filter(p => p.slug !== originalSlug);
                         if (originalSlug !== slug) {
@@ -254,15 +275,14 @@ export default {
                         }
                     }
 
-                    // Add new/updated record to list
                     postsList.push({
                         title,
+                        lang: postData.lang,
                         slug,
                         summary,
                         date: postData.date
                     });
 
-                    // Sort posts by date descending
                     postsList.sort((a, b) => new Date(b.date) - new Date(a.date));
                     await env.DRONE_DB.put('posts_list', JSON.stringify(postsList));
 
@@ -277,7 +297,6 @@ export default {
                     return new Response(JSON.stringify({ error: '未授權' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
                 }
 
-                // API: GET specific page
                 if (method === 'GET') {
                     const slug = path.substring(11);
                     const pageJson = await env.DRONE_DB.get(`page:${slug}`);
@@ -285,7 +304,6 @@ export default {
                     return new Response(pageJson, { headers: { 'Content-Type': 'application/json' } });
                 }
 
-                // API: DELETE page
                 if (method === 'DELETE') {
                     const slug = path.substring(11);
                     await env.DRONE_DB.delete(`page:${slug}`);
@@ -298,9 +316,8 @@ export default {
                     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
                 }
 
-                // API: POST create/update page
                 if (method === 'POST') {
-                    const { title, slug, content, originalSlug } = await request.json();
+                    const { title, lang: pageLang, slug, content, originalSlug } = await request.json();
                     
                     if (!title || !slug || !content) {
                         return new Response(JSON.stringify({ error: '標題、路徑與內容為必填！' }), { status: 400 });
@@ -313,10 +330,14 @@ export default {
                         }
                     }
 
-                    const pageData = { title, slug, content };
+                    const pageData = {
+                        title,
+                        lang: pageLang || 'zh',
+                        slug,
+                        content
+                    };
                     await env.DRONE_DB.put(`page:${slug}`, JSON.stringify(pageData));
 
-                    // Update listing
                     const pagesListJson = await env.DRONE_DB.get('pages_list');
                     let pagesList = pagesListJson ? JSON.parse(pagesListJson) : [];
                     
@@ -327,7 +348,11 @@ export default {
                         }
                     }
 
-                    pagesList.push({ title, slug });
+                    pagesList.push({
+                        title,
+                        lang: pageData.lang,
+                        slug
+                    });
                     await env.DRONE_DB.put('pages_list', JSON.stringify(pagesList));
 
                     return new Response(JSON.stringify({ success: true, page: pageData }), { headers: { 'Content-Type': 'application/json' } });
@@ -362,9 +387,8 @@ export default {
                     return new Response(JSON.stringify({ error: '未授權' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
                 }
 
-                // Check environment secrets
                 if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) {
-                    return new Response(JSON.stringify({ error: 'Worker 尚未設定 GITHUB_TOKEN 或 GITHUB_REPO 環境變數！' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+                    return new Response(JSON.stringify({ error: 'Worker 尚未設定 GITHUB_TOKEN 或 GITHUB_REPO 變數！' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
                 }
 
                 const formData = await request.formData();
@@ -374,19 +398,16 @@ export default {
                     return new Response(JSON.stringify({ error: '無效的圖片檔案' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
                 }
 
-                // Convert file to Base64
                 const arrayBuffer = await file.arrayBuffer();
                 const base64Content = btoa(
                     new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
                 );
 
-                // Generate clean filename
                 const extension = file.name.split('.').pop();
                 const timestamp = Date.now();
                 const filename = `upload_${timestamp}.${extension}`;
                 const commitPath = `public/assets/uploads/${filename}`;
 
-                // Push to GitHub API
                 const githubUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${commitPath}`;
                 const commitBody = {
                     message: `Upload image: ${filename} via CMS Admin`,
@@ -409,8 +430,6 @@ export default {
                     return new Response(JSON.stringify({ error: `GitHub API 錯誤: ${errText}` }), { status: 500, headers: { 'Content-Type': 'application/json' } });
                 }
 
-                // Construct accessible URL
-                // Format: https://jhuiry8.github.io/ntutdroneweb/assets/uploads/filename
                 const [owner, repo] = env.GITHUB_REPO.split('/');
                 const publicUrl = `https://${owner}.github.io/${repo}/assets/uploads/${filename}`;
 
@@ -421,7 +440,6 @@ export default {
                 }), { headers: { 'Content-Type': 'application/json' } });
             }
 
-            // Fallback for standard worker request handler (will try static asset match first)
             return new Response('Not Found', { status: 404 });
 
         } catch (e) {
