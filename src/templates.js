@@ -1345,11 +1345,9 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 const displayUrl = previewUrl || url;
                 const markdownText = '![' + filename + '](' + url + ')';
 
-                card.innerHTML = `
-                    <img src="${displayUrl}" style="max-width:100%; height:120px; object-fit:cover; border-radius:8px; margin-bottom:10px;">
-                    <div style="font-size:0.75rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--text-muted); margin-bottom:8px;">${filename}</div>
-                    <button class="btn btn-secondary" onclick="copyText('${markdownText}')" style="width:100%; padding:6px; font-size:0.75rem; justify-content:center;"><i data-lucide="copy" style="width:12px; height:12px;"></i> 複製 MD</button>
-                `;
+                card.innerHTML = '<img src="' + displayUrl + '" style="max-width:100%; height:120px; object-fit:cover; border-radius:8px; margin-bottom:10px;">' +
+                    '<div style="font-size:0.75rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--text-muted); margin-bottom:8px;">' + filename + '</div>' +
+                    '<button class="btn btn-secondary" onclick="copyText(\'' + markdownText + '\')" style="width:100%; padding:6px; font-size:0.75rem; justify-content:center;"><i data-lucide="copy" style="width:12px; height:12px;"></i> 複製 MD</button>';
                 
                 grid.insertBefore(card, grid.firstChild);
                 lucide.createIcons();
