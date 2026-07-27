@@ -1,21 +1,19 @@
-MIT License
+PROPRIETARY SOFTWARE LICENSE / ALL RIGHTS RESERVED
+(版權所有 / 須經同意與授權專用協議)
 
-Copyright (c) 2026 NTUT Drone Club (北科無人機社)
+Copyright (c) 2026 NTUT Drone Club (國立臺北科技大學無人機社). All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. PROPRIETARY INTELLECTUAL PROPERTY (智慧財產權聲明)
+This software, including all related source code, visual design elements, user interface, artwork, images, graphics, scripts, database schemas, and documentation (collectively, the "Software"), is the exclusive proprietary intellectual property of NTUT Drone Club (國立臺北科技大學無人機社).
+本軟體（包含其所有相關原始碼、視覺設計元素、使用者介面、圖片、美工圖案、腳本、資料庫結構及說明文件）皆為國立臺北科技大學無人機社（以下簡稱「版權所有人」）所獨有之智慧財產與資產。
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+2. EXPLICIT CONSENT REQUIRED (未經同意嚴禁擅自使用或散佈)
+No part of this Software may be used, copied, reproduced, modified, compiled, merged, published, distributed, sublicensed, or sold in any form or by any means, electronic, mechanical, or otherwise, without prior explicit written consent and official authorization from the copyright holder.
+未經版權所有人（國立臺北科技大學無人機社）事前明確之書面同意或官方授權，任何個人、商業組織、機構或第三方，皆嚴禁以任何形式或手段（不論電子、機械或其他方式）擅自使用、重製、複製、修改、編譯、散佈、公開傳輸、轉授權或銷售本軟體之全部或任何部分。
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+3. ACADEMIC AND OFFICIAL CLUB USE (官方營運專用)
+This repository and its codebase are maintained solely for official academic, technical review, and club operational deployment by authorized members and administrators of NTUT Drone Club. Any unauthorized deployment on public or private servers is strictly prohibited and constitutes a copyright violation.
+本儲存庫與程式碼僅供授權之社團幹部與管理團隊進行學術研究、技術審閱以及社團官方網站維護營運使用。嚴禁未經授權將本程式碼部署至任何公開或私有伺服器上營運，違者將視為侵犯版權。
+
+4. DISCLAIMER OF WARRANTY (免責聲明)
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
