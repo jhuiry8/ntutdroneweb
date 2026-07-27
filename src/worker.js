@@ -430,8 +430,7 @@ export default {
                     return new Response(JSON.stringify({ error: `GitHub API 錯誤: ${errText}` }), { status: 500, headers: { 'Content-Type': 'application/json' } });
                 }
 
-                const [owner, repo] = env.GITHUB_REPO.split('/');
-                const publicUrl = `https://${owner}.github.io/${repo}/assets/uploads/${filename}`;
+                const publicUrl = `/assets/uploads/${filename}`;
 
                 return new Response(JSON.stringify({
                     success: true,

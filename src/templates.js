@@ -1321,8 +1321,9 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     
                     const data = await res.json();
                     if (res.ok) {
-                        showToast('圖片上傳並成功提交到 GitHub！');
-                        addUploadedImageToGrid(data.filename, data.url);
+                        showToast('圖片上傳並成功提交到 GitHub！(約30秒自動同步至 Cloudflare)');
+                        const previewUrl = URL.createObjectURL(file);
+                        addUploadedImageToGrid(data.filename, data.url, previewUrl);
                     } else {
                         showToast(data.error || '上傳失敗', true);
                     }
@@ -1331,7 +1332,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 }
             }
 
-            function addUploadedImageToGrid(filename, url) {
+            function addUploadedImageToGrid(filename, url, previewUrl) {
                 document.getElementById('uploaded-files-title').style.display = 'block';
                 const grid = document.getElementById('uploaded-files-grid');
                 const card = document.createElement('div');
@@ -1341,10 +1342,11 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 card.style.padding = '12px';
                 card.style.textAlign = 'center';
                 
+                const displayUrl = previewUrl || url;
                 const markdownText = '![' + filename + '](' + url + ')';
 
                 card.innerHTML = `
-                    <img src="${url}" style="max-width:100%; height:120px; object-fit:cover; border-radius:8px; margin-bottom:10px;">
+                    <img src="${displayUrl}" style="max-width:100%; height:120px; object-fit:cover; border-radius:8px; margin-bottom:10px;">
                     <div style="font-size:0.75rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--text-muted); margin-bottom:8px;">${filename}</div>
                     <button class="btn btn-secondary" onclick="copyText('${markdownText}')" style="width:100%; padding:6px; font-size:0.75rem; justify-content:center;"><i data-lucide="copy" style="width:12px; height:12px;"></i> 複製 MD</button>
                 `;
