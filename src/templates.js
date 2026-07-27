@@ -18,7 +18,6 @@ function getHeader(title, lang = 'zh') {
         <link rel="stylesheet" href="/style.css">
     </head>
     <body>
-        <canvas id="telemetry-bg"></canvas>
         <header class="navbar scrolled">
             <div class="nav-container">
                 <a href="/?lang=${lang}" class="logo">
@@ -36,7 +35,7 @@ function getHeader(title, lang = 'zh') {
                 </nav>
                 <div class="nav-socials">
                     <!-- Language Toggle Link -->
-                    <a href="?lang=${t.langToggleQuery}" class="cta-nav-btn" style="background:none; border-color:rgba(0, 240, 255, 0.2); color:var(--color-cyan); margin-right:8px;">
+                    <a href="?lang=${t.langToggleQuery}" class="cta-nav-btn" style="background:none; border-color:var(--border-color); color:var(--color-primary); margin-right:8px;">
                         <i data-lucide="languages" style="width:14px; height:14px; display:inline; vertical-align:middle; margin-right:4px;"></i> ${t.langToggleText}
                     </a>
                     
@@ -132,7 +131,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh') {
         <link rel="stylesheet" href="/style.css">
     </head>
     <body>
-        <canvas id="telemetry-bg"></canvas>
+
 
         <header class="navbar">
             <div class="nav-container">
@@ -190,57 +189,66 @@ export function renderLandingPage(latestPosts = [], lang = 'zh') {
 
         <section class="hero-section" id="home">
             <div class="hero-container">
-                <div class="hero-content">
-                    <div class="badge glow-pulse">
-                        <span class="badge-dot"></span> ${t.heroBadge}
-                    </div>
-                    <h1 class="hero-title">
-                        <span class="gradient-text">NTUT DRONE</span>
-                        <span class="sub-title">${t.heroTitleZh}</span>
-                    </h1>
-                    <p class="hero-description">${t.heroDesc}</p>
-                    <div class="hero-actions">
-                        <a href="https://lin.ee/s5YJgGI" target="_blank" class="btn btn-primary">
-                            <i data-lucide="user-plus"></i> ${t.heroBtnLine}
-                        </a>
-                        <a href="https://www.instagram.com/ntut_drone/" target="_blank" class="btn btn-secondary">
-                            <i data-lucide="instagram"></i> ${t.heroBtnIg}
-                        </a>
-                    </div>
+                <div class="hero-badge-top">
+                    國立臺北科技大學 | 學務處課外活動指導組核可學術性社團
                 </div>
+                <h1 class="hero-title">${t.heroTitleZh}</h1>
+                <p class="hero-description">${t.heroDesc}</p>
                 
-                <div class="hero-image-wrapper">
-                    <div class="drone-glowing-ring"></div>
-                    <img src="/assets/images/fpv_drone_hero.jpg" alt="FPV Racing Drone" class="hero-drone-img" id="hero-drone">
-                    <div class="drone-stats-card">
-                        <div class="stats-icon"><i data-lucide="cpu"></i></div>
-                        <div class="stats-info">
-                            <span class="stats-label">Telemetry Status</span>
-                            <span class="stats-value">CONNECTED (100%)</span>
-                        </div>
-                    </div>
+                <div class="hero-search-box">
+                    <input type="text" class="hero-search-input" placeholder="搜尋飛行教學、考照題庫、器材出借與社團活動..." id="hero-search-input" onkeydown="if(event.key==='Enter'){ window.location.href='/blog?lang=${lang}'; }">
+                    <button class="hero-search-btn" onclick="window.location.href='/blog?lang=${lang}';"><i data-lucide="search"></i> ${lang === 'zh' ? '搜尋' : 'Search'}</button>
                 </div>
             </div>
         </section>
 
-        <!-- Stats Bar -->
-        <section class="stats-bar-section">
-            <div class="stats-bar-container">
-                <div class="stat-item">
-                    <span class="stat-num" data-val="100">0</span><span class="stat-plus">+</span>
-                    <span class="stat-label">${t.statSimHours}</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-num" data-val="30">0</span><span class="stat-plus">+</span>
-                    <span class="stat-label">${t.statEvents}</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-num" data-val="25">0</span><span class="stat-plus">+</span>
-                    <span class="stat-label">${t.statMembers}</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-num" data-val="4">0</span><span class="stat-plus"></span>
-                    <span class="stat-label">${t.statFields}</span>
+        <!-- GOV.UK Style Popular Services Section -->
+        <section class="popular-section">
+            <div class="section-container">
+                <h2 class="popular-header">${lang === 'zh' ? '常用服務與快速導覽 (Popular Services & Resources)' : 'Popular Services & Resources'}</h2>
+                <div class="popular-grid">
+                    <div class="popular-item">
+                        <div class="popular-icon">→</div>
+                        <div class="popular-text">
+                            <a href="https://lin.ee/s5YJgGI" target="_blank" class="popular-link">${lang === 'zh' ? '無人機飛行場地預約與使用規範' : 'Drone Flight Field Reservation & Rules'}</a>
+                            <span class="popular-desc">${lang === 'zh' ? '校園飛行空域申請手續與安全指引' : 'Campus airspace application and safety guidelines'}</span>
+                        </div>
+                    </div>
+                    <div class="popular-item">
+                        <div class="popular-icon">→</div>
+                        <div class="popular-text">
+                            <a href="#about" class="popular-link">${lang === 'zh' ? '民航局遙控無人機操作證題庫與學科準備' : 'CAA Drone Pilot License Exam Prep'}</a>
+                            <span class="popular-desc">${lang === 'zh' ? '普通與專業操作證考試衝刺重點' : 'Key study materials for CAA drone licensing'}</span>
+                        </div>
+                    </div>
+                    <div class="popular-item">
+                        <div class="popular-icon">→</div>
+                        <div class="popular-text">
+                            <a href="#features" class="popular-link">${lang === 'zh' ? '社團專屬飛行模擬器新手訓練教學' : 'Flight Simulator Training for Beginners'}</a>
+                            <span class="popular-desc">${lang === 'zh' ? '從零開始的 Liftoff / DCL 模擬飛行培訓' : 'Step-by-step FPV simulator training program'}</span>
+                        </div>
+                    </div>
+                    <div class="popular-item">
+                        <div class="popular-icon">→</div>
+                        <div class="popular-text">
+                            <a href="https://lin.ee/s5YJgGI" target="_blank" class="popular-link">${lang === 'zh' ? 'LINE 官方社群與 2026 年度入社報名' : 'Official LINE Community & 2026 Registration'}</a>
+                            <span class="popular-desc">${lang === 'zh' ? '加入官方社群群組，獲取最新社課通知' : 'Join our LINE group for workshop updates'}</span>
+                        </div>
+                    </div>
+                    <div class="popular-item">
+                        <div class="popular-icon">→</div>
+                        <div class="popular-text">
+                            <a href="#features" class="popular-link">${lang === 'zh' ? '無人機零件出借與航拍器材設備清單' : 'Drone Parts Loan & Aerial Equipment List'}</a>
+                            <span class="popular-desc">${lang === 'zh' ? '社員專屬 FPV 穿越機與空拍機租借服務' : 'Equipment loan services for club members'}</span>
+                        </div>
+                    </div>
+                    <div class="popular-item">
+                        <div class="popular-icon">→</div>
+                        <div class="popular-text">
+                            <a href="/blog?lang=${lang}" class="popular-link">${lang === 'zh' ? '最新社團技術專欄與賽事紀錄報導' : 'Latest Technical Articles & Event Reports'}</a>
+                            <span class="popular-desc">${lang === 'zh' ? '探索飛行技術、航拍創作與比賽心得' : 'Explore flight techniques and competition reviews'}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -648,48 +656,46 @@ export function renderLogin(errorMessage = '') {
                 align-items: center;
                 justify-content: center;
                 min-height: 100vh;
-                background: #07090e;
+                background: #f3f2f1;
             }
             .login-container {
                 width: 100%;
-                max-width: 400px;
-                padding: 40px 30px;
-                background: rgba(18, 24, 38, 0.65);
-                border: 1px solid var(--border-glass);
-                border-radius: 24px;
-                backdrop-filter: blur(16px);
-                box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 30px rgba(0, 240, 255, 0.05);
+                max-width: 420px;
+                padding: 40px 32px;
+                background: #ffffff;
+                border: 1px solid #b1b4b6;
+                border-radius: 4px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.08);
             }
             .form-group {
                 margin-bottom: 20px;
             }
             .form-group label {
                 display: block;
-                font-size: 0.85rem;
-                color: var(--text-secondary);
+                font-size: 0.9rem;
+                color: #0b0c10;
                 margin-bottom: 8px;
-                font-weight: 500;
+                font-weight: 700;
             }
             .form-control {
                 width: 100%;
                 padding: 12px 16px;
-                background: rgba(255,255,255,0.03);
-                border: 1px solid var(--border-glass);
-                border-radius: 12px;
-                color: #fff;
+                background: #ffffff;
+                border: 1px solid #b1b4b6;
+                border-radius: 4px;
+                color: #0b0c10;
                 font-family: inherit;
                 font-size: 1rem;
                 transition: var(--transition-fast);
             }
             .form-control:focus {
                 outline: none;
-                border-color: var(--color-cyan);
-                box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+                border-color: #000;
+                box-shadow: 0 0 0 3px #ffdd00;
             }
         </style>
     </head>
     <body>
-        <canvas id="telemetry-bg"></canvas>
         <div class="login-container">
             <div class="text-center" style="margin-bottom: 30px;">
                 <div class="logo-icon" style="margin: 0 auto 16px auto; width: 50px; height: 50px; border-radius: 12px;">
@@ -752,15 +758,15 @@ export function renderAdminDashboard(posts = [], pages = []) {
         <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
         <style>
             :root {
-                --bg-deep: #07090e;
-                --bg-darker: #0c0e17;
-                --bg-card: rgba(18, 24, 38, 0.8);
-                --color-cyan: #00f0ff;
-                --color-purple: #9d4edf;
-                --text-primary: #f8fafc;
-                --text-secondary: #cbd5e1;
-                --text-muted: #64748b;
-                --border-glass: rgba(255, 255, 255, 0.08);
+                --bg-deep: #f3f2f1;
+                --bg-darker: #0f172a;
+                --bg-card: #ffffff;
+                --color-cyan: #1d70b8;
+                --color-purple: #003078;
+                --text-primary: #0b0c10;
+                --text-secondary: #505a5f;
+                --text-muted: #6f777b;
+                --border-glass: #e0e4e8;
             }
             * { margin:0; padding:0; box-sizing:border-box; }
             body {
@@ -789,7 +795,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 gap: 10px;
                 font-weight: 800;
                 font-size: 1.25rem;
-                color: var(--color-cyan);
+                color: #ffffff;
                 margin-bottom: 40px;
             }
             .sidebar-nav {
@@ -803,8 +809,8 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 align-items: center;
                 gap: 12px;
                 padding: 12px 16px;
-                border-radius: 12px;
-                color: var(--text-secondary);
+                border-radius: 4px;
+                color: #cbd5e1;
                 font-weight: 600;
                 cursor: pointer;
                 transition: 0.2s ease;
@@ -816,14 +822,14 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 font-size: 0.95rem;
             }
             .nav-item:hover, .nav-item.active {
-                color: #fff;
-                background: rgba(255, 255, 255, 0.05);
+                color: #ffffff;
+                background: rgba(255, 255, 255, 0.1);
             }
             .nav-item.active {
-                border-left: 3px solid var(--color-cyan);
-                border-radius: 0 12px 12px 0;
-                background: rgba(0, 240, 255, 0.06);
-                color: var(--color-cyan);
+                border-left: 4px solid #ffdd00;
+                border-radius: 0 4px 4px 0;
+                background: #1d70b8;
+                color: #ffffff;
             }
             
             /* Main Content Area */
@@ -847,11 +853,11 @@ export function renderAdminDashboard(posts = [], pages = []) {
             /* Panels */
             .panel {
                 display: none;
-                background: var(--bg-card);
-                border: 1px solid var(--border-glass);
-                border-radius: 20px;
+                background: #ffffff;
+                border: 1px solid #b1b4b6;
+                border-radius: 4px;
                 padding: 30px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+                box-shadow: 0 2px 10px rgba(0,0,0,0.05);
             }
             .panel.active {
                 display: block;
@@ -872,29 +878,28 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 font-size: 0.9rem;
             }
             .btn-primary {
-                background: linear-gradient(135deg, var(--color-cyan), var(--color-purple));
-                color: #000;
+                background: #1d70b8;
+                color: #fff;
                 font-weight: 700;
             }
             .btn-primary:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+                background: #003078;
             }
             .btn-secondary {
-                background: rgba(255,255,255,0.05);
-                color: #fff;
-                border: 1px solid var(--border-glass);
+                background: #f3f2f1;
+                color: #0b0c10;
+                border: 1px solid #b1b4b6;
             }
             .btn-secondary:hover {
-                background: rgba(255,255,255,0.1);
+                background: #e0e4e8;
             }
             .btn-danger {
-                background: rgba(239, 68, 68, 0.15);
-                color: #f87171;
-                border: 1px solid rgba(239, 68, 68, 0.3);
+                background: #d4351c;
+                color: #fff;
+                border: 1px solid #d4351c;
             }
             .btn-danger:hover {
-                background: rgba(239, 68, 68, 0.3);
+                background: #9e2815;
             }
             
             /* Tables */
@@ -939,16 +944,17 @@ export function renderAdminDashboard(posts = [], pages = []) {
             .form-control {
                 width: 100%;
                 padding: 12px;
-                background: rgba(0,0,0,0.2);
-                border: 1px solid var(--border-glass);
-                border-radius: 8px;
-                color: #fff;
+                background: #ffffff;
+                border: 1px solid #b1b4b6;
+                border-radius: 4px;
+                color: #0b0c10;
                 font-family: inherit;
                 font-size: 0.95rem;
             }
             .form-control:focus {
                 outline: none;
-                border-color: var(--color-cyan);
+                border-color: #000;
+                box-shadow: 0 0 0 3px #ffdd00;
             }
             
             /* Toast Message */
