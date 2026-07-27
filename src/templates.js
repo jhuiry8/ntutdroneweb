@@ -769,17 +769,65 @@ export function renderAdminDashboard(posts = [], pages = []) {
         <title>後台管理面板 | 北科無人機社</title>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
+        <script>
+            // Pre-define panel navigation so onclick handlers never get ReferenceError
+            // even if the bottom <script> hasn't parsed yet.
+            function showPanel(panelName) {
+                document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+                document.querySelectorAll('.nav-item').forEach(function(btn) { btn.classList.remove('active'); });
+                var panel = document.getElementById('panel-' + panelName);
+                if (panel) panel.classList.add('active');
+                document.querySelectorAll('.sidebar-nav .nav-item').forEach(function(btn) {
+                    if (btn.getAttribute('onclick') && btn.getAttribute('onclick').indexOf(panelName) !== -1) {
+                        btn.classList.add('active');
+                    }
+                });
+                if (typeof closePostForm === 'function') closePostForm();
+                if (typeof closePageForm === 'function') closePageForm();
+            }
+            function logout() {
+                fetch('/api/logout', { method: 'POST' }).then(function() { location.href = '/admin'; });
+            }
+            function openPostForm() {
+                var listView = document.getElementById('posts-list-view');
+                var formView = document.getElementById('posts-form-view');
+                if (listView) listView.style.display = 'none';
+                if (formView) formView.style.display = 'block';
+                var title = document.getElementById('post-form-title');
+                if (title) title.innerText = '新增文章';
+                var form = document.getElementById('post-form');
+                if (form) form.reset();
+                var origSlug = document.getElementById('post-original-slug');
+                if (origSlug) origSlug.value = '';
+                var slug = document.getElementById('post-slug');
+                if (slug) slug.disabled = false;
+            }
+            function openPageForm() {
+                var listView = document.getElementById('pages-list-view');
+                var formView = document.getElementById('pages-form-view');
+                if (listView) listView.style.display = 'none';
+                if (formView) formView.style.display = 'block';
+                var title = document.getElementById('page-form-title');
+                if (title) title.innerText = '新增頁面';
+                var form = document.getElementById('page-form');
+                if (form) form.reset();
+                var origSlug = document.getElementById('page-original-slug');
+                if (origSlug) origSlug.value = '';
+                var slug = document.getElementById('page-slug');
+                if (slug) slug.disabled = false;
+            }
+        </script>
         <style>
             :root {
-                --bg-deep: #f3f2f1;
+                --bg-deep: #0b0f19;
                 --bg-darker: #0f172a;
-                --bg-card: #ffffff;
-                --color-cyan: #1d70b8;
-                --color-purple: #003078;
-                --text-primary: #0b0c10;
-                --text-secondary: #505a5f;
-                --text-muted: #6f777b;
-                --border-glass: #e0e4e8;
+                --bg-card: #1e293b;
+                --color-cyan: #3b82f6;
+                --color-purple: #a78bfa;
+                --text-primary: #f8fafc;
+                --text-secondary: #94a3b8;
+                --text-muted: #64748b;
+                --border-glass: rgba(255, 255, 255, 0.12);
             }
             * { margin:0; padding:0; box-sizing:border-box; }
             body {
@@ -866,11 +914,11 @@ export function renderAdminDashboard(posts = [], pages = []) {
             /* Panels */
             .panel {
                 display: none;
-                background: #ffffff;
-                border: 1px solid #b1b4b6;
-                border-radius: 4px;
+                background: #1e293b;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 12px;
                 padding: 30px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
             }
             .panel.active {
                 display: block;
@@ -891,28 +939,28 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 font-size: 0.9rem;
             }
             .btn-primary {
-                background: #1d70b8;
+                background: #3b82f6;
                 color: #fff;
                 font-weight: 700;
             }
             .btn-primary:hover {
-                background: #003078;
+                background: #60a5fa;
             }
             .btn-secondary {
-                background: #f3f2f1;
-                color: #0b0c10;
-                border: 1px solid #b1b4b6;
+                background: #334155;
+                color: #f8fafc;
+                border: 1px solid rgba(255, 255, 255, 0.12);
             }
             .btn-secondary:hover {
-                background: #e0e4e8;
+                background: #475569;
             }
             .btn-danger {
-                background: #d4351c;
+                background: #ef4444;
                 color: #fff;
-                border: 1px solid #d4351c;
+                border: 1px solid #ef4444;
             }
             .btn-danger:hover {
-                background: #9e2815;
+                background: #dc2626;
             }
             
             /* Tables */
@@ -940,7 +988,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 font-size: 0.95rem;
             }
             tr:hover td {
-                background: rgba(255,255,255,0.01);
+                background: rgba(255,255,255,0.04);
             }
             
             /* Forms */
@@ -957,17 +1005,17 @@ export function renderAdminDashboard(posts = [], pages = []) {
             .form-control {
                 width: 100%;
                 padding: 12px;
-                background: #ffffff;
-                border: 1px solid #b1b4b6;
-                border-radius: 4px;
-                color: #0b0c10;
+                background: #0f172a;
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                border-radius: 8px;
+                color: #f8fafc;
                 font-family: inherit;
                 font-size: 0.95rem;
             }
             .form-control:focus {
                 outline: none;
-                border-color: #000;
-                box-shadow: 0 0 0 3px #ffdd00;
+                border-color: #3b82f6;
+                box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
             }
             
             /* Toast Message */
