@@ -16,6 +16,7 @@ function getHeader(title, lang = 'zh') {
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
         <link rel="stylesheet" href="/style.css">
+        <script>(function(){var t=localStorage.getItem('ntut-theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();</script>
     </head>
     <body>
         <header class="navbar scrolled">
@@ -34,20 +35,21 @@ function getHeader(title, lang = 'zh') {
                     <a href="/?lang=${lang}#faq" class="nav-link">${t.navFaq}</a>
                 </nav>
                 <div class="nav-socials">
-                    <!-- Language Toggle Link -->
-                    <a href="?lang=${t.langToggleQuery}" class="cta-nav-btn" style="background:none; border: 1px solid var(--border-color); color:var(--text-primary); margin-right:8px; padding: 6px 12px;">
+                    <!-- Language Toggle -->
+                    <a href="?lang=${t.langToggleQuery}" class="cta-nav-btn" style="background:none; border: 1px solid var(--border-color); color:var(--text-primary); margin-right:4px; padding: 6px 12px;">
                         <span style="font-size: 1.1rem; margin-right: 4px;">🌐</span> ${t.langToggleText}
                     </a>
-                    
-                    <a href="mailto:ntut.droneclub@gmail.com" class="social-icon-btn email" title="官方信箱: ntut.droneclub@gmail.com"><i data-lucide="mail"></i><span class="fallback-text">✉️</span></a>
+                    <!-- Theme Toggle -->
+                    <button id="theme-toggle-btn" class="theme-toggle-btn" onclick="toggleTheme()" title="切換深色/淺色模式">☀️</button>
+                    <a href="mailto:ntut.droneclub@gmail.com" class="social-icon-btn email" title="官方信箱"><i data-lucide="mail"></i><span class="fallback-text">✉️</span></a>
                     <a href="https://www.instagram.com/ntut_drone/" target="_blank" class="social-icon-btn ig" title="Instagram"><i data-lucide="instagram"></i><span class="fallback-text">IG</span></a>
                     <a href="https://lin.ee/s5YJgGI" target="_blank" class="social-icon-btn line" title="LINE 官方社群"><i data-lucide="message-square"></i><span class="fallback-text">LINE</span></a>
-                    <a href="/admin" class="cta-nav-btn" style="margin-left: 4px;"><i data-lucide="user"></i> ${t.navAdmin}</a>
                 </div>
             </div>
         </header>
     `;
 }
+
 
 // Helper: Common Footer
 function getFooter(lang = 'zh') {
@@ -85,8 +87,14 @@ function getFooter(lang = 'zh') {
 }
 
 // 1. Render Landing Page with Dynamic Blog Posts
-export function renderLandingPage(latestPosts = [], lang = 'zh') {
+export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) {
     const t = locales[lang] || locales.zh;
+    const heroTitle  = override.heroTitle  || t.heroTitleZh;
+    const heroDesc   = override.heroDesc   || t.heroDesc;
+    const heroBadge  = override.heroBadge  || (lang === 'zh' ? '國立臺北科技大學 | 學務處課外活動指導組核可康樂性社團' : 'NTUT | Recreational Club • Student Affairs Approved');
+    const lineLink   = override.lineLink   || 'https://lin.ee/s5YJgGI';
+    const igLink     = override.igLink     || 'https://www.instagram.com/ntut_drone/';
+    const emailLink  = override.emailLink  || 'ntut.droneclub@gmail.com';
     let postsHtml = '';
     
     if (latestPosts.length === 0) {
@@ -130,6 +138,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh') {
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
         <link rel="stylesheet" href="/style.css">
+        <script>(function(){var t=localStorage.getItem('ntut-theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();</script>
     </head>
     <body>
 
@@ -152,21 +161,22 @@ export function renderLandingPage(latestPosts = [], lang = 'zh') {
                 </nav>
 
                 <div class="nav-socials">
-                    <!-- Language Toggle Link -->
-                    <a href="?lang=${t.langToggleQuery}" class="cta-nav-btn" style="background:none; border: 1px solid var(--border-color); color:var(--text-primary); margin-right:8px; padding: 6px 12px;">
+                    <!-- Language Toggle -->
+                    <a href="?lang=${t.langToggleQuery}" class="cta-nav-btn" style="background:none; border: 1px solid var(--border-color); color:var(--text-primary); margin-right:4px; padding: 6px 12px;">
                         <span style="font-size: 1.1rem; margin-right: 4px;">🌐</span> ${t.langToggleText}
                     </a>
-                    
-                    <a href="mailto:ntut.droneclub@gmail.com" class="social-icon-btn email" title="官方信箱: ntut.droneclub@gmail.com" aria-label="Email">
+                    <!-- Theme Toggle -->
+                    <button id="theme-toggle-btn" class="theme-toggle-btn" onclick="toggleTheme()" title="切換深色/淺色模式">☀️</button>
+                    <a href="mailto:${emailLink}" class="social-icon-btn email" title="官方信箱: ${emailLink}" aria-label="Email">
                         <i data-lucide="mail"></i><span class="fallback-text">✉️</span>
                     </a>
-                    <a href="https://www.instagram.com/ntut_drone/" target="_blank" aria-label="Instagram" class="social-icon-btn ig" title="Instagram">
+                    <a href="${igLink}" target="_blank" aria-label="Instagram" class="social-icon-btn ig" title="Instagram">
                         <i data-lucide="instagram"></i><span class="fallback-text">IG</span>
                     </a>
-                    <a href="https://lin.ee/s5YJgGI" target="_blank" aria-label="LINE" class="social-icon-btn line" title="LINE 官方社群">
+                    <a href="${lineLink}" target="_blank" aria-label="LINE" class="social-icon-btn line" title="LINE 官方社群">
                         <i data-lucide="message-square"></i><span class="fallback-text">LINE</span>
                     </a>
-                    <a href="https://lin.ee/s5YJgGI" target="_blank" class="cta-nav-btn" style="margin-left: 4px;">${t.navJoin}</a>
+                    <a href="${lineLink}" target="_blank" class="cta-nav-btn" style="margin-left: 4px;">${t.navJoin}</a>
                     <button class="mobile-menu-toggle" aria-label="Toggle menu">
                         <i data-lucide="menu"></i>
                     </button>
@@ -196,10 +206,10 @@ export function renderLandingPage(latestPosts = [], lang = 'zh') {
             <div class="hero-container" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 40px;">
                 <div class="hero-content-left" style="flex: 1; min-width: 300px;">
                     <div class="hero-badge-top">
-                        國立臺北科技大學 | 學務處課外活動指導組核可康樂性社團
+                        ${heroBadge}
                     </div>
-                    <h1 class="hero-title">${t.heroTitleZh}</h1>
-                    <p class="hero-description">${t.heroDesc}</p>
+                    <h1 class="hero-title">${heroTitle}</h1>
+                    <p class="hero-description">${heroDesc}</p>
                     
                     <div class="hero-search-box">
                         <input type="text" class="hero-search-input" placeholder="搜尋飛行教學、考照題庫、器材出借與社團活動..." id="hero-search-input" onkeydown="if(event.key==='Enter'){ window.location.href='/blog?lang=${lang}'; }">
@@ -486,6 +496,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh') {
     </html>
     `;
 }
+
 
 // 2. Render Blog List Page
 export function renderBlogList(posts = [], lang = 'zh') {
@@ -1069,6 +1080,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     <button class="nav-item active" onclick="showPanel('posts')"><i data-lucide="book-open"></i> 文章管理</button>
                     <button class="nav-item" onclick="showPanel('pages')"><i data-lucide="file-text"></i> 頁面管理</button>
                     <button class="nav-item" onclick="showPanel('media')"><i data-lucide="image"></i> 媒體庫上傳</button>
+                    <button class="nav-item" onclick="showPanel('homepage')"><i data-lucide="home"></i> 首頁設定</button>
                     <button class="nav-item" onclick="showPanel('settings')"><i data-lucide="settings"></i> 系統設定</button>
                 </div>
             </div>
@@ -1250,6 +1262,41 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 </div>
             </div>
 
+            <!-- Homepage Settings Panel -->
+            <div id="panel-homepage" class="panel">
+                <div class="content-header">
+                    <h1>首頁內容設定</h1>
+                    <button class="btn btn-primary" onclick="saveHomepage()"><i data-lucide="save"></i> 儲存設定</button>
+                </div>
+                <p style="color: var(--text-muted); margin-bottom: 28px; font-size: 0.9rem;">修改首頁展示的文字與聯絡資訊，儲存後即時生效。</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 900px;">
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label for="hp-hero-title">統一標題 (首頁 H1)</label>
+                        <input type="text" id="hp-hero-title" class="form-control" placeholder="北科無人機社">
+                    </div>
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label for="hp-hero-desc">展示區說明文字 (Hero 副標題)</label>
+                        <textarea id="hp-hero-desc" class="form-control" rows="3" placeholder="探索上帝視角的無限精彩…"></textarea>
+                    </div>
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label for="hp-hero-badge">首頁彽章文字 (Hero Badge)</label>
+                        <input type="text" id="hp-hero-badge" class="form-control" placeholder="國立臺北科技大學 | 學務處課外活動指導組核可康樂性社團">
+                    </div>
+                    <div class="form-group">
+                        <label for="hp-line-link">LINE 社群連結</label>
+                        <input type="url" id="hp-line-link" class="form-control" placeholder="https://lin.ee/...">
+                    </div>
+                    <div class="form-group">
+                        <label for="hp-ig-link">Instagram 連結</label>
+                        <input type="url" id="hp-ig-link" class="form-control" placeholder="https://www.instagram.com/ntut_drone/">
+                    </div>
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label for="hp-email">官方信箱</label>
+                        <input type="email" id="hp-email" class="form-control" placeholder="ntut.droneclub@gmail.com">
+                    </div>
+                </div>
+            </div>
+
             <!-- Settings Panel -->
             <div id="panel-settings" class="panel">
                 <div class="content-header">
@@ -1283,20 +1330,8 @@ export function renderAdminDashboard(posts = [], pages = []) {
         <script>
             if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
 
-            function showPanel(panelName) {
-                document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-                document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
-                document.getElementById('panel-' + panelName).classList.add('active');
-                
-                const buttons = document.querySelectorAll('.sidebar-nav .nav-item');
-                buttons.forEach(btn => {
-                    if (btn.outerHTML.includes(panelName)) {
-                        btn.classList.add('active');
-                    }
-                });
-                closePostForm();
-                closePageForm();
-            }
+            // showPanel, openPostForm, openPageForm, logout are defined in <head> script
+
 
             function showToast(text, isError = false) {
                 const toast = document.getElementById('toast');
@@ -1319,12 +1354,18 @@ export function renderAdminDashboard(posts = [], pages = []) {
             }
 
             function openPostForm() {
-                document.getElementById('posts-list-view').style.display = 'none';
-                document.getElementById('posts-form-view').style.display = 'block';
-                document.getElementById('post-form-title').innerText = '新增文章';
-                document.getElementById('post-form').reset();
-                document.getElementById('post-original-slug').value = '';
-                document.getElementById('post-slug').disabled = false;
+                var listView = document.getElementById('posts-list-view');
+                var formView = document.getElementById('posts-form-view');
+                if (listView) listView.style.display = 'none';
+                if (formView) formView.style.display = 'block';
+                var title = document.getElementById('post-form-title');
+                if (title) title.innerText = '新增文章';
+                var form = document.getElementById('post-form');
+                if (form) form.reset();
+                var origSlug = document.getElementById('post-original-slug');
+                if (origSlug) origSlug.value = '';
+                var slug = document.getElementById('post-slug');
+                if (slug) slug.disabled = false;
             }
 
             function closePostForm() {
@@ -1401,12 +1442,18 @@ export function renderAdminDashboard(posts = [], pages = []) {
             }
 
             function openPageForm() {
-                document.getElementById('pages-list-view').style.display = 'none';
-                document.getElementById('pages-form-view').style.display = 'block';
-                document.getElementById('page-form-title').innerText = '新增頁面';
-                document.getElementById('page-form').reset();
-                document.getElementById('page-original-slug').value = '';
-                document.getElementById('page-slug').disabled = false;
+                var listView = document.getElementById('pages-list-view');
+                var formView = document.getElementById('pages-form-view');
+                if (listView) listView.style.display = 'none';
+                if (formView) formView.style.display = 'block';
+                var title = document.getElementById('page-form-title');
+                if (title) title.innerText = '新增頁面';
+                var form = document.getElementById('page-form');
+                if (form) form.reset();
+                var origSlug = document.getElementById('page-original-slug');
+                if (origSlug) origSlug.value = '';
+                var slug = document.getElementById('page-slug');
+                if (slug) slug.disabled = false;
             }
 
             function closePageForm() {
@@ -1564,6 +1611,48 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     }
                 } catch (err) {
                     showToast('伺服器連線失敗', true);
+                }
+            }
+
+            // ── Homepage Settings ───────────────────────────────────────
+            async function loadHomepageData() {
+                try {
+                    const res = await fetch('/api/homepage');
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    if (data.heroTitle)  document.getElementById('hp-hero-title').value = data.heroTitle;
+                    if (data.heroDesc)   document.getElementById('hp-hero-desc').value  = data.heroDesc;
+                    if (data.heroBadge)  document.getElementById('hp-hero-badge').value = data.heroBadge;
+                    if (data.lineLink)   document.getElementById('hp-line-link').value  = data.lineLink;
+                    if (data.igLink)     document.getElementById('hp-ig-link').value    = data.igLink;
+                    if (data.emailLink)  document.getElementById('hp-email').value      = data.emailLink;
+                } catch (e) { /* silently ignore */ }
+            }
+            loadHomepageData();
+
+            async function saveHomepage() {
+                const payload = {
+                    heroTitle: document.getElementById('hp-hero-title').value,
+                    heroDesc:  document.getElementById('hp-hero-desc').value,
+                    heroBadge: document.getElementById('hp-hero-badge').value,
+                    lineLink:  document.getElementById('hp-line-link').value,
+                    igLink:    document.getElementById('hp-ig-link').value,
+                    emailLink: document.getElementById('hp-email').value
+                };
+                try {
+                    const res = await fetch('/api/homepage', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (res.ok) {
+                        showToast('首頁設定已儲存！前台即時生效。');
+                    } else {
+                        const d = await res.json();
+                        showToast(d.error || '儲存失敗', true);
+                    }
+                } catch (e) {
+                    showToast('連線失敗，請重試', true);
                 }
             }
 

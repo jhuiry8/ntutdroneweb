@@ -85,11 +85,15 @@ export default {
                 const postsListJson = await env.DRONE_DB.get('posts_list');
                 const postsList = postsListJson ? JSON.parse(postsListJson) : [];
                 
-                // Filter posts by language (match post.lang with current lang, default to 'zh')
+                // Filter posts by language
                 const filteredPosts = postsList.filter(p => (p.lang || 'zh') === lang);
                 const latestPosts = filteredPosts.slice(0, 3);
+
+                // Read homepage content override from KV
+                const homepageJson = await env.DRONE_DB.get('homepage_content');
+                const homepageOverride = homepageJson ? JSON.parse(homepageJson) : {};
                 
-                return new Response(renderLandingPage(latestPosts, lang), {
+                return new Response(renderLandingPage(latestPosts, lang, homepageOverride), {
                     headers: getResponseHeaders()
                 });
             }
@@ -437,6 +441,27 @@ export default {
                     filename,
                     url: publicUrl
                 }), { headers: { 'Content-Type': 'application/json' } });
+            }
+
+            // ==================== API: Get Homepage Content ====================
+            if (path === '/api/homepage' && method === 'GET') {
+                const authed = await isAuthenticated(request, env);
+                if (!authed) return new Response(JSON.stringify({ error: '未授權' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+                const data = await env.DRONE_DB.get('homepage_content');
+                return new Response(data || '{}', { headers: { 'Content-Type': 'application/json' } });
+            }
+
+            // ==================== API: Save Homepage Content ====================
+            if (path === '/api/homepage' && method === 'POST') {
+                const authed = await isAuthenticated(request, env);
+                if (!authed) return new Response(JSON.stringify({ error: '未授權' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+                const body = await request.json();
+                // Whitelist allowed keys
+                const allowed = ['heroTitle', 'heroDesc', 'heroBadge', 'lineLink', 'igLink', 'emailLink'];
+                const filtered = {};
+                allowed.forEach(k => { if (body[k] !== undefined) filtered[k] = String(body[k]); });
+                await env.DRONE_DB.put('homepage_content', JSON.stringify(filtered));
+                return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
             }
 
             return new Response('Not Found', { status: 404 });
