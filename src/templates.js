@@ -1569,8 +1569,13 @@ export function renderAdminDashboard(posts = [], pages = []) {
 
                 card.innerHTML = '<img src="' + displayUrl + '" style="max-width:100%; height:120px; object-fit:cover; border-radius:8px; margin-bottom:10px;">' +
                     '<div style="font-size:0.75rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--text-muted); margin-bottom:8px;">' + filename + '</div>' +
-                    '<button class="btn btn-secondary" onclick="copyText(\'' + markdownText + '\')" style="width:100%; padding:6px; font-size:0.75rem; justify-content:center;"><i data-lucide="copy" style="width:12px; height:12px;"></i> 複製 MD</button>';
+                    '<button class="btn btn-secondary copy-btn" style="width:100%; padding:6px; font-size:0.75rem; justify-content:center;"><i data-lucide="copy" style="width:12px; height:12px;"></i> 複製 MD</button>';
                 
+                const copyBtn = card.querySelector('.copy-btn');
+                if (copyBtn) {
+                    copyBtn.onclick = function() { copyText(markdownText); };
+                }
+
                 grid.insertBefore(card, grid.firstChild);
                 if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
             }
