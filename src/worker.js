@@ -456,8 +456,21 @@ export default {
                 const authed = await isAuthenticated(request, env);
                 if (!authed) return new Response(JSON.stringify({ error: '未授權' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
                 const body = await request.json();
-                // Whitelist allowed keys
-                const allowed = ['heroTitle', 'heroDesc', 'heroBadge', 'lineLink', 'igLink', 'emailLink'];
+                // Whitelist allowed keys for full homepage customization
+                const allowed = [
+                    'heroTitle', 'heroDesc', 'heroBadge',
+                    'aboutTitle', 'aboutSubtitle',
+                    'aboutCard1Title', 'aboutCard1Desc',
+                    'aboutCard2Title', 'aboutCard2Desc',
+                    'aboutCard3Title', 'aboutCard3Desc',
+                    'featuresTitle', 'featuresSubtitle',
+                    'feat1Title', 'feat1Desc',
+                    'feat2Title', 'feat2Desc',
+                    'feat3Title', 'feat3Desc',
+                    'feat4Title', 'feat4Desc',
+                    'ctaTitle', 'ctaDesc',
+                    'lineLink', 'igLink', 'emailLink'
+                ];
                 const filtered = {};
                 allowed.forEach(k => { if (body[k] !== undefined) filtered[k] = String(body[k]); });
                 await env.DRONE_DB.put('homepage_content', JSON.stringify(filtered));

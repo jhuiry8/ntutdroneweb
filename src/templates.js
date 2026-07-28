@@ -89,12 +89,44 @@ function getFooter(lang = 'zh') {
 // 1. Render Landing Page with Dynamic Blog Posts
 export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) {
     const t = locales[lang] || locales.zh;
-    const heroTitle  = override.heroTitle  || t.heroTitleZh;
-    const heroDesc   = override.heroDesc   || t.heroDesc;
-    const heroBadge  = override.heroBadge  || (lang === 'zh' ? '國立臺北科技大學 | 學務處課外活動指導組核可康樂性社團' : 'NTUT | Recreational Club • Student Affairs Approved');
-    const lineLink   = override.lineLink   || 'https://lin.ee/s5YJgGI';
-    const igLink     = override.igLink     || 'https://www.instagram.com/ntut_drone/';
-    const emailLink  = override.emailLink  || 'ntut.droneclub@gmail.com';
+    const o = override;
+    
+    // ── 1. Hero ──────────────────────────────────────────
+    const heroTitle  = o.heroTitle  || t.heroTitleZh;
+    const heroDesc   = o.heroDesc   || t.heroDesc;
+    const heroBadge  = o.heroBadge  || (lang === 'zh' ? '國立臺北科技大學 | 學務處課外活動指導組核可康樂性社團' : 'NTUT | Recreational Club • Student Affairs Approved');
+    
+    // ── 2. About ─────────────────────────────────────────
+    const aboutTitle      = o.aboutTitle      || t.aboutTitle;
+    const aboutSubtitle   = o.aboutSubtitle   || t.aboutSubtitle;
+    const aboutCard1Title = o.aboutCard1Title || t.aboutCard1Title;
+    const aboutCard1Desc  = o.aboutCard1Desc  || t.aboutCard1Desc;
+    const aboutCard2Title = o.aboutCard2Title || t.aboutCard2Title;
+    const aboutCard2Desc  = o.aboutCard2Desc  || t.aboutCard2Desc;
+    const aboutCard3Title = o.aboutCard3Title || t.aboutCard3Title;
+    const aboutCard3Desc  = o.aboutCard3Desc  || t.aboutCard3Desc;
+    
+    // ── 3. Features ──────────────────────────────────────
+    const featuresTitle    = o.featuresTitle    || t.featuresTitle;
+    const featuresSubtitle = o.featuresSubtitle || t.featuresSubtitle;
+    const feat1Title       = o.feat1Title       || t.feat1Title;
+    const feat1Desc        = o.feat1Desc        || t.feat1Desc;
+    const feat2Title       = o.feat2Title       || t.feat2Title;
+    const feat2Desc        = o.feat2Desc        || t.feat2Desc;
+    const feat3Title       = o.feat3Title       || t.feat3Title;
+    const feat3Desc        = o.feat3Desc        || t.feat3Desc;
+    const feat4Title       = o.feat4Title       || t.feat4Title;
+    const feat4Desc        = o.feat4Desc        || t.feat4Desc;
+
+    // ── 4. CTA ───────────────────────────────────────────
+    const ctaTitle = o.ctaTitle || t.ctaTitle;
+    const ctaDesc  = o.ctaDesc  || t.ctaDesc;
+
+    // ── 5. Social Links & Contact ────────────────────────
+    const lineLink   = o.lineLink   || 'https://lin.ee/s5YJgGI';
+    const igLink     = o.igLink     || 'https://www.instagram.com/ntut_drone/';
+    const emailLink  = o.emailLink  || 'ntut.droneclub@gmail.com';
+
     let postsHtml = '';
     
     if (latestPosts.length === 0) {
@@ -196,9 +228,9 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                 <a href="#faq" class="drawer-link">${t.navFaq}</a>
                 <a href="?lang=${t.langToggleQuery}" class="drawer-link" style="color: var(--color-primary);"><span style="margin-right: 6px;">🌐</span> ${t.langToggleText}</a>
                 <hr class="drawer-divider">
-                <a href="mailto:ntut.droneclub@gmail.com" class="drawer-cta-btn" style="background: #3b82f6;"><i data-lucide="mail"></i> ntut.droneclub@gmail.com</a>
-                <a href="https://lin.ee/s5YJgGI" target="_blank" class="drawer-cta-btn"><i data-lucide="message-square"></i> ${t.heroBtnLine}</a>
-                <a href="https://www.instagram.com/ntut_drone/" target="_blank" class="drawer-cta-btn secondary"><i data-lucide="instagram"></i> Instagram</a>
+                <a href="mailto:${emailLink}" class="drawer-cta-btn" style="background: #3b82f6;"><i data-lucide="mail"></i> ${emailLink}</a>
+                <a href="${lineLink}" target="_blank" class="drawer-cta-btn"><i data-lucide="message-square"></i> ${t.heroBtnLine}</a>
+                <a href="${igLink}" target="_blank" class="drawer-cta-btn secondary"><i data-lucide="instagram"></i> Instagram</a>
             </nav>
         </div>
 
@@ -232,7 +264,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                     <div class="popular-item">
                         <div class="popular-icon">→</div>
                         <div class="popular-text">
-                            <a href="https://lin.ee/s5YJgGI" target="_blank" class="popular-link">${lang === 'zh' ? '無人機飛行場地預約與使用規範' : 'Drone Flight Field Reservation & Rules'}</a>
+                            <a href="${lineLink}" target="_blank" class="popular-link">${lang === 'zh' ? '無人機飛行場地預約與使用規範' : 'Drone Flight Field Reservation & Rules'}</a>
                             <span class="popular-desc">${lang === 'zh' ? '校園飛行空域申請手續與安全指引' : 'Campus airspace application and safety guidelines'}</span>
                         </div>
                     </div>
@@ -253,7 +285,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                     <div class="popular-item">
                         <div class="popular-icon">→</div>
                         <div class="popular-text">
-                            <a href="https://lin.ee/s5YJgGI" target="_blank" class="popular-link">${lang === 'zh' ? 'LINE 官方社群與 2026 年度入社報名' : 'Official LINE Community & 2026 Registration'}</a>
+                            <a href="${lineLink}" target="_blank" class="popular-link">${lang === 'zh' ? 'LINE 官方社群與 2026 年度入社報名' : 'Official LINE Community & 2026 Registration'}</a>
                             <span class="popular-desc">${lang === 'zh' ? '加入官方社群群組，獲取最新社課通知' : 'Join our LINE group for workshop updates'}</span>
                         </div>
                     </div>
@@ -279,27 +311,27 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
         <section class="about-section" id="about">
             <div class="section-container">
                 <div class="section-header text-center">
-                    <h2 class="section-title">${t.aboutTitle}</h2>
-                    <p class="section-subtitle">${t.aboutSubtitle}</p>
+                    <h2 class="section-title">${aboutTitle}</h2>
+                    <p class="section-subtitle">${aboutSubtitle}</p>
                 </div>
                 
                 <div class="about-grid">
                     <div class="about-card">
                         <div class="about-card-icon"><i data-lucide="shield-check"></i></div>
-                        <h3>${t.aboutCard1Title}</h3>
-                        <p>${t.aboutCard1Desc}</p>
+                        <h3>${aboutCard1Title}</h3>
+                        <p>${aboutCard1Desc}</p>
                     </div>
                     
                     <div class="about-card">
                         <div class="about-card-icon"><i data-lucide="wrench"></i></div>
-                        <h3>${t.aboutCard2Title}</h3>
-                        <p>${t.aboutCard2Desc}</p>
+                        <h3>${aboutCard2Title}</h3>
+                        <p>${aboutCard2Desc}</p>
                     </div>
                     
                     <div class="about-card">
                         <div class="about-card-icon"><i data-lucide="users"></i></div>
-                        <h3>${t.aboutCard3Title}</h3>
-                        <p>${t.aboutCard3Desc}</p>
+                        <h3>${aboutCard3Title}</h3>
+                        <p>${aboutCard3Desc}</p>
                     </div>
                 </div>
             </div>
@@ -309,8 +341,8 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
         <section class="features-section" id="features">
             <div class="section-container">
                 <div class="section-header text-center">
-                    <h2 class="section-title">${t.featuresTitle}</h2>
-                    <p class="section-subtitle">${t.featuresSubtitle}</p>
+                    <h2 class="section-title">${featuresTitle}</h2>
+                    <p class="section-subtitle">${featuresSubtitle}</p>
                 </div>
 
                 <div class="features-grid">
@@ -321,8 +353,8 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                             </div>
                         </div>
                         <div class="feature-info">
-                            <h3 class="feature-name">${t.feat1Title}</h3>
-                            <p class="feature-desc">${t.feat1Desc}</p>
+                            <h3 class="feature-name">${feat1Title}</h3>
+                            <p class="feature-desc">${feat1Desc}</p>
                         </div>
                     </div>
 
@@ -333,8 +365,8 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                             </div>
                         </div>
                         <div class="feature-info">
-                            <h3 class="feature-name">${t.feat2Title}</h3>
-                            <p class="feature-desc">${t.feat2Desc}</p>
+                            <h3 class="feature-name">${feat2Title}</h3>
+                            <p class="feature-desc">${feat2Desc}</p>
                         </div>
                     </div>
 
@@ -345,8 +377,8 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                             </div>
                         </div>
                         <div class="feature-info">
-                            <h3 class="feature-name">${t.feat3Title}</h3>
-                            <p class="feature-desc">${t.feat3Desc}</p>
+                            <h3 class="feature-name">${feat3Title}</h3>
+                            <p class="feature-desc">${feat3Desc}</p>
                         </div>
                     </div>
 
@@ -1265,34 +1297,126 @@ export function renderAdminDashboard(posts = [], pages = []) {
             <!-- Homepage Settings Panel -->
             <div id="panel-homepage" class="panel">
                 <div class="content-header">
-                    <h1>首頁內容設定</h1>
-                    <button class="btn btn-primary" onclick="saveHomepage()"><i data-lucide="save"></i> 儲存設定</button>
+                    <h1>全首頁內容設定</h1>
+                    <button class="btn btn-primary" onclick="saveHomepage()"><i data-lucide="save"></i> 儲存所有首頁設定</button>
                 </div>
-                <p style="color: var(--text-muted); margin-bottom: 28px; font-size: 0.9rem;">修改首頁展示的文字與聯絡資訊，儲存後即時生效。</p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 900px;">
-                    <div class="form-group" style="grid-column: 1 / -1;">
-                        <label for="hp-hero-title">統一標題 (首頁 H1)</label>
-                        <input type="text" id="hp-hero-title" class="form-control" placeholder="北科無人機社">
+                <p style="color: var(--text-muted); margin-bottom: 28px; font-size: 0.9rem;">在這裡修改首頁所有區塊的文字與說明，點擊儲存後前台即時生效。</p>
+
+                <!-- Section 1: Hero -->
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+                    <h2 style="font-size: 1.1rem; color: var(--color-cyan); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><i data-lucide="sparkles"></i> 1. 頂部 Hero 展示區</h2>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label for="hp-hero-title">首頁主標題 (H1)</label>
+                            <input type="text" id="hp-hero-title" class="form-control" placeholder="北科無人機社">
+                        </div>
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label for="hp-hero-desc">展示區描述文字 (Hero Description)</label>
+                            <textarea id="hp-hero-desc" class="form-control" rows="2" placeholder="探索上帝視角的無限精彩…"></textarea>
+                        </div>
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label for="hp-hero-badge">頂部徽章標籤文字 (Hero Badge)</label>
+                            <input type="text" id="hp-hero-badge" class="form-control" placeholder="國立臺北科技大學 | 學務處課外活動指導組核可康樂性社團">
+                        </div>
                     </div>
-                    <div class="form-group" style="grid-column: 1 / -1;">
-                        <label for="hp-hero-desc">展示區說明文字 (Hero 副標題)</label>
-                        <textarea id="hp-hero-desc" class="form-control" rows="3" placeholder="探索上帝視角的無限精彩…"></textarea>
+                </div>
+
+                <!-- Section 2: About -->
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+                    <h2 style="font-size: 1.1rem; color: var(--color-purple); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><i data-lucide="info"></i> 2. 關於我們 (About Section)</h2>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="form-group">
+                            <label for="hp-about-title">區塊標題</label>
+                            <input type="text" id="hp-about-title" class="form-control" placeholder="關於北科無人機社">
+                        </div>
+                        <div class="form-group">
+                            <label for="hp-about-subtitle">區塊副標題</label>
+                            <input type="text" id="hp-about-subtitle" class="form-control" placeholder="我們不僅僅是在空中飛行…">
+                        </div>
+                        <div class="form-group">
+                            <label for="hp-about-c1-title">卡片 1 標題</label>
+                            <input type="text" id="hp-about-c1-title" class="form-control" placeholder="安全第一的飛行教育">
+                            <label for="hp-about-c1-desc" style="margin-top: 8px;">卡片 1 內容</label>
+                            <textarea id="hp-about-c1-desc" class="form-control" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="hp-about-c2-title">卡片 2 標題</label>
+                            <input type="text" id="hp-about-c2-title" class="form-control" placeholder="動手實作的創客精神">
+                            <label for="hp-about-c2-desc" style="margin-top: 8px;">卡片 2 內容</label>
+                            <textarea id="hp-about-c2-desc" class="form-control" rows="3"></textarea>
+                        </div>
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label for="hp-about-c3-title">卡片 3 標題</label>
+                            <input type="text" id="hp-about-c3-title" class="form-control" placeholder="緊密的飛友社群">
+                            <label for="hp-about-c3-desc" style="margin-top: 8px;">卡片 3 內容</label>
+                            <textarea id="hp-about-c3-desc" class="form-control" rows="3"></textarea>
+                        </div>
                     </div>
-                    <div class="form-group" style="grid-column: 1 / -1;">
-                        <label for="hp-hero-badge">首頁彽章文字 (Hero Badge)</label>
-                        <input type="text" id="hp-hero-badge" class="form-control" placeholder="國立臺北科技大學 | 學務處課外活動指導組核可康樂性社團">
+                </div>
+
+                <!-- Section 3: Features -->
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+                    <h2 style="font-size: 1.1rem; color: #10b981; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><i data-lucide="zap"></i> 3. 四大核心特色 (Features Section)</h2>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="form-group">
+                            <label for="hp-features-title">區塊標題</label>
+                            <input type="text" id="hp-features-title" class="form-control" placeholder="四大核心特色">
+                        </div>
+                        <div class="form-group">
+                            <label for="hp-features-subtitle">區塊副標題</label>
+                            <input type="text" id="hp-features-subtitle" class="form-control" placeholder="從模擬訓練到實機操作…">
+                        </div>
+                        <div class="form-group">
+                            <label for="hp-feat1-title">特色 1 標題</label>
+                            <input type="text" id="hp-feat1-title" class="form-control" placeholder="模擬器飛行訓練">
+                            <label for="hp-feat1-desc" style="margin-top: 8px;">特色 1 描述</label>
+                            <textarea id="hp-feat1-desc" class="form-control" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="hp-feat2-title">特色 2 標題</label>
+                            <input type="text" id="hp-feat2-title" class="form-control" placeholder="FPV 穿越機飛行">
+                            <label for="hp-feat2-desc" style="margin-top: 8px;">特色 2 描述</label>
+                            <textarea id="hp-feat2-desc" class="form-control" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="hp-feat3-title">特色 3 標題</label>
+                            <input type="text" id="hp-feat3-title" class="form-control" placeholder="空拍與視覺創作">
+                            <label for="hp-feat3-desc" style="margin-top: 8px;">特色 3 描述</label>
+                            <textarea id="hp-feat3-desc" class="form-control" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="hp-feat4-title">特色 4 標題</label>
+                            <input type="text" id="hp-feat4-title" class="form-control" placeholder="考照與組裝特訓">
+                            <label for="hp-feat4-desc" style="margin-top: 8px;">特色 4 描述</label>
+                            <textarea id="hp-feat4-desc" class="form-control" rows="3"></textarea>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="hp-line-link">LINE 社群連結</label>
-                        <input type="url" id="hp-line-link" class="form-control" placeholder="https://lin.ee/...">
-                    </div>
-                    <div class="form-group">
-                        <label for="hp-ig-link">Instagram 連結</label>
-                        <input type="url" id="hp-ig-link" class="form-control" placeholder="https://www.instagram.com/ntut_drone/">
-                    </div>
-                    <div class="form-group" style="grid-column: 1 / -1;">
-                        <label for="hp-email">官方信箱</label>
-                        <input type="email" id="hp-email" class="form-control" placeholder="ntut.droneclub@gmail.com">
+                </div>
+
+                <!-- Section 4: CTA & Links -->
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+                    <h2 style="font-size: 1.1rem; color: #f59e0b; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><i data-lucide="link"></i> 4. 頁尾號召與社群連結</h2>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="form-group">
+                            <label for="hp-cta-title">CTA 區塊標題</label>
+                            <input type="text" id="hp-cta-title" class="form-control" placeholder="準備好起飛了嗎？">
+                        </div>
+                        <div class="form-group">
+                            <label for="hp-cta-desc">CTA 區塊內文</label>
+                            <input type="text" id="hp-cta-desc" class="form-control" placeholder="立即加入北科無人機社 LINE 官方社群…">
+                        </div>
+                        <div class="form-group">
+                            <label for="hp-line-link">LINE 社群網址</label>
+                            <input type="url" id="hp-line-link" class="form-control" placeholder="https://lin.ee/...">
+                        </div>
+                        <div class="form-group">
+                            <label for="hp-ig-link">Instagram 網址</label>
+                            <input type="url" id="hp-ig-link" class="form-control" placeholder="https://www.instagram.com/ntut_drone/">
+                        </div>
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label for="hp-email">官方信箱</label>
+                            <input type="email" id="hp-email" class="form-control" placeholder="ntut.droneclub@gmail.com">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1620,30 +1744,42 @@ export function renderAdminDashboard(posts = [], pages = []) {
             }
 
             // ── Homepage Settings ───────────────────────────────────────
+            const hpFieldIdMap = {
+                heroTitle: 'hp-hero-title', heroDesc: 'hp-hero-desc', heroBadge: 'hp-hero-badge',
+                aboutTitle: 'hp-about-title', aboutSubtitle: 'hp-about-subtitle',
+                aboutCard1Title: 'hp-about-c1-title', aboutCard1Desc: 'hp-about-c1-desc',
+                aboutCard2Title: 'hp-about-c2-title', aboutCard2Desc: 'hp-about-c2-desc',
+                aboutCard3Title: 'hp-about-c3-title', aboutCard3Desc: 'hp-about-c3-desc',
+                featuresTitle: 'hp-features-title', featuresSubtitle: 'hp-features-subtitle',
+                feat1Title: 'hp-feat1-title', feat1Desc: 'hp-feat1-desc',
+                feat2Title: 'hp-feat2-title', feat2Desc: 'hp-feat2-desc',
+                feat3Title: 'hp-feat3-title', feat3Desc: 'hp-feat3-desc',
+                feat4Title: 'hp-feat4-title', feat4Desc: 'hp-feat4-desc',
+                ctaTitle: 'hp-cta-title', ctaDesc: 'hp-cta-desc',
+                lineLink: 'hp-line-link', igLink: 'hp-ig-link', emailLink: 'hp-email'
+            };
+
             async function loadHomepageData() {
                 try {
                     const res = await fetch('/api/homepage');
                     if (!res.ok) return;
                     const data = await res.json();
-                    if (data.heroTitle)  document.getElementById('hp-hero-title').value = data.heroTitle;
-                    if (data.heroDesc)   document.getElementById('hp-hero-desc').value  = data.heroDesc;
-                    if (data.heroBadge)  document.getElementById('hp-hero-badge').value = data.heroBadge;
-                    if (data.lineLink)   document.getElementById('hp-line-link').value  = data.lineLink;
-                    if (data.igLink)     document.getElementById('hp-ig-link').value    = data.igLink;
-                    if (data.emailLink)  document.getElementById('hp-email').value      = data.emailLink;
+                    Object.keys(hpFieldIdMap).forEach(function(key) {
+                        const elem = document.getElementById(hpFieldIdMap[key]);
+                        if (elem && data[key] !== undefined) {
+                            elem.value = data[key];
+                        }
+                    });
                 } catch (e) { /* silently ignore */ }
             }
             loadHomepageData();
 
             async function saveHomepage() {
-                const payload = {
-                    heroTitle: document.getElementById('hp-hero-title').value,
-                    heroDesc:  document.getElementById('hp-hero-desc').value,
-                    heroBadge: document.getElementById('hp-hero-badge').value,
-                    lineLink:  document.getElementById('hp-line-link').value,
-                    igLink:    document.getElementById('hp-ig-link').value,
-                    emailLink: document.getElementById('hp-email').value
-                };
+                const payload = {};
+                Object.keys(hpFieldIdMap).forEach(function(key) {
+                    const elem = document.getElementById(hpFieldIdMap[key]);
+                    if (elem) payload[key] = elem.value;
+                });
                 try {
                     const res = await fetch('/api/homepage', {
                         method: 'POST',
@@ -1651,7 +1787,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                         body: JSON.stringify(payload)
                     });
                     if (res.ok) {
-                        showToast('首頁設定已儲存！前台即時生效。');
+                        showToast('所有首頁設定已儲存！前台即時生效。');
                     } else {
                         const d = await res.json();
                         showToast(d.error || '儲存失敗', true);
