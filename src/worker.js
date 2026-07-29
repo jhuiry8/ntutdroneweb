@@ -63,12 +63,8 @@ export default {
                 lang = queryLang;
             } else if (cookieLang === 'en' || cookieLang === 'zh') {
                 lang = cookieLang;
-            } else {
-                const acceptLang = request.headers.get('Accept-Language') || '';
-                if (acceptLang.toLowerCase().includes('en')) {
-                    lang = 'en';
-                }
             }
+            // Always default to 'zh' for all visitors unless explicitly toggled
 
             // Headers helper to append language cookie if updated via query
             const getResponseHeaders = (contentType = 'text/html; charset=utf-8') => {
@@ -469,7 +465,11 @@ export default {
                     'feat3Title', 'feat3Desc',
                     'feat4Title', 'feat4Desc',
                     'ctaTitle', 'ctaDesc',
-                    'lineLink', 'igLink', 'emailLink'
+                    'lineLink', 'igLink', 'emailLink',
+                    'igCard1Tag', 'igCard1Caption', 'igCard1Img', 'igCard1Likes', 'igCard1Comments',
+                    'igCard2Tag', 'igCard2Caption', 'igCard2Img', 'igCard2Likes', 'igCard2Comments',
+                    'igCard3Tag', 'igCard3Caption', 'igCard3Img', 'igCard3Likes', 'igCard3Comments',
+                    'igCard4Tag', 'igCard4Caption', 'igCard4Img', 'igCard4Likes', 'igCard4Comments'
                 ];
                 const filtered = {};
                 allowed.forEach(k => { if (body[k] !== undefined) filtered[k] = String(body[k]); });

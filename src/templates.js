@@ -127,6 +127,31 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
     const igLink     = o.igLink     || 'https://www.instagram.com/ntut_drone/';
     const emailLink  = o.emailLink  || 'ntut.droneclub@gmail.com';
 
+    // ── 6. Instagram Cards Overrides ─────────────────────
+    const igCard1Tag      = o.igCard1Tag      || 'FPV 穿越機';
+    const igCard1Caption  = o.igCard1Caption  || '⚡ 手動檔極速穿梭特技！第一人稱視角 (FPV) 以時速超過 100km/h 俯衝過彎，享受絕對的速度與空間掌控感 🚀🔥 #ntutdrone #FPVRacing #穿越機 #北科大';
+    const igCard1Img      = o.igCard1Img      || '/assets/images/fpv_drone_hero.jpg';
+    const igCard1Likes    = o.igCard1Likes    || '158';
+    const igCard1Comments = o.igCard1Comments || '24';
+
+    const igCard2Tag      = o.igCard2Tag      || '航拍創作';
+    const igCard2Caption  = o.igCard2Caption  || '🌇 上帝視角的北科校園夕陽！用 DJI 航拍機捕捉壯麗的光影律動與校園景致，歡迎加入空拍視覺組一起創作大片 📸✨ #空拍創作 #北科無人機社 #DJI';
+    const igCard2Img      = o.igCard2Img      || '/assets/images/logo_drone.png';
+    const igCard2Likes    = o.igCard2Likes    || '210';
+    const igCard2Comments = o.igCard2Comments || '19';
+
+    const igCard3Tag      = o.igCard3Tag      || '創客實作';
+    const igCard3Caption  = o.igCard3Caption  || '🛠️ 社課現場實況！手把手帶領新社員進行無刷馬達配線焊接、電調安裝與 Betaflight PID 馬達校正。組裝屬於自己的無人機！ 💪🔧 #機體組裝 #調參 #創客';
+    const igCard3Img      = o.igCard3Img      || '';
+    const igCard3Likes    = o.igCard3Likes    || '135';
+    const igCard3Comments = o.igCard3Comments || '12';
+
+    const igCard4Tag      = o.igCard4Tag      || '飛行局日常';
+    const igCard4Caption  = o.igCard4Caption  || '☀️ 週末飛行局成功！齊聚北部合法飛場，大夥一起交流高畫質圖傳、拉距測試與暢快試飛，歡迎對無人機有興趣的朋友隨時加入！ 🛸🌿 #飛行局 #合法飛場 #北科';
+    const igCard4Img      = o.igCard4Img      || '';
+    const igCard4Likes    = o.igCard4Likes    || '192';
+    const igCard4Comments = o.igCard4Comments || '31';
+
     let postsHtml = '';
     
     if (latestPosts.length === 0) {
@@ -430,95 +455,109 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                 </div>
 
                 <div class="ig-cards-grid">
-                    <!-- IG Card 1: FPV Racing & Freestyle -->
+                    <!-- IG Card 1 -->
                     <div class="ig-card">
                         <div class="ig-card-header">
                             <div class="ig-user-info">
                                 <div class="ig-avatar"><img src="/assets/images/logo_ntut.jpg" alt="ntut_drone"></div>
                                 <span class="ig-username">ntut_drone</span>
                             </div>
-                            <span class="ig-tag">FPV 穿越機</span>
+                            <span class="ig-tag">${igCard1Tag}</span>
                         </div>
                         <div class="ig-card-media">
-                            <img src="/assets/images/fpv_drone_hero.jpg" alt="FPV Drone Flight Reel">
+                            ${igCard1Img ? `<img src="${igCard1Img}" alt="Instagram post">` : `
+                                <div style="background: linear-gradient(135deg, #1e293b, #0f172a); width:100%; height:100%; display:flex; align-items:center; justify-content:center; flex-direction:column; color:#3b82f6; gap:10px;">
+                                    <i data-lucide="video" style="width: 48px; height: 48px;"></i>
+                                    <span style="font-weight: 700; color: #f8fafc; font-size: 0.9rem;">${igCard1Tag}</span>
+                                </div>
+                            `}
                             <div class="ig-media-badge"><i data-lucide="video" style="width: 12px; height: 12px;"></i> REEL</div>
                         </div>
                         <div class="ig-card-body">
-                            <p class="ig-caption">⚡ 手動檔極速穿梭特技！第一人稱視角 (FPV) 以時速超過 100km/h 俯衝過彎，享受絕對的速度與空間掌控感 🚀🔥 #ntutdrone #FPVRacing #穿越機 #北科大</p>
+                            <p class="ig-caption">${igCard1Caption}</p>
                             <div class="ig-card-footer">
-                                <div class="ig-stats"><span>❤️ 158</span> <span>💬 24</span></div>
+                                <div class="ig-stats"><span>❤️ ${igCard1Likes}</span> <span>💬 ${igCard1Comments}</span></div>
                                 <a href="${igLink}" target="_blank" class="ig-link-action">IG 觀看 →</a>
                             </div>
                         </div>
                     </div>
 
-                    <!-- IG Card 2: Aerial Photography -->
+                    <!-- IG Card 2 -->
                     <div class="ig-card">
                         <div class="ig-card-header">
                             <div class="ig-user-info">
                                 <div class="ig-avatar"><img src="/assets/images/logo_ntut.jpg" alt="ntut_drone"></div>
                                 <span class="ig-username">ntut_drone</span>
                             </div>
-                            <span class="ig-tag">航拍創作</span>
+                            <span class="ig-tag">${igCard2Tag}</span>
                         </div>
                         <div class="ig-card-media">
-                            <img src="/assets/images/logo_drone.png" alt="Campus Aerial Photography" style="object-fit: contain; padding: 20px; background: #0b0f19;">
+                            ${igCard2Img ? `<img src="${igCard2Img}" alt="Instagram post" style="object-fit: contain; padding: 20px; background: #0b0f19;">` : `
+                                <div style="background: linear-gradient(135deg, #1e293b, #0f172a); width:100%; height:100%; display:flex; align-items:center; justify-content:center; flex-direction:column; color:#3b82f6; gap:10px;">
+                                    <i data-lucide="camera" style="width: 48px; height: 48px;"></i>
+                                    <span style="font-weight: 700; color: #f8fafc; font-size: 0.9rem;">${igCard2Tag}</span>
+                                </div>
+                            `}
                             <div class="ig-media-badge"><i data-lucide="camera" style="width: 12px; height: 12px;"></i> PHOTO</div>
                         </div>
                         <div class="ig-card-body">
-                            <p class="ig-caption">🌇 上帝視角的北科校園夕陽！用 DJI 航拍機捕捉壯麗的光影律動與校園景致，歡迎加入空拍視覺組一起創作大片 📸✨ #空拍創作 #北科無人機社 #DJI</p>
+                            <p class="ig-caption">${igCard2Caption}</p>
                             <div class="ig-card-footer">
-                                <div class="ig-stats"><span>❤️ 210</span> <span>💬 19</span></div>
+                                <div class="ig-stats"><span>❤️ ${igCard2Likes}</span> <span>💬 ${igCard2Comments}</span></div>
                                 <a href="${igLink}" target="_blank" class="ig-link-action">IG 觀看 →</a>
                             </div>
                         </div>
                     </div>
 
-                    <!-- IG Card 3: Hardware Building & Soldering -->
+                    <!-- IG Card 3 -->
                     <div class="ig-card">
                         <div class="ig-card-header">
                             <div class="ig-user-info">
                                 <div class="ig-avatar"><img src="/assets/images/logo_ntut.jpg" alt="ntut_drone"></div>
                                 <span class="ig-username">ntut_drone</span>
                             </div>
-                            <span class="ig-tag">創客實作</span>
+                            <span class="ig-tag">${igCard3Tag}</span>
                         </div>
                         <div class="ig-card-media">
-                            <div style="background: linear-gradient(135deg, #1e293b, #0f172a); width:100%; height:100%; display:flex; align-items:center; justify-content:center; flex-direction:column; color:#3b82f6; gap:10px;">
-                                <i data-lucide="cpu" style="width: 48px; height: 48px;"></i>
-                                <span style="font-weight: 700; color: #f8fafc; font-size: 0.9rem;">機體焊接與 Betaflight 調參</span>
-                            </div>
+                            ${igCard3Img ? `<img src="${igCard3Img}" alt="Instagram post">` : `
+                                <div style="background: linear-gradient(135deg, #1e293b, #0f172a); width:100%; height:100%; display:flex; align-items:center; justify-content:center; flex-direction:column; color:#3b82f6; gap:10px;">
+                                    <i data-lucide="cpu" style="width: 48px; height: 48px;"></i>
+                                    <span style="font-weight: 700; color: #f8fafc; font-size: 0.9rem;">${igCard3Tag}</span>
+                                </div>
+                            `}
                             <div class="ig-media-badge"><i data-lucide="image" style="width: 12px; height: 12px;"></i> ALBUM</div>
                         </div>
                         <div class="ig-card-body">
-                            <p class="ig-caption">🛠️ 社課現場實況！手把手帶領新社員進行無刷馬達配線焊接、電調安裝與 Betaflight PID 馬達校正。組裝屬於自己的無人機！ 💪🔧 #機體組裝 #調參 #創客</p>
+                            <p class="ig-caption">${igCard3Caption}</p>
                             <div class="ig-card-footer">
-                                <div class="ig-stats"><span>❤️ 135</span> <span>💬 12</span></div>
+                                <div class="ig-stats"><span>❤️ ${igCard3Likes}</span> <span>💬 ${igCard3Comments}</span></div>
                                 <a href="${igLink}" target="_blank" class="ig-link-action">IG 觀看 →</a>
                             </div>
                         </div>
                     </div>
 
-                    <!-- IG Card 4: Outdoor Flight Event -->
+                    <!-- IG Card 4 -->
                     <div class="ig-card">
                         <div class="ig-card-header">
                             <div class="ig-user-info">
                                 <div class="ig-avatar"><img src="/assets/images/logo_ntut.jpg" alt="ntut_drone"></div>
                                 <span class="ig-username">ntut_drone</span>
                             </div>
-                            <span class="ig-tag">飛行局日常</span>
+                            <span class="ig-tag">${igCard4Tag}</span>
                         </div>
                         <div class="ig-card-media">
-                            <div style="background: linear-gradient(135deg, #065f46, #064e3b); width:100%; height:100%; display:flex; align-items:center; justify-content:center; flex-direction:column; color:#10b981; gap:10px;">
-                                <i data-lucide="plane-takeoff" style="width: 48px; height: 48px;"></i>
-                                <span style="font-weight: 700; color: #f8fafc; font-size: 0.9rem;">週末戶外合規綠地「飛行局」</span>
-                            </div>
+                            ${igCard4Img ? `<img src="${igCard4Img}" alt="Instagram post">` : `
+                                <div style="background: linear-gradient(135deg, #065f46, #064e3b); width:100%; height:100%; display:flex; align-items:center; justify-content:center; flex-direction:column; color:#10b981; gap:10px;">
+                                    <i data-lucide="plane-takeoff" style="width: 48px; height: 48px;"></i>
+                                    <span style="font-weight: 700; color: #f8fafc; font-size: 0.9rem;">${igCard4Tag}</span>
+                                </div>
+                            `}
                             <div class="ig-media-badge"><i data-lucide="users" style="width: 12px; height: 12px;"></i> EVENT</div>
                         </div>
                         <div class="ig-card-body">
-                            <p class="ig-caption">☀️ 週末飛行局成功！齊聚北部合法飛場，大夥一起交流高畫質圖傳、拉距測試與暢快試飛，歡迎對無人機有興趣的朋友隨時加入！ 🛸🌿 #飛行局 #合法飛場 #北科</p>
+                            <p class="ig-caption">${igCard4Caption}</p>
                             <div class="ig-card-footer">
-                                <div class="ig-stats"><span>❤️ 192</span> <span>💬 31</span></div>
+                                <div class="ig-stats"><span>❤️ ${igCard4Likes}</span> <span>💬 ${igCard4Comments}</span></div>
                                 <a href="${igLink}" target="_blank" class="ig-link-action">IG 觀看 →</a>
                             </div>
                         </div>
@@ -1549,6 +1588,119 @@ export function renderAdminDashboard(posts = [], pages = []) {
                         </div>
                     </div>
                 </div>
+
+                <!-- Section 5: Instagram Feed Cards -->
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+                    <h2 style="font-size: 1.1rem; color: #e1306c; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><i data-lucide="instagram"></i> 5. Instagram 社群實飛動態卡片設定 (4 張卡片)</h2>
+                    
+                    <!-- IG Card 1 -->
+                    <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.05);">
+                        <h3 style="font-size: 0.95rem; color: #e1306c; margin-bottom: 12px;">📸 卡片 1 (第 1 張貼文)</h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <div class="form-group">
+                                <label for="hp-ig1-tag">標籤名稱 (如: FPV 穿越機)</label>
+                                <input type="text" id="hp-ig1-tag" class="form-control" placeholder="FPV 穿越機">
+                            </div>
+                            <div class="form-group">
+                                <label for="hp-ig1-img">圖片網址 (可用媒體庫上傳連結，或留空)</label>
+                                <input type="text" id="hp-ig1-img" class="form-control" placeholder="/assets/images/fpv_drone_hero.jpg">
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label for="hp-ig1-caption">貼文文案與 Hashtags</label>
+                                <textarea id="hp-ig1-caption" class="form-control" rows="2"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="hp-ig1-likes">按讚數 (Likes)</label>
+                                <input type="text" id="hp-ig1-likes" class="form-control" placeholder="158">
+                            </div>
+                            <div class="form-group">
+                                <label for="hp-ig1-comments">留言數 (Comments)</label>
+                                <input type="text" id="hp-ig1-comments" class="form-control" placeholder="24">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- IG Card 2 -->
+                    <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.05);">
+                        <h3 style="font-size: 0.95rem; color: #e1306c; margin-bottom: 12px;">📸 卡片 2 (第 2 張貼文)</h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <div class="form-group">
+                                <label for="hp-ig2-tag">標籤名稱 (如: 航拍創作)</label>
+                                <input type="text" id="hp-ig2-tag" class="form-control" placeholder="航拍創作">
+                            </div>
+                            <div class="form-group">
+                                <label for="hp-ig2-img">圖片網址</label>
+                                <input type="text" id="hp-ig2-img" class="form-control" placeholder="/assets/images/logo_drone.png">
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label for="hp-ig2-caption">貼文文案與 Hashtags</label>
+                                <textarea id="hp-ig2-caption" class="form-control" rows="2"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="hp-ig2-likes">按讚數 (Likes)</label>
+                                <input type="text" id="hp-ig2-likes" class="form-control" placeholder="210">
+                            </div>
+                            <div class="form-group">
+                                <label for="hp-ig2-comments">留言數 (Comments)</label>
+                                <input type="text" id="hp-ig2-comments" class="form-control" placeholder="19">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- IG Card 3 -->
+                    <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.05);">
+                        <h3 style="font-size: 0.95rem; color: #e1306c; margin-bottom: 12px;">📸 卡片 3 (第 3 張貼文)</h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <div class="form-group">
+                                <label for="hp-ig3-tag">標籤名稱 (如: 創客實作)</label>
+                                <input type="text" id="hp-ig3-tag" class="form-control" placeholder="創客實作">
+                            </div>
+                            <div class="form-group">
+                                <label for="hp-ig3-img">圖片網址</label>
+                                <input type="text" id="hp-ig3-img" class="form-control" placeholder="留空將顯示科技色圖標圖案">
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label for="hp-ig3-caption">貼文文案與 Hashtags</label>
+                                <textarea id="hp-ig3-caption" class="form-control" rows="2"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="hp-ig3-likes">按讚數 (Likes)</label>
+                                <input type="text" id="hp-ig3-likes" class="form-control" placeholder="135">
+                            </div>
+                            <div class="form-group">
+                                <label for="hp-ig3-comments">留言數 (Comments)</label>
+                                <input type="text" id="hp-ig3-comments" class="form-control" placeholder="12">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- IG Card 4 -->
+                    <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                        <h3 style="font-size: 0.95rem; color: #e1306c; margin-bottom: 12px;">📸 卡片 4 (第 4 張貼文)</h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <div class="form-group">
+                                <label for="hp-ig4-tag">標籤名稱 (如: 飛行局日常)</label>
+                                <input type="text" id="hp-ig4-tag" class="form-control" placeholder="飛行局日常">
+                            </div>
+                            <div class="form-group">
+                                <label for="hp-ig4-img">圖片網址</label>
+                                <input type="text" id="hp-ig4-img" class="form-control" placeholder="留空將顯示綠色飛行圖案">
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label for="hp-ig4-caption">貼文文案與 Hashtags</label>
+                                <textarea id="hp-ig4-caption" class="form-control" rows="2"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="hp-ig4-likes">按讚數 (Likes)</label>
+                                <input type="text" id="hp-ig4-likes" class="form-control" placeholder="192">
+                            </div>
+                            <div class="form-group">
+                                <label for="hp-ig4-comments">留言數 (Comments)</label>
+                                <input type="text" id="hp-ig4-comments" class="form-control" placeholder="31">
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Settings Panel -->
@@ -1886,7 +2038,11 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 feat3Title: 'hp-feat3-title', feat3Desc: 'hp-feat3-desc',
                 feat4Title: 'hp-feat4-title', feat4Desc: 'hp-feat4-desc',
                 ctaTitle: 'hp-cta-title', ctaDesc: 'hp-cta-desc',
-                lineLink: 'hp-line-link', igLink: 'hp-ig-link', emailLink: 'hp-email'
+                lineLink: 'hp-line-link', igLink: 'hp-ig-link', emailLink: 'hp-email',
+                igCard1Tag: 'hp-ig1-tag', igCard1Caption: 'hp-ig1-caption', igCard1Img: 'hp-ig1-img', igCard1Likes: 'hp-ig1-likes', igCard1Comments: 'hp-ig1-comments',
+                igCard2Tag: 'hp-ig2-tag', igCard2Caption: 'hp-ig2-caption', igCard2Img: 'hp-ig2-img', igCard2Likes: 'hp-ig2-likes', igCard2Comments: 'hp-ig2-comments',
+                igCard3Tag: 'hp-ig3-tag', igCard3Caption: 'hp-ig3-caption', igCard3Img: 'hp-ig3-img', igCard3Likes: 'hp-ig3-likes', igCard3Comments: 'hp-ig3-comments',
+                igCard4Tag: 'hp-ig4-tag', igCard4Caption: 'hp-ig4-caption', igCard4Img: 'hp-ig4-img', igCard4Likes: 'hp-ig4-likes', igCard4Comments: 'hp-ig4-comments'
             };
 
             async function loadHomepageData() {
