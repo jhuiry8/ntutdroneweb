@@ -202,6 +202,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                 <nav class="nav-links">
                     <a href="#about" class="nav-link">${t.navAbout}</a>
                     <a href="#features" class="nav-link">${t.navFeatures}</a>
+                    <a href="#instagram" class="nav-link" style="color:#e1306c; font-weight:700;"><i data-lucide="instagram" style="width:14px; height:14px; display:inline; vertical-align:middle; margin-right:2px;"></i> ${lang === 'zh' ? 'IG 動態' : 'IG Feed'}</a>
                     <a href="#dynamic-blog" class="nav-link">${lang === 'zh' ? '最新文章' : 'Latest Posts'}</a>
                     <a href="#faq" class="nav-link">${t.navFaq}</a>
                 </nav>
@@ -238,6 +239,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
             <nav class="drawer-links">
                 <a href="#about" class="drawer-link">${t.navAbout}</a>
                 <a href="#features" class="drawer-link">${t.navFeatures}</a>
+                <a href="#instagram" class="drawer-link" style="color:#e1306c; font-weight:700;">📸 ${lang === 'zh' ? 'IG 實飛動態' : 'IG Feed'}</a>
                 <a href="#dynamic-blog" class="drawer-link">${lang === 'zh' ? '最新文章' : 'Latest Posts'}</a>
                 <a href="#faq" class="drawer-link">${t.navFaq}</a>
                 <a href="?lang=${t.langToggleQuery}" class="drawer-link" style="color: var(--color-primary);"><span style="margin-right: 6px;">🌐</span> ${t.langToggleText}</a>
@@ -405,6 +407,120 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                         <div class="feature-info">
                             <h3 class="feature-name">${t.feat4Title}</h3>
                             <p class="feature-desc">${t.feat4Desc}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Instagram Feed Showcase Section -->
+        <section class="instagram-section" id="instagram">
+            <div class="section-container">
+                <div class="section-header text-center">
+                    <div style="display: inline-flex; align-items: center; gap: 8px; background: rgba(225,48,108,0.12); color: #e1306c; padding: 6px 16px; border-radius: 20px; font-weight: 700; font-size: 0.85rem; margin-bottom: 16px;">
+                        <i data-lucide="instagram" style="width: 16px; height: 16px;"></i> @ntut_drone 實飛與社團動態
+                    </div>
+                    <h2 class="section-title">社團動態 (Instagram @ntut_drone)</h2>
+                    <p class="section-subtitle">追蹤我們的官方 IG @ntut_drone，第一手探索精彩 FPV 穿越機競速、極速翻滾特技、空拍視角與實作社課現場！</p>
+                    <div style="margin-top: 20px;">
+                        <a href="${igLink}" target="_blank" class="btn ig-btn-gradient" style="padding: 12px 28px; border-radius: 30px; font-size: 1rem;">
+                            <i data-lucide="instagram"></i> 關注 Instagram @ntut_drone
+                        </a>
+                    </div>
+                </div>
+
+                <div class="ig-cards-grid">
+                    <!-- IG Card 1: FPV Racing & Freestyle -->
+                    <div class="ig-card">
+                        <div class="ig-card-header">
+                            <div class="ig-user-info">
+                                <div class="ig-avatar"><img src="/assets/images/logo_ntut.jpg" alt="ntut_drone"></div>
+                                <span class="ig-username">ntut_drone</span>
+                            </div>
+                            <span class="ig-tag">FPV 穿越機</span>
+                        </div>
+                        <div class="ig-card-media">
+                            <img src="/assets/images/fpv_drone_hero.jpg" alt="FPV Drone Flight Reel">
+                            <div class="ig-media-badge"><i data-lucide="video" style="width: 12px; height: 12px;"></i> REEL</div>
+                        </div>
+                        <div class="ig-card-body">
+                            <p class="ig-caption">⚡ 手動檔極速穿梭特技！第一人稱視角 (FPV) 以時速超過 100km/h 俯衝過彎，享受絕對的速度與空間掌控感 🚀🔥 #ntutdrone #FPVRacing #穿越機 #北科大</p>
+                            <div class="ig-card-footer">
+                                <div class="ig-stats"><span>❤️ 158</span> <span>💬 24</span></div>
+                                <a href="${igLink}" target="_blank" class="ig-link-action">IG 觀看 →</a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- IG Card 2: Aerial Photography -->
+                    <div class="ig-card">
+                        <div class="ig-card-header">
+                            <div class="ig-user-info">
+                                <div class="ig-avatar"><img src="/assets/images/logo_ntut.jpg" alt="ntut_drone"></div>
+                                <span class="ig-username">ntut_drone</span>
+                            </div>
+                            <span class="ig-tag">航拍創作</span>
+                        </div>
+                        <div class="ig-card-media">
+                            <img src="/assets/images/logo_drone.png" alt="Campus Aerial Photography" style="object-fit: contain; padding: 20px; background: #0b0f19;">
+                            <div class="ig-media-badge"><i data-lucide="camera" style="width: 12px; height: 12px;"></i> PHOTO</div>
+                        </div>
+                        <div class="ig-card-body">
+                            <p class="ig-caption">🌇 上帝視角的北科校園夕陽！用 DJI 航拍機捕捉壯麗的光影律動與校園景致，歡迎加入空拍視覺組一起創作大片 📸✨ #空拍創作 #北科無人機社 #DJI</p>
+                            <div class="ig-card-footer">
+                                <div class="ig-stats"><span>❤️ 210</span> <span>💬 19</span></div>
+                                <a href="${igLink}" target="_blank" class="ig-link-action">IG 觀看 →</a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- IG Card 3: Hardware Building & Soldering -->
+                    <div class="ig-card">
+                        <div class="ig-card-header">
+                            <div class="ig-user-info">
+                                <div class="ig-avatar"><img src="/assets/images/logo_ntut.jpg" alt="ntut_drone"></div>
+                                <span class="ig-username">ntut_drone</span>
+                            </div>
+                            <span class="ig-tag">創客實作</span>
+                        </div>
+                        <div class="ig-card-media">
+                            <div style="background: linear-gradient(135deg, #1e293b, #0f172a); width:100%; height:100%; display:flex; align-items:center; justify-content:center; flex-direction:column; color:#3b82f6; gap:10px;">
+                                <i data-lucide="cpu" style="width: 48px; height: 48px;"></i>
+                                <span style="font-weight: 700; color: #f8fafc; font-size: 0.9rem;">機體焊接與 Betaflight 調參</span>
+                            </div>
+                            <div class="ig-media-badge"><i data-lucide="image" style="width: 12px; height: 12px;"></i> ALBUM</div>
+                        </div>
+                        <div class="ig-card-body">
+                            <p class="ig-caption">🛠️ 社課現場實況！手把手帶領新社員進行無刷馬達配線焊接、電調安裝與 Betaflight PID 馬達校正。組裝屬於自己的無人機！ 💪🔧 #機體組裝 #調參 #創客</p>
+                            <div class="ig-card-footer">
+                                <div class="ig-stats"><span>❤️ 135</span> <span>💬 12</span></div>
+                                <a href="${igLink}" target="_blank" class="ig-link-action">IG 觀看 →</a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- IG Card 4: Outdoor Flight Event -->
+                    <div class="ig-card">
+                        <div class="ig-card-header">
+                            <div class="ig-user-info">
+                                <div class="ig-avatar"><img src="/assets/images/logo_ntut.jpg" alt="ntut_drone"></div>
+                                <span class="ig-username">ntut_drone</span>
+                            </div>
+                            <span class="ig-tag">飛行局日常</span>
+                        </div>
+                        <div class="ig-card-media">
+                            <div style="background: linear-gradient(135deg, #065f46, #064e3b); width:100%; height:100%; display:flex; align-items:center; justify-content:center; flex-direction:column; color:#10b981; gap:10px;">
+                                <i data-lucide="plane-takeoff" style="width: 48px; height: 48px;"></i>
+                                <span style="font-weight: 700; color: #f8fafc; font-size: 0.9rem;">週末戶外合規綠地「飛行局」</span>
+                            </div>
+                            <div class="ig-media-badge"><i data-lucide="users" style="width: 12px; height: 12px;"></i> EVENT</div>
+                        </div>
+                        <div class="ig-card-body">
+                            <p class="ig-caption">☀️ 週末飛行局成功！齊聚北部合法飛場，大夥一起交流高畫質圖傳、拉距測試與暢快試飛，歡迎對無人機有興趣的朋友隨時加入！ 🛸🌿 #飛行局 #合法飛場 #北科</p>
+                            <div class="ig-card-footer">
+                                <div class="ig-stats"><span>❤️ 192</span> <span>💬 31</span></div>
+                                <a href="${igLink}" target="_blank" class="ig-link-action">IG 觀看 →</a>
+                            </div>
                         </div>
                     </div>
                 </div>
