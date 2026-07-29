@@ -981,6 +981,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
         <title>後台管理面板 | 北科無人機社</title>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/marked@latest/marked.min.js"></script>
         <script>
             // Pre-define panel navigation so onclick handlers never get ReferenceError
             // even if the bottom <script> hasn't parsed yet.
@@ -1269,6 +1270,148 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 border-color: var(--color-cyan);
                 background: rgba(0, 240, 255, 0.02);
             }
+
+            /* --- Rich Markdown Visual Editor Toolbar & Preview --- */
+            .md-editor-container {
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                border-radius: 10px;
+                overflow: hidden;
+                background: #0f172a;
+                margin-top: 8px;
+            }
+            .md-toolbar {
+                display: flex;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 4px;
+                padding: 8px 12px;
+                background: #1e293b;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+            }
+            .md-toolbar-group {
+                display: flex;
+                align-items: center;
+                gap: 3px;
+            }
+            .tb-divider {
+                width: 1px;
+                height: 20px;
+                background: rgba(255,255,255,0.15);
+                margin: 0 6px;
+            }
+            .tb-btn {
+                background: transparent;
+                border: 1px solid transparent;
+                color: #cbd5e1;
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 0.85rem;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+                transition: all 0.15s ease;
+                font-family: inherit;
+            }
+            .tb-btn:hover {
+                background: rgba(255, 255, 255, 0.12);
+                color: #ffffff;
+                border-color: rgba(255, 255, 255, 0.2);
+            }
+            .tb-btn i {
+                width: 15px;
+                height: 15px;
+            }
+            .tb-preview-btn.active {
+                background: #3b82f6 !important;
+                color: #ffffff !important;
+                font-weight: 700;
+            }
+            .editor-split-wrapper {
+                display: flex;
+                min-height: 380px;
+            }
+            .editor-textarea {
+                flex: 1;
+                border: none !important;
+                border-radius: 0 !important;
+                background: #0b0f19 !important;
+                padding: 16px !important;
+                resize: vertical;
+                font-family: 'Outfit', monospace;
+                font-size: 0.95rem;
+                line-height: 1.6;
+                color: #f8fafc;
+                min-height: 380px;
+            }
+            .editor-preview-pane {
+                flex: 1;
+                border-left: 1px solid rgba(255, 255, 255, 0.12);
+                background: #0f172a;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+            .preview-header {
+                background: rgba(255,255,255,0.04);
+                padding: 8px 16px;
+                font-size: 0.78rem;
+                font-weight: 700;
+                color: #3b82f6;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .preview-body {
+                padding: 20px;
+                overflow-y: auto;
+                flex-grow: 1;
+                max-height: 450px;
+                color: #e2e8f0;
+                line-height: 1.7;
+                font-size: 0.95rem;
+            }
+            .preview-body h1, .preview-body h2, .preview-body h3 {
+                color: #ffffff;
+                margin-top: 16px;
+                margin-bottom: 10px;
+                font-weight: 800;
+            }
+            .preview-body h1 { font-size: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px; }
+            .preview-body h2 { font-size: 1.25rem; }
+            .preview-body h3 { font-size: 1.1rem; }
+            .preview-body p { margin-bottom: 12px; }
+            .preview-body img { max-width: 100%; border-radius: 8px; margin: 12px 0; border: 1px solid rgba(255,255,255,0.1); }
+            .preview-body blockquote {
+                border-left: 4px solid #3b82f6;
+                padding-left: 14px;
+                color: #94a3b8;
+                margin: 12px 0;
+                font-style: italic;
+                background: rgba(59,130,246,0.05);
+                padding-top: 6px; padding-bottom: 6px;
+            }
+            .preview-body code {
+                background: rgba(255,255,255,0.1);
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-family: monospace;
+                color: #38bdf8;
+            }
+            .preview-body pre {
+                background: #020617;
+                padding: 14px;
+                border-radius: 8px;
+                overflow-x: auto;
+                margin: 12px 0;
+                border: 1px solid rgba(255,255,255,0.1);
+            }
+            .preview-body pre code { background: none; padding: 0; }
+            .preview-body ul, .preview-body ol { margin-left: 24px; margin-bottom: 12px; }
+            .preview-body table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+            .preview-body th, .preview-body td { border: 1px solid rgba(255,255,255,0.15); padding: 8px 12px; }
+            .preview-body th { background: rgba(255,255,255,0.06); text-align: left; }
         </style>
     </head>
     <body>
@@ -1357,8 +1500,50 @@ export function renderAdminDashboard(posts = [], pages = []) {
                             <input type="text" id="post-summary" class="form-control" placeholder="簡短說明文章內容，顯示於列表...">
                         </div>
                         <div class="form-group">
-                            <label for="post-content">文章內容 (支援 Markdown 語法)</label>
-                            <textarea id="post-content" class="form-control" rows="15" placeholder="開始用 Markdown 寫作你的大作..." style="font-family: monospace; line-height: 1.5;" required></textarea>
+                            <label for="post-content">文章內容 (提供可視化編輯工具列與即時預覽)</label>
+                            
+                            <div class="md-editor-container" id="container-post-content">
+                                <div class="md-toolbar">
+                                    <div class="md-toolbar-group">
+                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '**', '**', '粗體文字')" title="粗體 (Bold)"><i data-lucide="bold"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '*', '*', '斜體文字')" title="斜體 (Italic)"><i data-lucide="italic"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '<u>', '</u>', '底線文字')" title="底線 (Underline)"><i data-lucide="underline"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '~~', '~~', '刪除線')" title="刪除線 (Strikethrough)"><i data-lucide="strikethrough"></i></button>
+                                    </div>
+                                    <div class="tb-divider"></div>
+                                    <div class="md-toolbar-group">
+                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '# ', '', '大標題 H1')" title="一級標題 (H1)"><span style="font-weight:800; font-size:0.8rem;">H1</span></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '## ', '', '二級標題 H2')" title="二級標題 (H2)"><span style="font-weight:800; font-size:0.8rem;">H2</span></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '### ', '', '三級標題 H3')" title="三級標題 (H3)"><span style="font-weight:800; font-size:0.8rem;">H3</span></button>
+                                    </div>
+                                    <div class="tb-divider"></div>
+                                    <div class="md-toolbar-group">
+                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '> ', '', '引用文案段落')" title="引用段落 (Quote)"><i data-lucide="quote"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '- ', '', '無序清單項目')" title="無序清單 (Bullet List)"><i data-lucide="list"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '1. ', '', '第一項清單')" title="有序清單 (Numbered List)"><i data-lucide="list-ordered"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '- [ ] ', '', '待辦事項')" title="待辦項目 (Task List)"><i data-lucide="check-square"></i></button>
+                                    </div>
+                                    <div class="tb-divider"></div>
+                                    <div class="md-toolbar-group">
+                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '`', '`', '程式碼')" title="行內程式碼 (Code)"><i data-lucide="code"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '\n```javascript\n', '\n```\n', '// 在此寫入程式碼')" title="程式碼區塊 (Code Block)"><i data-lucide="terminal"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertLinkMD('post-content')" title="插入超連結 (Link)"><i data-lucide="link"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertImageMD('post-content')" title="插入圖片 (Image)"><i data-lucide="image"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertTableMD('post-content')" title="插入表格 (Table)"><i data-lucide="table"></i></button>
+                                    </div>
+                                    <div class="tb-divider"></div>
+                                    <div class="md-toolbar-group" style="margin-left: auto;">
+                                        <button type="button" class="tb-btn tb-preview-btn active" onclick="togglePreview('post-content')" title="切換 即時渲染預覽 (Live Preview)"><i data-lucide="eye"></i> <span>即時預覽</span></button>
+                                    </div>
+                                </div>
+                                <div class="editor-split-wrapper">
+                                    <textarea id="post-content" class="form-control editor-textarea" rows="16" placeholder="點選上方工具列即可自動套用格式，右側即時呈現排版效果..." oninput="updateLivePreview('post-content')" required></textarea>
+                                    <div id="preview-post-content" class="editor-preview-pane">
+                                        <div class="preview-header">即時渲染預覽 (Live Preview)</div>
+                                        <div class="preview-body" id="preview-body-post-content"></div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div style="display: flex; gap: 12px; justify-content: flex-end;">
                             <button type="button" class="btn btn-secondary" onclick="closePostForm()">取消</button>
@@ -1427,8 +1612,50 @@ export function renderAdminDashboard(posts = [], pages = []) {
                             <input type="text" id="page-slug" class="form-control" placeholder="例如: join-us" required>
                         </div>
                         <div class="form-group">
-                            <label for="page-content">頁面內容 (支援 Markdown/HTML 語法)</label>
-                            <textarea id="page-content" class="form-control" rows="18" placeholder="使用 Markdown 或是純 HTML 語法撰寫整頁內容..." style="font-family: monospace;" required></textarea>
+                            <label for="page-content">頁面內容 (提供可視化編輯工具列與即時預覽)</label>
+                            
+                            <div class="md-editor-container" id="container-page-content">
+                                <div class="md-toolbar">
+                                    <div class="md-toolbar-group">
+                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '**', '**', '粗體文字')" title="粗體 (Bold)"><i data-lucide="bold"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '*', '*', '斜體文字')" title="斜體 (Italic)"><i data-lucide="italic"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '<u>', '</u>', '底線文字')" title="底線 (Underline)"><i data-lucide="underline"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '~~', '~~', '刪除線')" title="刪除線 (Strikethrough)"><i data-lucide="strikethrough"></i></button>
+                                    </div>
+                                    <div class="tb-divider"></div>
+                                    <div class="md-toolbar-group">
+                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '# ', '', '大標題 H1')" title="一級標題 (H1)"><span style="font-weight:800; font-size:0.8rem;">H1</span></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '## ', '', '二級標題 H2')" title="二級標題 (H2)"><span style="font-weight:800; font-size:0.8rem;">H2</span></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '### ', '', '三級標題 H3')" title="三級標題 (H3)"><span style="font-weight:800; font-size:0.8rem;">H3</span></button>
+                                    </div>
+                                    <div class="tb-divider"></div>
+                                    <div class="md-toolbar-group">
+                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '> ', '', '引用文案段落')" title="引用段落 (Quote)"><i data-lucide="quote"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '- ', '', '無序清單項目')" title="無序清單 (Bullet List)"><i data-lucide="list"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '1. ', '', '第一項清單')" title="有序清單 (Numbered List)"><i data-lucide="list-ordered"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '- [ ] ', '', '待辦事項')" title="待辦項目 (Task List)"><i data-lucide="check-square"></i></button>
+                                    </div>
+                                    <div class="tb-divider"></div>
+                                    <div class="md-toolbar-group">
+                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '`', '`', '程式碼')" title="行內程式碼 (Code)"><i data-lucide="code"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '\n```javascript\n', '\n```\n', '// 在此寫入程式碼')" title="程式碼區塊 (Code Block)"><i data-lucide="terminal"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertLinkMD('page-content')" title="插入超連結 (Link)"><i data-lucide="link"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertImageMD('page-content')" title="插入圖片 (Image)"><i data-lucide="image"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertTableMD('page-content')" title="插入表格 (Table)"><i data-lucide="table"></i></button>
+                                    </div>
+                                    <div class="tb-divider"></div>
+                                    <div class="md-toolbar-group" style="margin-left: auto;">
+                                        <button type="button" class="tb-btn tb-preview-btn active" onclick="togglePreview('page-content')" title="切換 即時渲染預覽 (Live Preview)"><i data-lucide="eye"></i> <span>即時預覽</span></button>
+                                    </div>
+                                </div>
+                                <div class="editor-split-wrapper">
+                                    <textarea id="page-content" class="form-control editor-textarea" rows="18" placeholder="點選上方工具列即可自動套用格式，右側即時呈現排版效果..." oninput="updateLivePreview('page-content')" required></textarea>
+                                    <div id="preview-page-content" class="editor-preview-pane">
+                                        <div class="preview-header">即時渲染預覽 (Live Preview)</div>
+                                        <div class="preview-body" id="preview-body-page-content"></div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div style="display: flex; gap: 12px; justify-content: flex-end;">
                             <button type="button" class="btn btn-secondary" onclick="closePageForm()">取消</button>
@@ -1759,6 +1986,90 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 }, 3000);
             }
 
+            // ── Rich Markdown Visual Editor & Preview Helpers ───────────────
+            function simpleMarkdownParse(src) {
+                if (typeof marked !== 'undefined' && marked.parse) {
+                    return marked.parse(src);
+                }
+                var html = src
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+                    .replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>')
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/~~(.*?)~~/g, '<del>$1</del>')
+                    .replace(/`([^`]+)`/g, '<code>$1</code>')
+                    .replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1">')
+                    .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>')
+                    .replace(/\n/g, '<br>');
+                return html;
+            }
+
+            function insertMD(targetId, prefix, suffix, defaultText) {
+                var textarea = document.getElementById(targetId);
+                if (!textarea) return;
+                textarea.focus();
+
+                var start = textarea.selectionStart;
+                var end = textarea.selectionEnd;
+                var selected = textarea.value.substring(start, end);
+                var textToWrap = selected || defaultText;
+
+                var replacement = prefix + textToWrap + suffix;
+                textarea.value = textarea.value.substring(0, start) + replacement + textarea.value.substring(end);
+                
+                var newStart = start + prefix.length;
+                var newEnd = newStart + textToWrap.length;
+                textarea.setSelectionRange(newStart, newEnd);
+                
+                updateLivePreview(targetId);
+            }
+
+            function insertLinkMD(targetId) {
+                var url = prompt('請輸入超連結網址 (例如 https://example.com):', 'https://');
+                if (!url) return;
+                var text = prompt('請輸入顯示的連結文字:', '點此造訪網址');
+                insertMD(targetId, '[' + (text || '連結文字') + '](' + url + ')', '', '');
+            }
+
+            function insertImageMD(targetId) {
+                var url = prompt('請輸入圖片網址 (可用後台「媒體庫」複製的網址):', '/assets/uploads/');
+                if (!url) return;
+                var alt = prompt('請輸入圖片說明文字 (Alt text):', '圖片說明');
+                insertMD(targetId, '![' + (alt || '圖片說明') + '](' + url + ')', '', '');
+            }
+
+            function insertTableMD(targetId) {
+                var tableTemplate = '\n| 欄位標題 1 | 欄位標題 2 | 欄位標題 3 |\n| --- | --- | --- |\n| 內容資料 A | 內容資料 B | 內容資料 C |\n| 內容資料 D | 內容資料 E | 內容資料 F |\n';
+                insertMD(targetId, tableTemplate, '', '');
+            }
+
+            function togglePreview(targetId) {
+                var pane = document.getElementById('preview-' + targetId);
+                var container = document.getElementById('container-' + targetId);
+                var btn = container ? container.querySelector('.tb-preview-btn') : null;
+
+                if (!pane) return;
+                if (pane.style.display === 'none' || !pane.style.display) {
+                    pane.style.display = 'flex';
+                    if (btn) btn.classList.add('active');
+                    updateLivePreview(targetId);
+                } else {
+                    pane.style.display = 'none';
+                    if (btn) btn.classList.remove('active');
+                }
+            }
+
+            function updateLivePreview(targetId) {
+                var textarea = document.getElementById(targetId);
+                var body = document.getElementById('preview-body-' + targetId);
+                if (!textarea || !body) return;
+                body.innerHTML = simpleMarkdownParse(textarea.value || '*(尚未輸入任何內容)*');
+                if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
+            }
+
             function openPostForm() {
                 var listView = document.getElementById('posts-list-view');
                 var formView = document.getElementById('posts-form-view');
@@ -1772,6 +2083,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 if (origSlug) origSlug.value = '';
                 var slug = document.getElementById('post-slug');
                 if (slug) slug.disabled = false;
+                updateLivePreview('post-content');
             }
 
             function closePostForm() {
@@ -1827,6 +2139,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     document.getElementById('post-summary').value = post.summary || '';
                     document.getElementById('post-content').value = post.content;
                     document.getElementById('post-original-slug').value = post.slug;
+                    updateLivePreview('post-content');
                 } catch (err) {
                     showToast('無法取得文章內容', true);
                 }
@@ -1860,6 +2173,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 if (origSlug) origSlug.value = '';
                 var slug = document.getElementById('page-slug');
                 if (slug) slug.disabled = false;
+                updateLivePreview('page-content');
             }
 
             function closePageForm() {
@@ -1913,6 +2227,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     document.getElementById('page-slug').disabled = true;
                     document.getElementById('page-content').value = page.content;
                     document.getElementById('page-original-slug').value = page.slug;
+                    updateLivePreview('page-content');
                 } catch (err) {
                     showToast('無法取得頁面內容', true);
                 }
