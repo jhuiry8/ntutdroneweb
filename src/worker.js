@@ -110,7 +110,26 @@ export default {
             // ==================== ROUTE: Blog Post Detail ====================
             if (path.startsWith('/blog/') && method === 'GET') {
                 const slug = path.substring(6);
-                const postJson = await env.DRONE_DB.get(`post:${slug}`);
+                let postJson = await env.DRONE_DB.get(`post:${slug}`);
+                if (!postJson) {
+                    const postsListJson = await env.DRONE_DB.get('posts_list');
+                    if (postsListJson) {
+                        try {
+                            const postsList = JSON.parse(postsListJson);
+                            const found = postsList.find(p => p.slug === slug);
+                            if (found) {
+                                postJson = JSON.stringify({
+                                    title: found.title || '',
+                                    lang: found.lang || 'zh',
+                                    slug: found.slug || slug,
+                                    summary: found.summary || '',
+                                    content: found.content || found.summary || '',
+                                    date: found.date || new Date().toISOString()
+                                });
+                            }
+                        } catch (e) {}
+                    }
+                }
                 if (!postJson) {
                     return new Response('文章未找到 Article Not Found', { status: 404 });
                 }

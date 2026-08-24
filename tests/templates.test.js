@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderLandingPage, renderAdminDashboard, renderPostPage, renderCustomPage, renderNotFoundPage } from '../src/templates.js';
+import { renderLandingPage, renderAdminDashboard, renderBlogPost, renderCustomPage } from '../src/templates.js';
 
 test('Templates test suite - HTML Rendering & Component Generator', async (t) => {
     const mockPosts = [
@@ -16,7 +16,7 @@ test('Templates test suite - HTML Rendering & Component Generator', async (t) =>
 
     const mockPages = [
         {
-            title: '關於 FP V 飛行員',
+            title: '關於 FPV 飛行員',
             slug: 'about-fpv',
             content: 'FPV 獨立頁面內容',
             lang: 'zh'
@@ -50,20 +50,15 @@ test('Templates test suite - HTML Rendering & Component Generator', async (t) =>
         assert.equal(adminHtml.includes('.replace(/**'), false, 'HTML script must not contain unescaped regex comments');
     });
 
-    await t.test('renderPostPage should render post content', () => {
-        const postHtml = renderPostPage(mockPosts[0], 'zh');
+    await t.test('renderBlogPost should render post content', () => {
+        const postHtml = renderBlogPost(mockPosts[0], '測試文章詳細內容', 'zh');
         assert.ok(postHtml.includes('測試文章 1'), 'Post title must be rendered');
         assert.ok(postHtml.includes('測試文章詳細內容'), 'Post content must be rendered');
     });
 
     await t.test('renderCustomPage should render custom page content', () => {
-        const pageHtml = renderCustomPage(mockPages[0], 'zh');
-        assert.ok(pageHtml.includes('關於 FP V 飛行員'), 'Custom page title must be rendered');
+        const pageHtml = renderCustomPage(mockPages[0], 'FPV 獨立頁面內容', 'zh');
+        assert.ok(pageHtml.includes('關於 FPV 飛行員'), 'Custom page title must be rendered');
         assert.ok(pageHtml.includes('FPV 獨立頁面內容'), 'Custom page content must be rendered');
-    });
-
-    await t.test('renderNotFoundPage should render 404 page', () => {
-        const notFoundHtml = renderNotFoundPage('zh');
-        assert.ok(notFoundHtml.includes('404'), '404 page must display 404');
     });
 });

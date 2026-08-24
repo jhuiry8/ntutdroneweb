@@ -42,7 +42,7 @@ test('Worker test suite - Cloudflare Worker Routes & CMS APIs', async (t) => {
         assert.ok(text.includes('北科無人機社'));
     });
 
-    await t.test('GET /blog/ntut1 should return 200 OK post page HTML', async () => {
+    await t.test('GET /blog/ntut1 should return 200 OK post page HTML with list fallback', async () => {
         const req = new Request('http://localhost/blog/ntut1', { method: 'GET' });
         const res = await worker.fetch(req, mockEnv);
         assert.equal(res.status, 200);
@@ -59,7 +59,7 @@ test('Worker test suite - Cloudflare Worker Routes & CMS APIs', async (t) => {
     await t.test('GET /api/posts/ntut1 authenticated with KV fallback should return 200 OK post JSON', async () => {
         const req = new Request('http://localhost/api/posts/ntut1', {
             method: 'GET',
-            headers: { 'Cookie': 'drone_admin_token=valid-token' }
+            headers: { 'Cookie': 'session=valid-token' }
         });
         const res = await worker.fetch(req, mockEnv);
         assert.equal(res.status, 200);
@@ -82,7 +82,7 @@ test('Worker test suite - Cloudflare Worker Routes & CMS APIs', async (t) => {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Cookie': 'drone_admin_token=valid-token'
+                'Cookie': 'session=valid-token'
             },
             body: JSON.stringify(newPost)
         });
@@ -101,7 +101,7 @@ test('Worker test suite - Cloudflare Worker Routes & CMS APIs', async (t) => {
     await t.test('DELETE /api/posts/new-post-test should delete post', async () => {
         const req = new Request('http://localhost/api/posts/new-post-test', {
             method: 'DELETE',
-            headers: { 'Cookie': 'drone_admin_token=valid-token' }
+            headers: { 'Cookie': 'session=valid-token' }
         });
 
         const res = await worker.fetch(req, mockEnv);
