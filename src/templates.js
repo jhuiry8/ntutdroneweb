@@ -1525,8 +1525,8 @@ export function renderAdminDashboard(posts = [], pages = []) {
                                     </div>
                                     <div class="tb-divider"></div>
                                     <div class="md-toolbar-group">
-                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '`', '`', '程式碼')" title="行內程式碼 (Code)"><i data-lucide="code"></i></button>
-                                        <button type="button" class="tb-btn" onclick="insertMD('post-content', '\n```javascript\n', '\n```\n', '// 在此寫入程式碼')" title="程式碼區塊 (Code Block)"><i data-lucide="terminal"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertCodeInlineMD('post-content')" title="行內程式碼 (Code)"><i data-lucide="code"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertCodeBlockMD('post-content')" title="程式碼區塊 (Code Block)"><i data-lucide="terminal"></i></button>
                                         <button type="button" class="tb-btn" onclick="insertLinkMD('post-content')" title="插入超連結 (Link)"><i data-lucide="link"></i></button>
                                         <button type="button" class="tb-btn" onclick="insertImageMD('post-content')" title="插入圖片 (Image)"><i data-lucide="image"></i></button>
                                         <button type="button" class="tb-btn" onclick="insertTableMD('post-content')" title="插入表格 (Table)"><i data-lucide="table"></i></button>
@@ -1637,8 +1637,8 @@ export function renderAdminDashboard(posts = [], pages = []) {
                                     </div>
                                     <div class="tb-divider"></div>
                                     <div class="md-toolbar-group">
-                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '`', '`', '程式碼')" title="行內程式碼 (Code)"><i data-lucide="code"></i></button>
-                                        <button type="button" class="tb-btn" onclick="insertMD('page-content', '\n```javascript\n', '\n```\n', '// 在此寫入程式碼')" title="程式碼區塊 (Code Block)"><i data-lucide="terminal"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertCodeInlineMD('page-content')" title="行內程式碼 (Code)"><i data-lucide="code"></i></button>
+                                        <button type="button" class="tb-btn" onclick="insertCodeBlockMD('page-content')" title="程式碼區塊 (Code Block)"><i data-lucide="terminal"></i></button>
                                         <button type="button" class="tb-btn" onclick="insertLinkMD('page-content')" title="插入超連結 (Link)"><i data-lucide="link"></i></button>
                                         <button type="button" class="tb-btn" onclick="insertImageMD('page-content')" title="插入圖片 (Image)"><i data-lucide="image"></i></button>
                                         <button type="button" class="tb-btn" onclick="insertTableMD('page-content')" title="插入表格 (Table)"><i data-lucide="table"></i></button>
@@ -1991,6 +1991,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 if (typeof marked !== 'undefined' && marked.parse) {
                     return marked.parse(src);
                 }
+                var tickRegex = new RegExp('\\x60([^\\x60]+)\\x60', 'g');
                 var html = src
                     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                     .replace(/^### (.*$)/gim, '<h3>$1</h3>')
@@ -2000,11 +2001,21 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                     .replace(/\*(.*?)\*/g, '<em>$1</em>')
                     .replace(/~~(.*?)~~/g, '<del>$1</del>')
-                    .replace(/`([^`]+)`/g, '<code>$1</code>')
+                    .replace(tickRegex, '<code>$1</code>')
                     .replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1">')
                     .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>')
                     .replace(/\n/g, '<br>');
                 return html;
+            }
+
+            function insertCodeInlineMD(targetId) {
+                var tick = String.fromCharCode(96);
+                insertMD(targetId, tick, tick, '程式碼');
+            }
+
+            function insertCodeBlockMD(targetId) {
+                var ticks = String.fromCharCode(96) + String.fromCharCode(96) + String.fromCharCode(96);
+                insertMD(targetId, '\n' + ticks + 'javascript\n', '\n' + ticks + '\n', '// 在此寫入程式碼');
             }
 
             function insertMD(targetId, prefix, suffix, defaultText) {
