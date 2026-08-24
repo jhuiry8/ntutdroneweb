@@ -2032,26 +2032,33 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 if (typeof marked !== 'undefined' && marked.parse) {
                     return marked.parse(src);
                 }
+                var h3Regex = new RegExp('^### (.*$)', 'gim');
+                var h2Regex = new RegExp('^## (.*$)', 'gim');
+                var h1Regex = new RegExp('^# (.*$)', 'gim');
+                var quoteRegex = new RegExp('^> (.*$)', 'gim');
                 var boldRegex = new RegExp('\\\\*\\\\*(.*?)\\\\*\\\\*', 'g');
                 var italicRegex = new RegExp('\\\\*(.*?)\\\\*', 'g');
                 var strikeRegex = new RegExp('~~(.*?)~~', 'g');
                 var codeRegex = new RegExp('\\\\x60([^\\\\x60]+)\\\\x60', 'g');
                 var imgRegex = new RegExp('!\\\\[(.*?)\\\\]\\\\((.*?)\\\\)', 'g');
                 var linkRegex = new RegExp('\\\\[(.*?)\\\\]\\\\((.*?)\\\\)', 'g');
+                var nlRegex = new RegExp('\\\\n', 'g');
 
                 var html = src
-                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-                    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-                    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-                    .replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>')
+                    .replace(new RegExp('&', 'g'), '&amp;')
+                    .replace(new RegExp('<', 'g'), '&lt;')
+                    .replace(new RegExp('>', 'g'), '&gt;')
+                    .replace(h3Regex, '<h3>$1</h3>')
+                    .replace(h2Regex, '<h2>$1</h2>')
+                    .replace(h1Regex, '<h1>$1</h1>')
+                    .replace(quoteRegex, '<blockquote>$1</blockquote>')
                     .replace(boldRegex, '<strong>$1</strong>')
                     .replace(italicRegex, '<em>$1</em>')
                     .replace(strikeRegex, '<del>$1</del>')
                     .replace(codeRegex, '<code>$1</code>')
                     .replace(imgRegex, '<img src="$2" alt="$1">')
                     .replace(linkRegex, '<a href="$2" target="_blank">$1</a>')
-                    .replace(/\n/g, '<br>');
+                    .replace(nlRegex, '<br>');
                 return html;
             }
 
@@ -2159,7 +2166,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 const summary = document.getElementById('post-summary').value;
                 const content = document.getElementById('post-content').value;
 
-                if (!slug || !/^[a-zA-Z0-9_-]+$/.test(slug)) {
+                if (!slug || !(new RegExp('^[a-zA-Z0-9_-]+$').test(slug))) {
                     showToast('網址代稱只能包含英文、數字與底線或橫槓！', true);
                     return;
                 }
@@ -2250,7 +2257,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 const slug = slugInput || originalSlug;
                 const content = document.getElementById('page-content').value;
 
-                if (!slug || !/^[a-zA-Z0-9_-]+$/.test(slug)) {
+                if (!slug || !(new RegExp('^[a-zA-Z0-9_-]+$').test(slug))) {
                     showToast('網址路徑只能包含英文、數字與底線或橫槓！', true);
                     return;
                 }
