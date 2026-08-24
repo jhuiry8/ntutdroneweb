@@ -2028,24 +2028,29 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 }, 3000);
             }
 
-            // ── Rich Markdown Visual Editor & Preview Helpers ───────────────
             function simpleMarkdownParse(src) {
                 if (typeof marked !== 'undefined' && marked.parse) {
                     return marked.parse(src);
                 }
-                var tickRegex = new RegExp('\\x60([^\\x60]+)\\x60', 'g');
+                var boldRegex = new RegExp('\\\\*\\\\*(.*?)\\\\*\\\\*', 'g');
+                var italicRegex = new RegExp('\\\\*(.*?)\\\\*', 'g');
+                var strikeRegex = new RegExp('~~(.*?)~~', 'g');
+                var codeRegex = new RegExp('\\\\x60([^\\\\x60]+)\\\\x60', 'g');
+                var imgRegex = new RegExp('!\\\\[(.*?)\\\\]\\\\((.*?)\\\\)', 'g');
+                var linkRegex = new RegExp('\\\\[(.*?)\\\\]\\\\((.*?)\\\\)', 'g');
+
                 var html = src
                     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                     .replace(/^### (.*$)/gim, '<h3>$1</h3>')
                     .replace(/^## (.*$)/gim, '<h2>$1</h2>')
                     .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-                    .replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>')
-                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                    .replace(/~~(.*?)~~/g, '<del>$1</del>')
-                    .replace(tickRegex, '<code>$1</code>')
-                    .replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1">')
-                    .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>')
+                    .replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>')
+                    .replace(boldRegex, '<strong>$1</strong>')
+                    .replace(italicRegex, '<em>$1</em>')
+                    .replace(strikeRegex, '<del>$1</del>')
+                    .replace(codeRegex, '<code>$1</code>')
+                    .replace(imgRegex, '<img src="$2" alt="$1">')
+                    .replace(linkRegex, '<a href="$2" target="_blank">$1</a>')
                     .replace(/\n/g, '<br>');
                 return html;
             }
