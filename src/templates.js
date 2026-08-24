@@ -2069,7 +2069,8 @@ export function renderAdminDashboard(posts = [], pages = []) {
 
             function insertCodeBlockMD(targetId) {
                 var ticks = String.fromCharCode(96) + String.fromCharCode(96) + String.fromCharCode(96);
-                insertMD(targetId, '\n' + ticks + 'javascript\n', '\n' + ticks + '\n', '// 在此寫入程式碼');
+                var nl = String.fromCharCode(10);
+                insertMD(targetId, nl + ticks + 'javascript' + nl, nl + ticks + nl, '// 在此寫入程式碼');
             }
 
             function insertMD(targetId, prefix, suffix, defaultText) {
@@ -2107,7 +2108,8 @@ export function renderAdminDashboard(posts = [], pages = []) {
             }
 
             function insertTableMD(targetId) {
-                var tableTemplate = '\n| 欄位標題 1 | 欄位標題 2 | 欄位標題 3 |\n| --- | --- | --- |\n| 內容資料 A | 內容資料 B | 內容資料 C |\n| 內容資料 D | 內容資料 E | 內容資料 F |\n';
+                var nl = String.fromCharCode(10);
+                var tableTemplate = nl + '| 欄位標題 1 | 欄位標題 2 | 欄位標題 3 |' + nl + '| --- | --- | --- |' + nl + '| 內容資料 A | 內容資料 B | 內容資料 C |' + nl + '| 內容資料 D | 內容資料 E | 內容資料 F |' + nl;
                 insertMD(targetId, tableTemplate, '', '');
             }
 

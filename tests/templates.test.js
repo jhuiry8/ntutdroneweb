@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { renderLandingPage, renderAdminDashboard, renderBlogPost, renderCustomPage } from '../src/templates.js';
 
 test('Templates test suite - HTML Rendering & Component Generator', async (t) => {
@@ -23,6 +24,23 @@ test('Templates test suite - HTML Rendering & Component Generator', async (t) =>
         }
     ];
 
+    await t.test('All inline client <script> tags in generated HTML must parse cleanly in V8 JS VM', () => {
+        const adminHtml = renderAdminDashboard(mockPosts, mockPages, null);
+        const scriptRegex = /<script>([\s\S]*?)<\/script>/gi;
+        let match;
+        let scriptCount = 0;
+        
+        while ((match = scriptRegex.exec(adminHtml)) !== null) {
+            const scriptCode = match[1];
+            if (!scriptCode.trim()) continue;
+            scriptCount++;
+            assert.doesNotThrow(() => {
+                new vm.Script(scriptCode);
+            }, `Inline script failed V8 syntax check: ${scriptCode.slice(0, 150)}...`);
+        }
+        assert.ok(scriptCount >= 2, 'Admin dashboard should contain at least 2 script blocks');
+    });
+
     await t.test('renderLandingPage should render complete homepage HTML with SEO tags', () => {
         const html = renderLandingPage(mockPosts, 'zh', {});
         assert.ok(html.includes('<!DOCTYPE html>'), 'HTML doc type must exist');
@@ -45,9 +63,6 @@ test('Templates test suite - HTML Rendering & Component Generator', async (t) =>
         assert.ok(adminHtml.includes('insertCodeInlineMD'), 'Rich editor helper function should be present');
         assert.ok(adminHtml.includes('editPost'), 'editPost function must exist in admin template');
         assert.ok(adminHtml.includes('deletePost'), 'deletePost function must exist in admin template');
-        
-        // Assert no raw unescaped regex comments (/**) that crash JS script block
-        assert.equal(adminHtml.includes('.replace(/**'), false, 'HTML script must not contain unescaped regex comments');
     });
 
     await t.test('renderBlogPost should render post content', () => {
