@@ -983,8 +983,23 @@ export function renderAdminDashboard(posts = [], pages = []) {
         <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/marked@latest/marked.min.js"></script>
         <script>
-            // Pre-define panel navigation so onclick handlers never get ReferenceError
-            // even if the bottom <script> hasn't parsed yet.
+            function showToast(text, isError) {
+                var toast = document.getElementById('toast');
+                var toastText = document.getElementById('toast-text');
+                if (!toast || !toastText) return;
+                toastText.innerText = text;
+                if (isError) {
+                    toast.style.borderColor = '#ef4444';
+                    toast.innerHTML = '<i data-lucide="alert-circle" style="color:#ef4444; width:20px; height:20px;"></i> <span>' + text + '</span>';
+                } else {
+                    toast.style.borderColor = 'var(--color-cyan)';
+                    toast.innerHTML = '<i data-lucide="check-circle" style="color:var(--color-cyan); width:20px; height:20px;"></i> <span>' + text + '</span>';
+                }
+                if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
+                toast.classList.add('show');
+                setTimeout(function() { toast.classList.remove('show'); }, 3000);
+            }
+
             function showPanel(panelName) {
                 document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
                 document.querySelectorAll('.nav-item').forEach(function(btn) { btn.classList.remove('active'); });
@@ -998,9 +1013,11 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 if (typeof closePostForm === 'function') closePostForm();
                 if (typeof closePageForm === 'function') closePageForm();
             }
+
             function logout() {
                 fetch('/api/logout', { method: 'POST' }).then(function() { location.href = '/admin'; });
             }
+
             function openPostForm() {
                 var listView = document.getElementById('posts-list-view');
                 var formView = document.getElementById('posts-form-view');
@@ -1014,7 +1031,16 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 if (origSlug) origSlug.value = '';
                 var slug = document.getElementById('post-slug');
                 if (slug) slug.disabled = false;
+                if (typeof updateLivePreview === 'function') updateLivePreview('post-content');
             }
+
+            function closePostForm() {
+                var listView = document.getElementById('posts-list-view');
+                var formView = document.getElementById('posts-form-view');
+                if (listView) listView.style.display = 'block';
+                if (formView) formView.style.display = 'none';
+            }
+
             function openPageForm() {
                 var listView = document.getElementById('pages-list-view');
                 var formView = document.getElementById('pages-form-view');
@@ -1028,6 +1054,14 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 if (origSlug) origSlug.value = '';
                 var slug = document.getElementById('page-slug');
                 if (slug) slug.disabled = false;
+                if (typeof updateLivePreview === 'function') updateLivePreview('page-content');
+            }
+
+            function closePageForm() {
+                var listView = document.getElementById('pages-list-view');
+                var formView = document.getElementById('pages-form-view');
+                if (listView) listView.style.display = 'block';
+                if (formView) formView.style.display = 'none';
             }
         </script>
         <style>
@@ -1469,9 +1503,9 @@ export function renderAdminDashboard(posts = [], pages = []) {
                                         <td><strong>${post.title}</strong></td>
                                         <td><span style="background:rgba(255,255,255,0.06); padding:4px 8px; border-radius:6px; font-size:0.8rem; font-weight:600; color:var(--color-cyan);">${post.lang === 'en' ? 'English' : '中文'}</span></td>
                                         <td><code>/blog/${post.slug}</code></td>
-                                        <td style="text-align: right;">
-                                            <button class="btn btn-secondary" onclick="editPost('${post.slug}')" style="padding: 6px 12px; font-size: 0.8rem;"><i data-lucide="edit-3" style="width: 12px; height: 12px;"></i></button>
-                                            <button class="btn btn-danger" onclick="deletePost('${post.slug}')" style="padding: 6px 12px; font-size: 0.8rem;"><i data-lucide="trash-2" style="width: 12px; height: 12px;"></i></button>
+                                        <td style="text-align: right; white-space: nowrap;">
+                                            <button type="button" class="btn btn-secondary" onclick="editPost('${post.slug}')" style="padding: 6px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><i data-lucide="edit-3" style="width: 14px; height: 14px; pointer-events: none;"></i> <span>編輯</span></button>
+                                            <button type="button" class="btn btn-danger" onclick="deletePost('${post.slug}')" style="padding: 6px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><i data-lucide="trash-2" style="width: 14px; height: 14px; pointer-events: none;"></i> <span>刪除</span></button>
                                         </td>
                                     </tr>
                                 `).join('')}
@@ -1585,9 +1619,9 @@ export function renderAdminDashboard(posts = [], pages = []) {
                                         <td><strong>${page.title}</strong></td>
                                         <td><span style="background:rgba(255,255,255,0.06); padding:4px 8px; border-radius:6px; font-size:0.8rem; font-weight:600; color:var(--color-cyan);">${page.lang === 'en' ? 'English' : '中文'}</span></td>
                                         <td><code>/page/${page.slug}</code></td>
-                                        <td style="text-align: right;">
-                                            <button class="btn btn-secondary" onclick="editPage('${page.slug}')" style="padding: 6px 12px; font-size: 0.8rem;"><i data-lucide="edit-3" style="width: 12px; height: 12px;"></i></button>
-                                            <button class="btn btn-danger" onclick="deletePage('${page.slug}')" style="padding: 6px 12px; font-size: 0.8rem;"><i data-lucide="trash-2" style="width: 12px; height: 12px;"></i></button>
+                                        <td style="text-align: right; white-space: nowrap;">
+                                            <button type="button" class="btn btn-secondary" onclick="editPage('${page.slug}')" style="padding: 6px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><i data-lucide="edit-3" style="width: 14px; height: 14px; pointer-events: none;"></i> <span>編輯</span></button>
+                                            <button type="button" class="btn btn-danger" onclick="deletePage('${page.slug}')" style="padding: 6px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><i data-lucide="trash-2" style="width: 14px; height: 14px; pointer-events: none;"></i> <span>刪除</span></button>
                                         </td>
                                     </tr>
                                 `).join('')}
