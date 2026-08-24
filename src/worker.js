@@ -223,7 +223,26 @@ export default {
 
                 if (method === 'GET') {
                     const slug = path.substring(11);
-                    const postJson = await env.DRONE_DB.get(`post:${slug}`);
+                    let postJson = await env.DRONE_DB.get(`post:${slug}`);
+                    if (!postJson) {
+                        const postsListJson = await env.DRONE_DB.get('posts_list');
+                        if (postsListJson) {
+                            try {
+                                const postsList = JSON.parse(postsListJson);
+                                const found = postsList.find(p => p.slug === slug);
+                                if (found) {
+                                    postJson = JSON.stringify({
+                                        title: found.title || '',
+                                        lang: found.lang || 'zh',
+                                        slug: found.slug || slug,
+                                        summary: found.summary || '',
+                                        content: found.content || found.summary || '',
+                                        date: found.date || new Date().toISOString()
+                                    });
+                                }
+                            } catch (e) {}
+                        }
+                    }
                     if (!postJson) return new Response(JSON.stringify({ error: '文章不存在' }), { status: 404 });
                     return new Response(postJson, { headers: { 'Content-Type': 'application/json' } });
                 }
@@ -299,7 +318,25 @@ export default {
 
                 if (method === 'GET') {
                     const slug = path.substring(11);
-                    const pageJson = await env.DRONE_DB.get(`page:${slug}`);
+                    let pageJson = await env.DRONE_DB.get(`page:${slug}`);
+                    if (!pageJson) {
+                        const pagesListJson = await env.DRONE_DB.get('pages_list');
+                        if (pagesListJson) {
+                            try {
+                                const pagesList = JSON.parse(pagesListJson);
+                                const found = pagesList.find(p => p.slug === slug);
+                                if (found) {
+                                    pageJson = JSON.stringify({
+                                        title: found.title || '',
+                                        lang: found.lang || 'zh',
+                                        slug: found.slug || slug,
+                                        content: found.content || '',
+                                        date: found.date || new Date().toISOString()
+                                    });
+                                }
+                            } catch (e) {}
+                        }
+                    }
                     if (!pageJson) return new Response(JSON.stringify({ error: '頁面不存在' }), { status: 404 });
                     return new Response(pageJson, { headers: { 'Content-Type': 'application/json' } });
                 }

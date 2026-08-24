@@ -1319,9 +1319,8 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 color: #ffffff;
                 border-color: rgba(255, 255, 255, 0.2);
             }
-            .tb-btn i {
-                width: 15px;
-                height: 15px;
+            .tb-btn i, .tb-btn svg, .tb-btn span {
+                pointer-events: none;
             }
             .tb-preview-btn.active {
                 background: #3b82f6 !important;
@@ -1331,6 +1330,15 @@ export function renderAdminDashboard(posts = [], pages = []) {
             .editor-split-wrapper {
                 display: flex;
                 min-height: 380px;
+            }
+            @media (max-width: 768px) {
+                .editor-split-wrapper {
+                    flex-direction: column;
+                }
+                .editor-preview-pane {
+                    border-left: none !important;
+                    border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+                }
             }
             .editor-textarea {
                 flex: 1;
@@ -2106,12 +2114,13 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 e.preventDefault();
                 const title = document.getElementById('post-title').value;
                 const lang = document.getElementById('post-lang').value;
-                const slug = document.getElementById('post-slug').value.trim();
+                const originalSlug = document.getElementById('post-original-slug').value;
+                const slugInput = document.getElementById('post-slug').value.trim();
+                const slug = slugInput || originalSlug;
                 const summary = document.getElementById('post-summary').value;
                 const content = document.getElementById('post-content').value;
-                const originalSlug = document.getElementById('post-original-slug').value;
 
-                if (!/^[a-zA-Z0-9_-]+$/.test(slug)) {
+                if (!slug || !/^[a-zA-Z0-9_-]+$/.test(slug)) {
                     showToast('網址代稱只能包含英文、數字與底線或橫槓！', true);
                     return;
                 }
@@ -2136,23 +2145,24 @@ export function renderAdminDashboard(posts = [], pages = []) {
             }
 
             async function editPost(slug) {
+                openPostForm();
+                document.getElementById('post-form-title').innerText = '編輯文章';
+                document.getElementById('post-slug').value = slug;
+                document.getElementById('post-slug').disabled = true;
+                document.getElementById('post-original-slug').value = slug;
+                
                 try {
                     const res = await fetch('/api/posts/' + slug);
                     if (!res.ok) throw new Error();
                     const post = await res.json();
                     
-                    openPostForm();
-                    document.getElementById('post-form-title').innerText = '編輯文章';
-                    document.getElementById('post-title').value = post.title;
+                    document.getElementById('post-title').value = post.title || '';
                     document.getElementById('post-lang').value = post.lang || 'zh';
-                    document.getElementById('post-slug').value = post.slug;
-                    document.getElementById('post-slug').disabled = true;
                     document.getElementById('post-summary').value = post.summary || '';
-                    document.getElementById('post-content').value = post.content;
-                    document.getElementById('post-original-slug').value = post.slug;
+                    document.getElementById('post-content').value = post.content || '';
                     updateLivePreview('post-content');
                 } catch (err) {
-                    showToast('無法取得文章內容', true);
+                    showToast('載入文章詳細內容時發生警告，請手動確認', true);
                 }
             }
 
@@ -2196,11 +2206,12 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 e.preventDefault();
                 const title = document.getElementById('page-title').value;
                 const lang = document.getElementById('page-lang').value;
-                const slug = document.getElementById('page-slug').value.trim();
-                const content = document.getElementById('page-content').value;
                 const originalSlug = document.getElementById('page-original-slug').value;
+                const slugInput = document.getElementById('page-slug').value.trim();
+                const slug = slugInput || originalSlug;
+                const content = document.getElementById('page-content').value;
 
-                if (!/^[a-zA-Z0-9_-]+$/.test(slug)) {
+                if (!slug || !/^[a-zA-Z0-9_-]+$/.test(slug)) {
                     showToast('網址路徑只能包含英文、數字與底線或橫槓！', true);
                     return;
                 }
@@ -2225,22 +2236,23 @@ export function renderAdminDashboard(posts = [], pages = []) {
             }
 
             async function editPage(slug) {
+                openPageForm();
+                document.getElementById('page-form-title').innerText = '編輯頁面';
+                document.getElementById('page-slug').value = slug;
+                document.getElementById('page-slug').disabled = true;
+                document.getElementById('page-original-slug').value = slug;
+                
                 try {
                     const res = await fetch('/api/pages/' + slug);
                     if (!res.ok) throw new Error();
                     const page = await res.json();
                     
-                    openPageForm();
-                    document.getElementById('page-form-title').innerText = '編輯頁面';
-                    document.getElementById('page-title').value = page.title;
+                    document.getElementById('page-title').value = page.title || '';
                     document.getElementById('page-lang').value = page.lang || 'zh';
-                    document.getElementById('page-slug').value = page.slug;
-                    document.getElementById('page-slug').disabled = true;
-                    document.getElementById('page-content').value = page.content;
-                    document.getElementById('page-original-slug').value = page.slug;
+                    document.getElementById('page-content').value = page.content || '';
                     updateLivePreview('page-content');
                 } catch (err) {
-                    showToast('無法取得頁面內容', true);
+                    showToast('載入頁面詳細內容時發生警告，請手動確認', true);
                 }
             }
 
