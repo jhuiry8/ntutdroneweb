@@ -83,6 +83,14 @@
 * 帳號密碼至少 8 位。修改或重設密碼會使舊 session 失效。登入密碼連續錯誤 5 次會暫停 15 分鐘（依帳號與來源 IP 計）。
 * 若要啟用登入驗證碼，請在 Cloudflare Turnstile 建立對應網站網域的 widget，將公開 site key 設為 Worker 變數 `TURNSTILE_SITE_KEY`，secret key 設為 Worker 加密變數 `TURNSTILE_SECRET_KEY`。兩者設定後，登入表單會顯示驗證碼，伺服器會透過 Siteverify 驗證每次登入。未設定時仍有登入失敗限制，但不會顯示驗證碼。
 
+#### 舊網站轉換步驟
+1. 舊網站只有共用管理密碼，沒有個別使用者資料，因此不會自動產生每位管理者的帳號。部署新版後，原管理者在 `/admin` 輸入帳號 `admin` 與原本的共用密碼；若啟用了 Turnstile，先完成驗證碼。
+2. 第一次登入會把舊 KV 的 `admin_password_hash` 轉成新的 `admin` 社長帳號，原文章、頁面與首頁設定仍沿用原 KV 資料，不需重新匯入。舊 session 在轉換後失效，其他人需重新登入。
+3. `admin` 到「系統設定」更換密碼，再到「帳號與權限」為每位社長、財務、幹部或社員建立個別帳號並提供初始密碼。每人登入後應更換自己的密碼。不要再共用 `admin` 帳號。
+4. 若舊 KV 尚未建立 `admin_password_hash`（例如舊站從未有人登入），需先設定 `ADMIN_INITIAL_PASSWORD`，用 `admin` 與該密碼首次登入，完成後移除該變數。
+
+網站前台與後台提供手機版版面與導覽，包含 iPhone Safari 的安全邊界與動態視窗高度處理。Apple 裝置可直接用 Safari 開啟網址；此網站目前不是可離線使用的原生 App。
+
 ### 2. 文章管理 (Blog Posts)
 * 在 **「文章管理」** 分頁點擊「新增文章」。
 * 輸入**文章標題**與**網址代稱 (Slug)**（例如 `welcome-to-drone-club`，將對應至 `/blog/welcome-to-drone-club`）。

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import { readFileSync } from 'node:fs';
 import { renderLandingPage, renderAdminDashboard, renderBlogPost, renderCustomPage } from '../src/templates.js';
 
 test('Templates test suite - HTML Rendering & Component Generator', async (t) => {
@@ -75,5 +76,13 @@ test('Templates test suite - HTML Rendering & Component Generator', async (t) =>
         const pageHtml = renderCustomPage(mockPages[0], 'FPV 獨立頁面內容', 'zh');
         assert.ok(pageHtml.includes('關於 FPV 飛行員'), 'Custom page title must be rendered');
         assert.ok(pageHtml.includes('FPV 獨立頁面內容'), 'Custom page content must be rendered');
+    });
+
+    await t.test('mobile navigation uses the same open state in script and stylesheet', () => {
+        const script = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
+        const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+        assert.match(script, /mobileDrawer\.classList\.add\('open'\)/);
+        assert.match(css, /\.mobile-drawer\.open\s*\{/);
+        assert.match(renderLandingPage(mockPosts, 'zh', {}), /aria-controls="mobile-drawer"/);
     });
 });

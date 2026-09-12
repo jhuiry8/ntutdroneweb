@@ -16,7 +16,7 @@ function getHeader(title, lang = 'zh') {
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
         <link rel="stylesheet" href="/style.css">
-        <script>(function(){var t=localStorage.getItem('ntut-theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();</script>
+        <script>(function(){var t='dark';try{t=localStorage.getItem('ntut-theme')||'dark'}catch(e){}document.documentElement.setAttribute('data-theme',t)})();</script>
     </head>
     <body>
         <header class="navbar scrolled">
@@ -195,7 +195,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
         <link rel="stylesheet" href="/style.css">
-        <script>(function(){var t=localStorage.getItem('ntut-theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();</script>
+        <script>(function(){var t='dark';try{t=localStorage.getItem('ntut-theme')||'dark'}catch(e){}document.documentElement.setAttribute('data-theme',t)})();</script>
         <script type="application/ld+json">
         {
           "@context": "https://schema.org",
@@ -249,17 +249,17 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                         <i data-lucide="message-square"></i><span class="fallback-text">LINE</span>
                     </a>
                     <a href="${lineLink}" target="_blank" class="cta-nav-btn" style="margin-left: 4px;">${t.navJoin}</a>
-                    <button class="mobile-menu-toggle" aria-label="Toggle menu">
+                    <button class="mobile-menu-toggle" type="button" aria-label="開啟選單" aria-controls="mobile-drawer" aria-expanded="false">
                         <i data-lucide="menu"></i>
                     </button>
                 </div>
             </div>
         </header>
 
-        <div class="mobile-drawer">
+        <div class="mobile-drawer" id="mobile-drawer">
             <div class="drawer-header">
                 <span class="drawer-logo"><img src="/assets/images/logo_ntut.jpg" alt="NTUT Drone Logo" style="height: 28px; width: 28px; object-fit: contain; border-radius: 4px; vertical-align: middle; margin-right: 6px;"> NTUT DRONE</span>
-                <button class="drawer-close"><i data-lucide="x"></i></button>
+                <button class="drawer-close" type="button" aria-label="關閉選單"><i data-lucide="x"></i></button>
             </div>
             <nav class="drawer-links">
                 <a href="#about" class="drawer-link">${t.navAbout}</a>
@@ -736,7 +736,7 @@ export function renderBlogList(posts = [], lang = 'zh') {
                     <h1 class="section-title">${t.blogAllTitle}</h1>
                     <p class="section-subtitle">${t.blogAllDesc}</p>
                 </div>
-                <div class="about-grid" style="grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 30px;">
+                <div class="about-grid blog-grid" style="grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 30px;">
                     ${postsListHtml}
                 </div>
             </div>
@@ -883,6 +883,7 @@ export function renderLogin(errorMessage = '', turnstileSiteKey = '') {
                 justify-content: center;
                 min-height: 100vh;
                 background: #f3f2f1;
+                padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
             }
             .login-container {
                 width: 100%;
@@ -893,6 +894,7 @@ export function renderLogin(errorMessage = '', turnstileSiteKey = '') {
                 border-radius: 4px;
                 box-shadow: 0 4px 20px rgba(0,0,0,0.08);
             }
+            @media (max-width: 480px) { .login-container { padding: 28px 20px; } }
             .form-group {
                 margin-bottom: 20px;
             }
@@ -929,6 +931,7 @@ export function renderLogin(errorMessage = '', turnstileSiteKey = '') {
                 </div>
                 <h2 style="font-size: 1.5rem; font-weight: 800; letter-spacing: 0.5px;">系統後台登入</h2>
                 <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">北科無人機社官方網站後台</p>
+                <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 8px;">舊管理者請以 admin 和原管理密碼登入，再由社長建立個別帳號。</p>
             </div>
             
             ${errorMessage ? `<div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; padding: 12px; border-radius: 12px; font-size: 0.875rem; margin-bottom: 20px; text-align: center;"><i data-lucide="alert-circle" style="width: 16px; height: 16px; display: inline; vertical-align: middle; margin-right: 6px;"></i> ${errorMessage}</div>` : ''}
@@ -942,7 +945,7 @@ export function renderLogin(errorMessage = '', turnstileSiteKey = '') {
                     <label for="password">密碼</label>
                     <input type="password" name="password" id="password" class="form-control" autocomplete="current-password" required>
                 </div>
-                ${turnstileSiteKey ? `<div class="cf-turnstile" data-sitekey="${turnstileSiteKey}"></div>` : ''}
+                ${turnstileSiteKey ? `<div class="cf-turnstile" data-sitekey="${turnstileSiteKey}" data-size="compact"></div>` : ''}
                 <button type="submit" class="btn btn-primary" style="width: 100%; border-radius: 12px; padding: 14px; margin-top: 10px;">安全登入</button>
             </form>
             <div class="text-center" style="margin-top: 24px;">
@@ -1018,8 +1021,19 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 });
                 if (typeof closePostForm === 'function') closePostForm();
                 if (typeof closePageForm === 'function') closePageForm();
-                document.body.classList.remove('menu-open');
+                closeAdminMenu();
             }
+
+            function toggleAdminMenu() {
+                const open = document.body.classList.toggle('menu-open');
+                document.querySelector('.mobile-admin-bar button').setAttribute('aria-expanded', String(open));
+            }
+            function closeAdminMenu() {
+                document.body.classList.remove('menu-open');
+                const button = document.querySelector('.mobile-admin-bar button');
+                if (button) button.setAttribute('aria-expanded', 'false');
+            }
+            document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAdminMenu(); });
 
             function logout() {
                 fetch('/api/logout', { method: 'POST' }).then(function() { location.href = '/admin'; });
@@ -1157,16 +1171,20 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             .mobile-admin-bar { display: none; }
             @media (max-width: 768px) {
                 body { display: block; }
-                .mobile-admin-bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--bg-darker); position: sticky; top: 0; z-index: 20; }
-                .mobile-admin-bar button { background: transparent; border: 1px solid var(--border-glass); color: white; border-radius: 8px; padding: 8px 12px; }
-                .sidebar { display: none; position: fixed; inset: 54px 0 0 0; width: min(300px, 85vw); z-index: 30; overflow-y: auto; box-shadow: 20px 0 40px rgba(0,0,0,.5); }
+                .mobile-admin-bar { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left)); background: var(--bg-darker); position: sticky; top: 0; z-index: 20; }
+                .mobile-admin-bar button { background: transparent; border: 1px solid var(--border-glass); color: white; border-radius: 8px; min-width: 44px; min-height: 44px; }
+                .sidebar { display: none; position: fixed; inset: 54px auto 0 0; width: min(300px, 85vw); z-index: 30; overflow-y: auto; padding-bottom: max(30px, env(safe-area-inset-bottom)); box-shadow: 20px 0 40px rgba(0,0,0,.5); }
                 body.menu-open .sidebar { display: flex; }
-                .main-content { padding: 16px; max-height: none; min-height: calc(100vh - 54px); }
+                .main-content { padding: 16px max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); max-height: none; min-height: calc(100vh - 54px); }
                 .panel { padding: 16px; }
                 .content-header { flex-wrap: wrap; gap: 12px; }
                 .table-container { overflow-x: auto; }
-                input, textarea, select { max-width: 100%; }
+                .responsive-form-grid { grid-template-columns: minmax(0, 1fr) !important; }
+                #uploaded-files-grid { grid-template-columns: minmax(0, 1fr) !important; }
+                input, textarea, select { max-width: 100%; font-size: 16px !important; }
+                .btn { min-height: 44px; }
             }
+            @supports (height: 100dvh) { @media (max-width: 768px) { .sidebar { height: calc(100dvh - 54px); } .main-content { min-height: calc(100dvh - 54px); } } }
             .content-header {
                 display: flex;
                 justify-content: space-between;
@@ -1477,8 +1495,8 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
         </style>
     </head>
     <body>
-        <div class="mobile-admin-bar"><button type="button" onclick="document.body.classList.toggle('menu-open')" aria-label="開啟後台選單">☰</button><strong>NTUT DRONE 後台</strong></div>
-        <div class="sidebar">
+        <div class="mobile-admin-bar"><button type="button" onclick="toggleAdminMenu()" aria-label="開啟後台選單" aria-controls="admin-sidebar" aria-expanded="false">☰</button><strong>NTUT DRONE 後台</strong></div>
+        <div class="sidebar" id="admin-sidebar">
             <div>
                 <div class="sidebar-logo">
                     <img src="/assets/images/logo_ntut.jpg" alt="NTUT Drone" style="width: 28px; height: 28px; object-fit: contain; border-radius: 6px; vertical-align: middle; margin-right: 8px;"> NTUT DRONE 後台
@@ -1542,7 +1560,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     <h2 id="post-form-title" style="margin-bottom: 24px;">新增文章</h2>
                     <form id="post-form" onsubmit="savePost(event)">
                         <input type="hidden" id="post-original-slug">
-                        <div style="display:grid; grid-template-columns: 2fr 1fr; gap:20px;">
+                        <div class="responsive-form-grid" style="display:grid; grid-template-columns: 2fr 1fr; gap:20px;">
                             <div class="form-group">
                                 <label for="post-title">文章標題</label>
                                 <input type="text" id="post-title" class="form-control" placeholder="輸入文章標題..." required>
@@ -1658,7 +1676,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     <h2 id="page-form-title" style="margin-bottom: 24px;">新增頁面</h2>
                     <form id="page-form" onsubmit="savePage(event)">
                         <input type="hidden" id="page-original-slug">
-                        <div style="display:grid; grid-template-columns: 2fr 1fr; gap:20px;">
+                        <div class="responsive-form-grid" style="display:grid; grid-template-columns: 2fr 1fr; gap:20px;">
                             <div class="form-group">
                                 <label for="page-title">頁面標題</label>
                                 <input type="text" id="page-title" class="form-control" placeholder="例如: 2026 入社招生資訊" required>
@@ -1765,7 +1783,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 <!-- Section 1: Hero -->
                 <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
                     <h2 style="font-size: 1.1rem; color: var(--color-cyan); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><i data-lucide="sparkles"></i> 1. 頂部 Hero 展示區</h2>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div class="form-group" style="grid-column: 1 / -1;">
                             <label for="hp-hero-title">首頁主標題 (H1)</label>
                             <input type="text" id="hp-hero-title" class="form-control" placeholder="北科無人機社">
@@ -1784,7 +1802,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 <!-- Section 2: About -->
                 <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
                     <h2 style="font-size: 1.1rem; color: var(--color-purple); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><i data-lucide="info"></i> 2. 關於我們 (About Section)</h2>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div class="form-group">
                             <label for="hp-about-title">區塊標題</label>
                             <input type="text" id="hp-about-title" class="form-control" placeholder="關於北科無人機社">
@@ -1817,7 +1835,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 <!-- Section 3: Features -->
                 <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
                     <h2 style="font-size: 1.1rem; color: #10b981; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><i data-lucide="zap"></i> 3. 四大核心特色 (Features Section)</h2>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div class="form-group">
                             <label for="hp-features-title">區塊標題</label>
                             <input type="text" id="hp-features-title" class="form-control" placeholder="四大核心特色">
@@ -1856,7 +1874,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 <!-- Section 4: CTA & Links -->
                 <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
                     <h2 style="font-size: 1.1rem; color: #f59e0b; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><i data-lucide="link"></i> 4. 頁尾號召與社群連結</h2>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div class="form-group">
                             <label for="hp-cta-title">CTA 區塊標題</label>
                             <input type="text" id="hp-cta-title" class="form-control" placeholder="準備好起飛了嗎？">
@@ -1887,7 +1905,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     <!-- IG Card 1 -->
                     <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.05);">
                         <h3 style="font-size: 0.95rem; color: #e1306c; margin-bottom: 12px;">📸 卡片 1 (第 1 張貼文)</h3>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                             <div class="form-group">
                                 <label for="hp-ig1-tag">標籤名稱 (如: FPV 穿越機)</label>
                                 <input type="text" id="hp-ig1-tag" class="form-control" placeholder="FPV 穿越機">
@@ -1914,7 +1932,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     <!-- IG Card 2 -->
                     <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.05);">
                         <h3 style="font-size: 0.95rem; color: #e1306c; margin-bottom: 12px;">📸 卡片 2 (第 2 張貼文)</h3>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                             <div class="form-group">
                                 <label for="hp-ig2-tag">標籤名稱 (如: 航拍創作)</label>
                                 <input type="text" id="hp-ig2-tag" class="form-control" placeholder="航拍創作">
@@ -1941,7 +1959,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     <!-- IG Card 3 -->
                     <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.05);">
                         <h3 style="font-size: 0.95rem; color: #e1306c; margin-bottom: 12px;">📸 卡片 3 (第 3 張貼文)</h3>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                             <div class="form-group">
                                 <label for="hp-ig3-tag">標籤名稱 (如: 創客實作)</label>
                                 <input type="text" id="hp-ig3-tag" class="form-control" placeholder="創客實作">
@@ -1968,7 +1986,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     <!-- IG Card 4 -->
                     <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
                         <h3 style="font-size: 0.95rem; color: #e1306c; margin-bottom: 12px;">📸 卡片 4 (第 4 張貼文)</h3>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                             <div class="form-group">
                                 <label for="hp-ig4-tag">標籤名稱 (如: 飛行局日常)</label>
                                 <input type="text" id="hp-ig4-tag" class="form-control" placeholder="飛行局日常">

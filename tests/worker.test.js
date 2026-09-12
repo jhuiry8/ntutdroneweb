@@ -174,3 +174,18 @@ test('login requires configured CAPTCHA and limits repeated bad passwords', asyn
     }), env);
     assert.equal(limited.status, 429);
 });
+
+test('legacy shared password migrates to admin account without losing content', async () => {
+    const legacy = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('oldpassword' + 'ntut_drone_salt_123'));
+    const hash = [...new Uint8Array(legacy)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+    const env = { DRONE_DB: createMockKV({ admin_password_hash: hash, posts_list: '[{"title":"保留文章"}]', 'session:legacy': 'admin' }) };
+    const response = await worker.fetch(new Request('https://example.com/api/login', {
+        method: 'POST', body: new URLSearchParams({ username: 'admin', password: 'oldpassword' })
+    }), env);
+    assert.equal(response.status, 302);
+    assert.equal(await env.DRONE_DB.get('admin_password_hash'), null);
+    assert.ok(await env.DRONE_DB.get('user:admin'));
+    assert.equal(await env.DRONE_DB.get('posts_list'), '[{"title":"保留文章"}]');
+    const oldSession = await worker.fetch(new Request('https://example.com/api/homepage', { headers: { Cookie: 'session=legacy' } }), env);
+    assert.equal(oldSession.status, 401);
+});
