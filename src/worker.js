@@ -175,7 +175,7 @@ export default {
                 if (authed) {
                     return Response.redirect(`${url.origin}/admin/dashboard`, 302);
                 }
-                return new Response(renderLogin(), {
+                return new Response(renderLogin('', env.TURNSTILE_SITE_KEY), {
                     headers: { 'Content-Type': 'text/html; charset=utf-8' }
                 });
             }
@@ -202,18 +202,30 @@ export default {
                 const formData = await request.formData();
                 const username = String(formData.get('username') || '').trim().toLowerCase();
                 const password = String(formData.get('password') || '');
+                const attemptsKey = `login-attempts:${username}:${request.headers.get('CF-Connecting-IP') || 'unknown'}`;
+                const attempts = Number(await env.DRONE_DB.get(attemptsKey) || 0);
+                if (attempts >= 5) return new Response(renderLogin('登入嘗試過多，請 15 分鐘後再試。', env.TURNSTILE_SITE_KEY), { status: 429, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+                if (env.TURNSTILE_SECRET_KEY) {
+                    const token = String(formData.get('cf-turnstile-response') || '');
+                    if (!token) return new Response(renderLogin('請完成驗證碼。', env.TURNSTILE_SITE_KEY), { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+                    const verification = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+                        method: 'POST', body: new URLSearchParams({ secret: env.TURNSTILE_SECRET_KEY, response: token, remoteip: request.headers.get('CF-Connecting-IP') || '' })
+                    });
+                    if (!verification.ok || !(await verification.json()).success) return new Response(renderLogin('驗證碼無效，請重試。', env.TURNSTILE_SITE_KEY), { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+                }
                 let userJson = await env.DRONE_DB.get(`user:${username}`);
                 let user = userJson ? JSON.parse(userJson) : null;
                 if (username === 'admin' && !user) {
                     const legacyHash = await env.DRONE_DB.get('admin_password_hash');
                     const initialPassword = env.ADMIN_INITIAL_PASSWORD;
-                    if ((legacyHash && await hashPassword(password) === legacyHash) || (!legacyHash && initialPassword?.length >= 12 && password === initialPassword)) {
+                    if ((legacyHash && await hashPassword(password) === legacyHash) || (!legacyHash && initialPassword?.length >= 8 && password === initialPassword)) {
                         user = { username: 'admin', role: 'president', active: true, passwordHash: await passwordHash(password), version: crypto.randomUUID(), createdAt: new Date().toISOString() };
                         await env.DRONE_DB.put('user:admin', JSON.stringify(user));
                         await env.DRONE_DB.delete('admin_password_hash');
                     }
                 }
                 if (user?.active !== false && await verifyPassword(password, user?.passwordHash)) {
+                    await env.DRONE_DB.delete(attemptsKey);
                     const token = crypto.randomUUID();
                     await env.DRONE_DB.put(`session:${token}`, JSON.stringify({ username: user.username, version: user.version }), { expirationTtl: 86400 });
 
@@ -225,7 +237,8 @@ export default {
                         }
                     });
                 } else {
-                    return new Response(renderLogin('帳號或密碼不正確，請重新輸入！'), {
+                    await env.DRONE_DB.put(attemptsKey, String(attempts + 1), { expirationTtl: 900 });
+                    return new Response(renderLogin('帳號或密碼不正確，請重新輸入！', env.TURNSTILE_SITE_KEY), {
                         headers: { 'Content-Type': 'text/html; charset=utf-8' }
                     });
                 }
@@ -435,7 +448,7 @@ export default {
                 if (!await verifyPassword(oldPassword, user.passwordHash)) {
                     return new Response(JSON.stringify({ error: '舊密碼輸入錯誤！' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
                 }
-                if (typeof newPassword !== 'string' || newPassword.length < 12) return Response.json({ error: '新密碼至少需要 12 個字元' }, { status: 400 });
+                if (typeof newPassword !== 'string' || newPassword.length < 8) return Response.json({ error: '新密碼至少需要 8 個字元' }, { status: 400 });
                 user.passwordHash = await passwordHash(newPassword);
                 user.version = crypto.randomUUID();
                 await env.DRONE_DB.put(`user:${user.username}`, JSON.stringify(user));
@@ -456,7 +469,7 @@ export default {
                 const username = String(body.username || '').trim().toLowerCase();
                 if (!/^[a-z0-9._-]{3,40}$/.test(username)) return Response.json({ error: '帳號須為 3–40 位英數字、點、底線或連字號' }, { status: 400 });
                 if (method === 'POST') {
-                    if (!validRole(body.role) || typeof body.password !== 'string' || body.password.length < 12) return Response.json({ error: '角色無效或密碼少於 12 字元' }, { status: 400 });
+                    if (!validRole(body.role) || typeof body.password !== 'string' || body.password.length < 8) return Response.json({ error: '角色無效或密碼少於 8 字元' }, { status: 400 });
                     if (await env.DRONE_DB.get(`user:${username}`)) return Response.json({ error: '帳號已存在' }, { status: 409 });
                     const user = { username, role: body.role, active: true, passwordHash: await passwordHash(body.password), version: crypto.randomUUID(), createdAt: new Date().toISOString() };
                     await env.DRONE_DB.put(`user:${username}`, JSON.stringify(user));
@@ -471,7 +484,7 @@ export default {
                 }
                 if (body.active !== undefined) user.active = body.active === true;
                 if (body.password !== undefined) {
-                    if (typeof body.password !== 'string' || body.password.length < 12) return Response.json({ error: '密碼至少需要 12 個字元' }, { status: 400 });
+                    if (typeof body.password !== 'string' || body.password.length < 8) return Response.json({ error: '密碼至少需要 8 個字元' }, { status: 400 });
                     user.passwordHash = await passwordHash(body.password);
                 }
                 if (username === 'admin' && (user.role !== 'president' || !user.active)) return Response.json({ error: '不可停用或降權主要管理員' }, { status: 400 });

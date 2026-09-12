@@ -864,7 +864,7 @@ export function renderCustomPage(page, parsedContentHtml, lang = 'zh') {
 }
 
 // 5. Render Admin Login Page
-export function renderLogin(errorMessage = '') {
+export function renderLogin(errorMessage = '', turnstileSiteKey = '') {
     return `
     <!DOCTYPE html>
     <html lang="zh-TW">
@@ -873,6 +873,7 @@ export function renderLogin(errorMessage = '') {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>後台登入 | 北科無人機社</title>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+        ${turnstileSiteKey ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}
         <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
         <link rel="stylesheet" href="/style.css">
         <style>
@@ -941,6 +942,7 @@ export function renderLogin(errorMessage = '') {
                     <label for="password">密碼</label>
                     <input type="password" name="password" id="password" class="form-control" autocomplete="current-password" required>
                 </div>
+                ${turnstileSiteKey ? `<div class="cf-turnstile" data-sitekey="${turnstileSiteKey}"></div>` : ''}
                 <button type="submit" class="btn btn-primary" style="width: 100%; border-radius: 12px; padding: 14px; margin-top: 10px;">安全登入</button>
             </form>
             <div class="text-center" style="margin-top: 24px;">
@@ -2005,7 +2007,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     </div>
                     <div class="form-group">
                         <label for="new-password">設定新密碼</label>
-                        <input type="password" id="new-password" class="form-control" placeholder="至少 12 位字元" required>
+                        <input type="password" id="new-password" class="form-control" placeholder="至少 8 位字元" required>
                     </div>
                     <div class="form-group">
                         <label for="new-password-confirm">再次輸入新密碼</label>
@@ -2018,7 +2020,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 <div class="content-header"><h1>帳號與權限</h1></div>
                 <form onsubmit="createUser(event)" style="display:grid; gap:12px; max-width:520px; margin-bottom:24px;">
                     <input id="account-username" class="form-control" placeholder="帳號（英數字，至少 3 位）" required>
-                    <input id="account-password" type="password" class="form-control" placeholder="初始密碼（至少 12 位）" minlength="12" required>
+                    <input id="account-password" type="password" class="form-control" placeholder="初始密碼（至少 8 位）" minlength="8" required>
                     <select id="account-role" class="form-control"><option value="president">社長</option><option value="finance">財務</option><option value="cadre">一般幹部</option><option value="member">社員</option></select>
                     <button class="btn btn-primary" type="submit">新增帳號</button>
                 </form>
@@ -2417,8 +2419,8 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     showToast('兩次輸入的新密碼不一致！', true);
                     return;
                 }
-                if (newPassword.length < 12) {
-                    showToast('新密碼必須至少為 12 個字元！', true);
+                if (newPassword.length < 8) {
+                    showToast('新密碼必須至少為 8 個字元！', true);
                     return;
                 }
 
@@ -2463,7 +2465,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     const toggle = document.createElement('button'); toggle.className = 'btn btn-secondary'; toggle.textContent = user.active ? '停用' : '啟用';
                     toggle.onclick = () => updateUser(user.username, { active: !user.active });
                     const reset = document.createElement('button'); reset.className = 'btn btn-secondary'; reset.textContent = '重設密碼';
-                    reset.onclick = () => { const password = prompt('輸入新密碼（至少 12 位）'); if (password) updateUser(user.username, { password }); };
+                    reset.onclick = () => { const password = prompt('輸入新密碼（至少 8 位）'); if (password) updateUser(user.username, { password }); };
                     td.append(role, save, toggle, reset); tr.appendChild(td); tbody.appendChild(tr);
                 }
             }

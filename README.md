@@ -77,10 +77,11 @@
 
 ### 1. 後台登入、帳號與權限
 * **後台登入網址**：`https://您的網站網址/admin`
-* 新部署時，先在 Cloudflare Worker 的加密環境變數設定 `ADMIN_INITIAL_PASSWORD`（至少 12 位）。首次以 `admin` 與此密碼登入後，系統會建立社長帳號；請立即移除該環境變數。
+* 新部署時，先在 Cloudflare Worker 的加密環境變數設定 `ADMIN_INITIAL_PASSWORD`（至少 8 位）。首次以 `admin` 與此密碼登入後，系統會建立社長帳號；請立即移除該環境變數。
 * 既有部署若 KV 中已有 `admin_password_hash`，可用原管理密碼登入 `admin`；首次成功登入會轉換成新的逐帳號密碼格式。
 * 社長可在「帳號與權限」新增帳號、設定角色、停用帳號及重設密碼。角色為社長、財務、一般幹部、社員。社長與一般幹部可編輯 CMS；財務可查看 CMS；社員可登入並修改自己的密碼，後續社員資料功能將整合於此帳號。
-* 帳號密碼至少 12 位。修改或重設密碼會使舊 session 失效。
+* 帳號密碼至少 8 位。修改或重設密碼會使舊 session 失效。登入密碼連續錯誤 5 次會暫停 15 分鐘（依帳號與來源 IP 計）。
+* 若要啟用登入驗證碼，請在 Cloudflare Turnstile 建立對應網站網域的 widget，將公開 site key 設為 Worker 變數 `TURNSTILE_SITE_KEY`，secret key 設為 Worker 加密變數 `TURNSTILE_SECRET_KEY`。兩者設定後，登入表單會顯示驗證碼，伺服器會透過 Siteverify 驗證每次登入。未設定時仍有登入失敗限制，但不會顯示驗證碼。
 
 ### 2. 文章管理 (Blog Posts)
 * 在 **「文章管理」** 分頁點擊「新增文章」。

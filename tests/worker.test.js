@@ -153,3 +153,24 @@ test('individual accounts enforce roles and password rotation', async () => {
     assert.equal((await login('treasurer', 'updated-finance-secret')).status, 302);
     assert.equal((await worker.fetch(new Request('https://example.com/api/homepage', { headers: { Cookie: financeCookie } }), env)).status, 401);
 });
+
+test('login requires configured CAPTCHA and limits repeated bad passwords', async () => {
+    const env = { DRONE_DB: createMockKV(), ADMIN_INITIAL_PASSWORD: 'adminpass', TURNSTILE_SITE_KEY: 'site-key', TURNSTILE_SECRET_KEY: 'secret-key' };
+    const page = await worker.fetch(new Request('https://example.com/admin'), env);
+    assert.match(await page.text(), /cf-turnstile/);
+    const missingCaptcha = await worker.fetch(new Request('https://example.com/api/login', {
+        method: 'POST', body: new URLSearchParams({ username: 'admin', password: 'adminpass' })
+    }), env);
+    assert.equal(missingCaptcha.status, 400);
+    delete env.TURNSTILE_SECRET_KEY;
+    for (let i = 0; i < 5; i++) {
+        const response = await worker.fetch(new Request('https://example.com/api/login', {
+            method: 'POST', body: new URLSearchParams({ username: 'admin', password: 'wrongpass' })
+        }), env);
+        assert.equal(response.status, 200);
+    }
+    const limited = await worker.fetch(new Request('https://example.com/api/login', {
+        method: 'POST', body: new URLSearchParams({ username: 'admin', password: 'adminpass' })
+    }), env);
+    assert.equal(limited.status, 429);
+});
