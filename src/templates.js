@@ -1,22 +1,25 @@
 // NTUT Drone Club CMS - HTML Templates with i18n support
 import { locales } from './locales.js';
+import { canViewCms } from './auth.js';
+import { escapeHtml, safeUrl, sanitizeContent, sanitizeInline } from './html.js';
 
 // Helper: Common Header
 function getHeader(title, lang = 'zh') {
-    const t = locales[lang] || locales.zh;
+    lang = lang === 'en' ? 'en' : 'zh';
+    const t = locales[lang];
     return `
     <!DOCTYPE html>
     <html lang="${lang}">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${title} | 北科無人機社 NTUT Drone Club - 台北科技大學無人機平台</title>
+        <title>${escapeHtml(title)} | 北科無人機社 NTUT Drone Club - 台北科技大學無人機平台</title>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
         <link rel="stylesheet" href="/style.css">
-        <script>(function(){var t=localStorage.getItem('ntut-theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();</script>
+        <script>(function(){var t='dark';try{t=localStorage.getItem('ntut-theme')||'dark'}catch(e){}document.documentElement.setAttribute('data-theme',t)})();</script>
     </head>
     <body>
         <header class="navbar scrolled">
@@ -53,7 +56,8 @@ function getHeader(title, lang = 'zh') {
 
 // Helper: Common Footer
 function getFooter(lang = 'zh') {
-    const t = locales[lang] || locales.zh;
+    lang = lang === 'en' ? 'en' : 'zh';
+    const t = locales[lang];
     return `
         <footer>
             <div class="footer-container">
@@ -88,8 +92,11 @@ function getFooter(lang = 'zh') {
 
 // 1. Render Landing Page with Dynamic Blog Posts
 export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) {
-    const t = locales[lang] || locales.zh;
-    const o = override;
+    lang = lang === 'en' ? 'en' : 'zh';
+    const t = locales[lang];
+    const o = Object.fromEntries(Object.entries(override).map(([key, value]) => [key,
+        /Link$|Img$/.test(key) ? escapeHtml(safeUrl(value)) : sanitizeInline(value)
+    ]));
     
     // ── 1. Hero ──────────────────────────────────────────
     const heroTitle  = o.heroTitle  || t.heroTitleZh;
@@ -168,10 +175,10 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                 <div class="about-card" style="display: flex; flex-direction: column; justify-content: space-between;">
                     <div>
                         <span style="font-size: 0.8rem; color: var(--color-cyan); font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">${dateStr}</span>
-                        <h3 style="margin-top: 8px; margin-bottom: 12px; font-size: 1.25rem;">${post.title}</h3>
-                        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 20px;">${post.summary || ''}</p>
+                        <h3 style="margin-top: 8px; margin-bottom: 12px; font-size: 1.25rem;">${escapeHtml(post.title)}</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 20px;">${escapeHtml(post.summary || '')}</p>
                     </div>
-                    <a href="/blog/${post.slug}?lang=${lang}" class="cta-nav-btn" style="text-align: center; display: block; width: 100%;">閱讀全文 <i data-lucide="arrow-right" style="width: 14px; height: 14px; display: inline; vertical-align: middle;"></i></a>
+                    <a href="/blog/${escapeHtml(post.slug)}?lang=${lang}" class="cta-nav-btn" style="text-align: center; display: block; width: 100%;">閱讀全文 <i data-lucide="arrow-right" style="width: 14px; height: 14px; display: inline; vertical-align: middle;"></i></a>
                 </div>
             `;
         });
@@ -195,7 +202,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
         <link rel="stylesheet" href="/style.css">
-        <script>(function(){var t=localStorage.getItem('ntut-theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();</script>
+        <script>(function(){var t='dark';try{t=localStorage.getItem('ntut-theme')||'dark'}catch(e){}document.documentElement.setAttribute('data-theme',t)})();</script>
         <script type="application/ld+json">
         {
           "@context": "https://schema.org",
@@ -249,17 +256,17 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                         <i data-lucide="message-square"></i><span class="fallback-text">LINE</span>
                     </a>
                     <a href="${lineLink}" target="_blank" class="cta-nav-btn" style="margin-left: 4px;">${t.navJoin}</a>
-                    <button class="mobile-menu-toggle" aria-label="Toggle menu">
+                    <button class="mobile-menu-toggle" type="button" aria-label="開啟選單" aria-controls="mobile-drawer" aria-expanded="false">
                         <i data-lucide="menu"></i>
                     </button>
                 </div>
             </div>
         </header>
 
-        <div class="mobile-drawer">
+        <div class="mobile-drawer" id="mobile-drawer">
             <div class="drawer-header">
                 <span class="drawer-logo"><img src="/assets/images/logo_ntut.jpg" alt="NTUT Drone Logo" style="height: 28px; width: 28px; object-fit: contain; border-radius: 4px; vertical-align: middle; margin-right: 6px;"> NTUT DRONE</span>
-                <button class="drawer-close"><i data-lucide="x"></i></button>
+                <button class="drawer-close" type="button" aria-label="關閉選單"><i data-lucide="x"></i></button>
             </div>
             <nav class="drawer-links">
                 <a href="#about" class="drawer-link">${t.navAbout}</a>
@@ -701,7 +708,8 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
 
 // 2. Render Blog List Page
 export function renderBlogList(posts = [], lang = 'zh') {
-    const t = locales[lang] || locales.zh;
+    lang = lang === 'en' ? 'en' : 'zh';
+    const t = locales[lang];
     let postsListHtml = '';
     
     if (posts.length === 0) {
@@ -719,10 +727,10 @@ export function renderBlogList(posts = [], lang = 'zh') {
                 <article class="about-card" style="display: flex; flex-direction: column; justify-content: space-between;">
                     <div>
                         <span style="font-size: 0.85rem; color: var(--color-cyan); font-weight: 600;">${dateStr}</span>
-                        <h3 style="margin-top: 10px; margin-bottom: 14px; font-size: 1.4rem; line-height: 1.3;">${post.title}</h3>
-                        <p style="color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 24px; line-height: 1.6;">${post.summary || ''}</p>
+                        <h3 style="margin-top: 10px; margin-bottom: 14px; font-size: 1.4rem; line-height: 1.3;">${escapeHtml(post.title)}</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 24px; line-height: 1.6;">${escapeHtml(post.summary || '')}</p>
                     </div>
-                    <a href="/blog/${post.slug}?lang=${lang}" class="btn btn-secondary" style="width: 100%; text-align: center; padding: 10px;">${lang === 'zh' ? '閱讀文章' : 'Read Article'} <i data-lucide="arrow-right"></i></a>
+                    <a href="/blog/${escapeHtml(post.slug)}?lang=${lang}" class="btn btn-secondary" style="width: 100%; text-align: center; padding: 10px;">${lang === 'zh' ? '閱讀文章' : 'Read Article'} <i data-lucide="arrow-right"></i></a>
                 </article>
             `;
         });
@@ -736,7 +744,7 @@ export function renderBlogList(posts = [], lang = 'zh') {
                     <h1 class="section-title">${t.blogAllTitle}</h1>
                     <p class="section-subtitle">${t.blogAllDesc}</p>
                 </div>
-                <div class="about-grid" style="grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 30px;">
+                <div class="about-grid blog-grid" style="grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 30px;">
                     ${postsListHtml}
                 </div>
             </div>
@@ -747,7 +755,8 @@ export function renderBlogList(posts = [], lang = 'zh') {
 
 // 3. Render Blog Post Detail Page
 export function renderBlogPost(post, parsedContentHtml, lang = 'zh') {
-    const t = locales[lang] || locales.zh;
+    lang = lang === 'en' ? 'en' : 'zh';
+    const t = locales[lang];
     const dateStr = new Date(post.date).toLocaleDateString(lang === 'zh' ? 'zh-TW' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     return `
         ${getHeader(post.title, lang)}
@@ -757,14 +766,14 @@ export function renderBlogPost(post, parsedContentHtml, lang = 'zh') {
                     <a href="/blog?lang=${lang}" style="color: var(--color-cyan); display: inline-flex; align-items: center; gap: 6px; font-weight: 500; margin-bottom: 20px; font-size: 0.95rem;">
                         <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i> ${t.blogBack}
                     </a>
-                    <h1 style="font-size: 2.75rem; font-weight: 800; line-height: 1.25; margin-bottom: 16px; background: linear-gradient(135deg, #fff, var(--text-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${post.title}</h1>
+                    <h1 style="font-size: 2.75rem; font-weight: 800; line-height: 1.25; margin-bottom: 16px; background: linear-gradient(135deg, #fff, var(--text-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${escapeHtml(post.title)}</h1>
                     <div style="display: flex; gap: 20px; color: var(--text-muted); font-size: 0.9rem;">
                         <span><i data-lucide="calendar" style="width: 14px; height: 14px; display: inline; vertical-align: middle; margin-right: 4px;"></i> ${dateStr}</span>
                     </div>
                 </div>
                 
                 <div class="markdown-body" style="font-size: 1.05rem; line-height: 1.8; color: var(--text-secondary);">
-                    ${parsedContentHtml}
+                    ${sanitizeContent(parsedContentHtml)}
                 </div>
             </article>
         </main>
@@ -838,9 +847,9 @@ export function renderCustomPage(page, parsedContentHtml, lang = 'zh') {
         ${getHeader(page.title, lang)}
         <main style="padding-top: 140px; min-height: 80vh;">
             <article class="section-container" style="max-width: 900px; padding: 40px 24px;">
-                <h1 style="font-size: 3rem; font-weight: 900; margin-bottom: 40px; border-bottom: 1px solid var(--border-glass); padding-bottom: 20px; background: linear-gradient(135deg, #fff, var(--color-cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${page.title}</h1>
+                <h1 style="font-size: 3rem; font-weight: 900; margin-bottom: 40px; border-bottom: 1px solid var(--border-glass); padding-bottom: 20px; background: linear-gradient(135deg, #fff, var(--color-cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${escapeHtml(page.title)}</h1>
                 <div class="markdown-body" style="font-size: 1.05rem; line-height: 1.8; color: var(--text-secondary);">
-                    ${parsedContentHtml}
+                    ${sanitizeContent(parsedContentHtml)}
                 </div>
             </article>
         </main>
@@ -864,7 +873,7 @@ export function renderCustomPage(page, parsedContentHtml, lang = 'zh') {
 }
 
 // 5. Render Admin Login Page
-export function renderLogin(errorMessage = '') {
+export function renderLogin(errorMessage = '', turnstileSiteKey = '') {
     return `
     <!DOCTYPE html>
     <html lang="zh-TW">
@@ -873,6 +882,7 @@ export function renderLogin(errorMessage = '') {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>後台登入 | 北科無人機社</title>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+        ${turnstileSiteKey ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}
         <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
         <link rel="stylesheet" href="/style.css">
         <style>
@@ -882,6 +892,7 @@ export function renderLogin(errorMessage = '') {
                 justify-content: center;
                 min-height: 100vh;
                 background: #f3f2f1;
+                padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
             }
             .login-container {
                 width: 100%;
@@ -892,6 +903,7 @@ export function renderLogin(errorMessage = '') {
                 border-radius: 4px;
                 box-shadow: 0 4px 20px rgba(0,0,0,0.08);
             }
+            @media (max-width: 480px) { .login-container { padding: 28px 20px; } }
             .form-group {
                 margin-bottom: 20px;
             }
@@ -928,15 +940,21 @@ export function renderLogin(errorMessage = '') {
                 </div>
                 <h2 style="font-size: 1.5rem; font-weight: 800; letter-spacing: 0.5px;">系統後台登入</h2>
                 <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">北科無人機社官方網站後台</p>
+                <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 8px;">舊管理者請以 admin 和原管理密碼登入，再由社長建立個別帳號。</p>
             </div>
             
-            ${errorMessage ? `<div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; padding: 12px; border-radius: 12px; font-size: 0.875rem; margin-bottom: 20px; text-align: center;"><i data-lucide="alert-circle" style="width: 16px; height: 16px; display: inline; vertical-align: middle; margin-right: 6px;"></i> ${errorMessage}</div>` : ''}
+            ${errorMessage ? `<div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; padding: 12px; border-radius: 12px; font-size: 0.875rem; margin-bottom: 20px; text-align: center;"><i data-lucide="alert-circle" style="width: 16px; height: 16px; display: inline; vertical-align: middle; margin-right: 6px;"></i> ${escapeHtml(errorMessage)}</div>` : ''}
             
             <form action="/api/login" method="POST">
                 <div class="form-group">
-                    <label for="password">管理員密碼</label>
-                    <input type="password" name="password" id="password" class="form-control" placeholder="請輸入後台密碼" required autofocus>
+                    <label for="username">帳號</label>
+                    <input type="text" name="username" id="username" class="form-control" autocomplete="username" required autofocus>
                 </div>
+                <div class="form-group">
+                    <label for="password">密碼</label>
+                    <input type="password" name="password" id="password" class="form-control" autocomplete="current-password" required>
+                </div>
+                ${turnstileSiteKey ? `<div class="cf-turnstile" data-sitekey="${escapeHtml(turnstileSiteKey)}" data-size="compact"></div>` : ''}
                 <button type="submit" class="btn btn-primary" style="width: 100%; border-radius: 12px; padding: 14px; margin-top: 10px;">安全登入</button>
             </form>
             <div class="text-center" style="margin-top: 24px;">
@@ -971,7 +989,9 @@ export function renderLogin(errorMessage = '') {
 }
 
 // 6. Render Admin Dashboard Page with i18n Post Creation
-export function renderAdminDashboard(posts = [], pages = []) {
+export function renderAdminDashboard(posts = [], pages = [], user = { username: 'admin', role: 'president' }) {
+    const viewCms = canViewCms(user);
+    if (!viewCms) { posts = []; pages = []; }
     return `
     <!DOCTYPE html>
     <html lang="zh-TW">
@@ -981,7 +1001,6 @@ export function renderAdminDashboard(posts = [], pages = []) {
         <title>後台管理面板 | 北科無人機社</title>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/marked@latest/marked.min.js"></script>
         <script>
             function showToast(text, isError) {
                 var toast = document.getElementById('toast');
@@ -990,12 +1009,13 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 toastText.innerText = text;
                 if (isError) {
                     toast.style.borderColor = '#ef4444';
-                    toast.innerHTML = '<i data-lucide="alert-circle" style="color:#ef4444; width:20px; height:20px;"></i> <span>' + text + '</span>';
+                    toast.innerHTML = '<i data-lucide="alert-circle" style="color:#ef4444; width:20px; height:20px;"></i> <span></span>';
                 } else {
                     toast.style.borderColor = 'var(--color-cyan)';
-                    toast.innerHTML = '<i data-lucide="check-circle" style="color:var(--color-cyan); width:20px; height:20px;"></i> <span>' + text + '</span>';
+                    toast.innerHTML = '<i data-lucide="check-circle" style="color:var(--color-cyan); width:20px; height:20px;"></i> <span></span>';
                 }
                 if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
+                toast.querySelector('span').textContent = text;
                 toast.classList.add('show');
                 setTimeout(function() { toast.classList.remove('show'); }, 3000);
             }
@@ -1012,7 +1032,19 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 });
                 if (typeof closePostForm === 'function') closePostForm();
                 if (typeof closePageForm === 'function') closePageForm();
+                closeAdminMenu();
             }
+
+            function toggleAdminMenu() {
+                const open = document.body.classList.toggle('menu-open');
+                document.querySelector('.mobile-admin-bar button').setAttribute('aria-expanded', String(open));
+            }
+            function closeAdminMenu() {
+                document.body.classList.remove('menu-open');
+                const button = document.querySelector('.mobile-admin-bar button');
+                if (button) button.setAttribute('aria-expanded', 'false');
+            }
+            document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAdminMenu(); });
 
             function logout() {
                 fetch('/api/logout', { method: 'POST' }).then(function() { location.href = '/admin'; });
@@ -1147,6 +1179,23 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 overflow-y: auto;
                 max-height: 100vh;
             }
+            .mobile-admin-bar { display: none; }
+            @media (max-width: 768px) {
+                body { display: block; }
+                .mobile-admin-bar { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left)); background: var(--bg-darker); position: sticky; top: 0; z-index: 20; }
+                .mobile-admin-bar button { background: transparent; border: 1px solid var(--border-glass); color: white; border-radius: 8px; min-width: 44px; min-height: 44px; }
+                .sidebar { display: none; position: fixed; inset: 54px auto 0 0; width: min(300px, 85vw); z-index: 30; overflow-y: auto; padding-bottom: max(30px, env(safe-area-inset-bottom)); box-shadow: 20px 0 40px rgba(0,0,0,.5); }
+                body.menu-open .sidebar { display: flex; }
+                .main-content { padding: 16px max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); max-height: none; min-height: calc(100vh - 54px); }
+                .panel { padding: 16px; }
+                .content-header { flex-wrap: wrap; gap: 12px; }
+                .table-container { overflow-x: auto; }
+                .responsive-form-grid { grid-template-columns: minmax(0, 1fr) !important; }
+                #uploaded-files-grid { grid-template-columns: minmax(0, 1fr) !important; }
+                input, textarea, select { max-width: 100%; font-size: 16px !important; }
+                .btn { min-height: 44px; }
+            }
+            @supports (height: 100dvh) { @media (max-width: 768px) { .sidebar { height: calc(100dvh - 54px); } .main-content { min-height: calc(100dvh - 54px); } } }
             .content-header {
                 display: flex;
                 justify-content: space-between;
@@ -1457,17 +1506,19 @@ export function renderAdminDashboard(posts = [], pages = []) {
         </style>
     </head>
     <body>
-        <div class="sidebar">
+        <div class="mobile-admin-bar"><button type="button" onclick="toggleAdminMenu()" aria-label="開啟後台選單" aria-controls="admin-sidebar" aria-expanded="false">☰</button><strong>NTUT DRONE 後台</strong></div>
+        <div class="sidebar" id="admin-sidebar">
             <div>
                 <div class="sidebar-logo">
                     <img src="/assets/images/logo_ntut.jpg" alt="NTUT Drone" style="width: 28px; height: 28px; object-fit: contain; border-radius: 6px; vertical-align: middle; margin-right: 8px;"> NTUT DRONE 後台
                 </div>
                 <div class="sidebar-nav">
-                    <button class="nav-item active" onclick="showPanel('posts')"><i data-lucide="book-open"></i> 文章管理</button>
+                    ${viewCms ? `<button class="nav-item active" onclick="showPanel('posts')"><i data-lucide="book-open"></i> 文章管理</button>
                     <button class="nav-item" onclick="showPanel('pages')"><i data-lucide="file-text"></i> 頁面管理</button>
                     <button class="nav-item" onclick="showPanel('media')"><i data-lucide="image"></i> 媒體庫上傳</button>
-                    <button class="nav-item" onclick="showPanel('homepage')"><i data-lucide="home"></i> 首頁設定</button>
+                    <button class="nav-item" onclick="showPanel('homepage')"><i data-lucide="home"></i> 首頁設定</button>` : ''}
                     <button class="nav-item" onclick="showPanel('settings')"><i data-lucide="settings"></i> 系統設定</button>
+                    ${user?.role === 'president' ? `<button class="nav-item" onclick="showPanel('users'); loadUsers()"><i data-lucide="users"></i> 帳號與權限</button>` : ''}
                 </div>
             </div>
             <div>
@@ -1477,7 +1528,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
         </div>
 
         <div class="main-content">
-            <!-- Posts Panel -->
+            ${viewCms ? `<!-- Posts Panel -->
             <div id="panel-posts" class="panel active">
                 <div class="content-header">
                     <h1>文章管理</h1>
@@ -1498,14 +1549,14 @@ export function renderAdminDashboard(posts = [], pages = []) {
                             </thead>
                             <tbody>
                                 ${posts.map(post => `
-                                    <tr id="row-post-${post.slug}">
+                                    <tr id="row-post-${escapeHtml(post.slug)}">
                                         <td>${new Date(post.date).toLocaleDateString('zh-TW')}</td>
-                                        <td><strong>${post.title}</strong></td>
+                                        <td><strong>${escapeHtml(post.title)}</strong></td>
                                         <td><span style="background:rgba(255,255,255,0.06); padding:4px 8px; border-radius:6px; font-size:0.8rem; font-weight:600; color:var(--color-cyan);">${post.lang === 'en' ? 'English' : '中文'}</span></td>
-                                        <td><code>/blog/${post.slug}</code></td>
+                                        <td><code>/blog/${escapeHtml(post.slug)}</code></td>
                                         <td style="text-align: right; white-space: nowrap;">
-                                            <button type="button" class="btn btn-secondary" onclick="editPost('${post.slug}')" style="padding: 6px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><i data-lucide="edit-3" style="width: 14px; height: 14px; pointer-events: none;"></i> <span>編輯</span></button>
-                                            <button type="button" class="btn btn-danger" onclick="deletePost('${post.slug}')" style="padding: 6px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><i data-lucide="trash-2" style="width: 14px; height: 14px; pointer-events: none;"></i> <span>刪除</span></button>
+                                            <button type="button" class="btn btn-secondary" data-slug="${escapeHtml(post.slug)}" onclick="editPost(this.dataset.slug)" style="padding: 6px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><i data-lucide="edit-3" style="width: 14px; height: 14px; pointer-events: none;"></i> <span>編輯</span></button>
+                                            <button type="button" class="btn btn-danger" data-slug="${escapeHtml(post.slug)}" onclick="deletePost(this.dataset.slug)" style="padding: 6px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><i data-lucide="trash-2" style="width: 14px; height: 14px; pointer-events: none;"></i> <span>刪除</span></button>
                                         </td>
                                     </tr>
                                 `).join('')}
@@ -1520,7 +1571,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     <h2 id="post-form-title" style="margin-bottom: 24px;">新增文章</h2>
                     <form id="post-form" onsubmit="savePost(event)">
                         <input type="hidden" id="post-original-slug">
-                        <div style="display:grid; grid-template-columns: 2fr 1fr; gap:20px;">
+                        <div class="responsive-form-grid" style="display:grid; grid-template-columns: 2fr 1fr; gap:20px;">
                             <div class="form-group">
                                 <label for="post-title">文章標題</label>
                                 <input type="text" id="post-title" class="form-control" placeholder="輸入文章標題..." required>
@@ -1615,13 +1666,13 @@ export function renderAdminDashboard(posts = [], pages = []) {
                             </thead>
                             <tbody>
                                 ${pages.map(page => `
-                                    <tr id="row-page-${page.slug}">
-                                        <td><strong>${page.title}</strong></td>
+                                    <tr id="row-page-${escapeHtml(page.slug)}">
+                                        <td><strong>${escapeHtml(page.title)}</strong></td>
                                         <td><span style="background:rgba(255,255,255,0.06); padding:4px 8px; border-radius:6px; font-size:0.8rem; font-weight:600; color:var(--color-cyan);">${page.lang === 'en' ? 'English' : '中文'}</span></td>
-                                        <td><code>/page/${page.slug}</code></td>
+                                        <td><code>/page/${escapeHtml(page.slug)}</code></td>
                                         <td style="text-align: right; white-space: nowrap;">
-                                            <button type="button" class="btn btn-secondary" onclick="editPage('${page.slug}')" style="padding: 6px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><i data-lucide="edit-3" style="width: 14px; height: 14px; pointer-events: none;"></i> <span>編輯</span></button>
-                                            <button type="button" class="btn btn-danger" onclick="deletePage('${page.slug}')" style="padding: 6px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><i data-lucide="trash-2" style="width: 14px; height: 14px; pointer-events: none;"></i> <span>刪除</span></button>
+                                            <button type="button" class="btn btn-secondary" data-slug="${escapeHtml(page.slug)}" onclick="editPage(this.dataset.slug)" style="padding: 6px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><i data-lucide="edit-3" style="width: 14px; height: 14px; pointer-events: none;"></i> <span>編輯</span></button>
+                                            <button type="button" class="btn btn-danger" data-slug="${escapeHtml(page.slug)}" onclick="deletePage(this.dataset.slug)" style="padding: 6px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><i data-lucide="trash-2" style="width: 14px; height: 14px; pointer-events: none;"></i> <span>刪除</span></button>
                                         </td>
                                     </tr>
                                 `).join('')}
@@ -1636,7 +1687,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     <h2 id="page-form-title" style="margin-bottom: 24px;">新增頁面</h2>
                     <form id="page-form" onsubmit="savePage(event)">
                         <input type="hidden" id="page-original-slug">
-                        <div style="display:grid; grid-template-columns: 2fr 1fr; gap:20px;">
+                        <div class="responsive-form-grid" style="display:grid; grid-template-columns: 2fr 1fr; gap:20px;">
                             <div class="form-group">
                                 <label for="page-title">頁面標題</label>
                                 <input type="text" id="page-title" class="form-control" placeholder="例如: 2026 入社招生資訊" required>
@@ -1743,7 +1794,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 <!-- Section 1: Hero -->
                 <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
                     <h2 style="font-size: 1.1rem; color: var(--color-cyan); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><i data-lucide="sparkles"></i> 1. 頂部 Hero 展示區</h2>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div class="form-group" style="grid-column: 1 / -1;">
                             <label for="hp-hero-title">首頁主標題 (H1)</label>
                             <input type="text" id="hp-hero-title" class="form-control" placeholder="北科無人機社">
@@ -1762,7 +1813,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 <!-- Section 2: About -->
                 <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
                     <h2 style="font-size: 1.1rem; color: var(--color-purple); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><i data-lucide="info"></i> 2. 關於我們 (About Section)</h2>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div class="form-group">
                             <label for="hp-about-title">區塊標題</label>
                             <input type="text" id="hp-about-title" class="form-control" placeholder="關於北科無人機社">
@@ -1795,7 +1846,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 <!-- Section 3: Features -->
                 <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
                     <h2 style="font-size: 1.1rem; color: #10b981; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><i data-lucide="zap"></i> 3. 四大核心特色 (Features Section)</h2>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div class="form-group">
                             <label for="hp-features-title">區塊標題</label>
                             <input type="text" id="hp-features-title" class="form-control" placeholder="四大核心特色">
@@ -1834,7 +1885,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 <!-- Section 4: CTA & Links -->
                 <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
                     <h2 style="font-size: 1.1rem; color: #f59e0b; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;"><i data-lucide="link"></i> 4. 頁尾號召與社群連結</h2>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div class="form-group">
                             <label for="hp-cta-title">CTA 區塊標題</label>
                             <input type="text" id="hp-cta-title" class="form-control" placeholder="準備好起飛了嗎？">
@@ -1865,7 +1916,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     <!-- IG Card 1 -->
                     <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.05);">
                         <h3 style="font-size: 0.95rem; color: #e1306c; margin-bottom: 12px;">📸 卡片 1 (第 1 張貼文)</h3>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                             <div class="form-group">
                                 <label for="hp-ig1-tag">標籤名稱 (如: FPV 穿越機)</label>
                                 <input type="text" id="hp-ig1-tag" class="form-control" placeholder="FPV 穿越機">
@@ -1892,7 +1943,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     <!-- IG Card 2 -->
                     <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.05);">
                         <h3 style="font-size: 0.95rem; color: #e1306c; margin-bottom: 12px;">📸 卡片 2 (第 2 張貼文)</h3>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                             <div class="form-group">
                                 <label for="hp-ig2-tag">標籤名稱 (如: 航拍創作)</label>
                                 <input type="text" id="hp-ig2-tag" class="form-control" placeholder="航拍創作">
@@ -1919,7 +1970,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     <!-- IG Card 3 -->
                     <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.05);">
                         <h3 style="font-size: 0.95rem; color: #e1306c; margin-bottom: 12px;">📸 卡片 3 (第 3 張貼文)</h3>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                             <div class="form-group">
                                 <label for="hp-ig3-tag">標籤名稱 (如: 創客實作)</label>
                                 <input type="text" id="hp-ig3-tag" class="form-control" placeholder="創客實作">
@@ -1946,7 +1997,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     <!-- IG Card 4 -->
                     <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
                         <h3 style="font-size: 0.95rem; color: #e1306c; margin-bottom: 12px;">📸 卡片 4 (第 4 張貼文)</h3>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="responsive-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                             <div class="form-group">
                                 <label for="hp-ig4-tag">標籤名稱 (如: 飛行局日常)</label>
                                 <input type="text" id="hp-ig4-tag" class="form-control" placeholder="飛行局日常">
@@ -1972,20 +2023,21 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 </div>
             </div>
 
+            ` : ''}
             <!-- Settings Panel -->
-            <div id="panel-settings" class="panel">
+            <div id="panel-settings" class="panel ${!viewCms ? 'active' : ''}">
                 <div class="content-header">
                     <h1>系統帳號設定</h1>
                 </div>
                 
                 <form onsubmit="changePassword(event)" style="max-width: 450px;">
                     <div class="form-group">
-                        <label for="old-password">目前管理密碼</label>
+                        <label for="old-password">目前密碼</label>
                         <input type="password" id="old-password" class="form-control" required>
                     </div>
                     <div class="form-group">
                         <label for="new-password">設定新密碼</label>
-                        <input type="password" id="new-password" class="form-control" placeholder="至少 6 位字元" required>
+                        <input type="password" id="new-password" class="form-control" placeholder="至少 8 位字元" required>
                     </div>
                     <div class="form-group">
                         <label for="new-password-confirm">再次輸入新密碼</label>
@@ -1994,6 +2046,16 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     <button type="submit" class="btn btn-primary" style="margin-top: 10px;">儲存新密碼</button>
                 </form>
             </div>
+            ${user?.role === 'president' ? `<div id="panel-users" class="panel">
+                <div class="content-header"><h1>帳號與權限</h1></div>
+                <form onsubmit="createUser(event)" style="display:grid; gap:12px; max-width:520px; margin-bottom:24px;">
+                    <input id="account-username" class="form-control" placeholder="帳號（英數字，至少 3 位）" required>
+                    <input id="account-password" type="password" class="form-control" placeholder="初始密碼（至少 8 位）" minlength="8" required>
+                    <select id="account-role" class="form-control"><option value="president">社長</option><option value="finance">財務</option><option value="cadre">一般幹部</option><option value="member">社員</option></select>
+                    <button class="btn btn-primary" type="submit">新增帳號</button>
+                </form>
+                <div class="table-container"><table><thead><tr><th>帳號</th><th>角色</th><th>狀態</th><th>操作</th></tr></thead><tbody id="users-list"></tbody></table></div>
+            </div>` : ''}
         </div>
 
         <!-- Toast Notice -->
@@ -2015,51 +2077,18 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 
                 if (isError) {
                     toast.style.borderColor = '#ef4444';
-                    toast.innerHTML = '<i data-lucide="alert-circle" style="color:#ef4444; width:20px; height:20px;"></i> <span>' + text + '</span>';
+                    toast.innerHTML = '<i data-lucide="alert-circle" style="color:#ef4444; width:20px; height:20px;"></i> <span></span>';
                 } else {
                     toast.style.borderColor = 'var(--color-cyan)';
-                    toast.innerHTML = '<i data-lucide="check-circle" style="color:var(--color-cyan); width:20px; height:20px;"></i> <span>' + text + '</span>';
+                    toast.innerHTML = '<i data-lucide="check-circle" style="color:var(--color-cyan); width:20px; height:20px;"></i> <span></span>';
                 }
                 if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
                 
+                toast.querySelector('span').textContent = text;
                 toast.classList.add('show');
                 setTimeout(() => {
                     toast.classList.remove('show');
                 }, 3000);
-            }
-
-            function simpleMarkdownParse(src) {
-                if (typeof marked !== 'undefined' && marked.parse) {
-                    return marked.parse(src);
-                }
-                var h3Regex = new RegExp('^### (.*$)', 'gim');
-                var h2Regex = new RegExp('^## (.*$)', 'gim');
-                var h1Regex = new RegExp('^# (.*$)', 'gim');
-                var quoteRegex = new RegExp('^> (.*$)', 'gim');
-                var boldRegex = new RegExp('\\\\*\\\\*(.*?)\\\\*\\\\*', 'g');
-                var italicRegex = new RegExp('\\\\*(.*?)\\\\*', 'g');
-                var strikeRegex = new RegExp('~~(.*?)~~', 'g');
-                var codeRegex = new RegExp('\\\\x60([^\\\\x60]+)\\\\x60', 'g');
-                var imgRegex = new RegExp('!\\\\[(.*?)\\\\]\\\\((.*?)\\\\)', 'g');
-                var linkRegex = new RegExp('\\\\[(.*?)\\\\]\\\\((.*?)\\\\)', 'g');
-                var nlRegex = new RegExp('\\\\n', 'g');
-
-                var html = src
-                    .replace(new RegExp('&', 'g'), '&amp;')
-                    .replace(new RegExp('<', 'g'), '&lt;')
-                    .replace(new RegExp('>', 'g'), '&gt;')
-                    .replace(h3Regex, '<h3>$1</h3>')
-                    .replace(h2Regex, '<h2>$1</h2>')
-                    .replace(h1Regex, '<h1>$1</h1>')
-                    .replace(quoteRegex, '<blockquote>$1</blockquote>')
-                    .replace(boldRegex, '<strong>$1</strong>')
-                    .replace(italicRegex, '<em>$1</em>')
-                    .replace(strikeRegex, '<del>$1</del>')
-                    .replace(codeRegex, '<code>$1</code>')
-                    .replace(imgRegex, '<img src="$2" alt="$1">')
-                    .replace(linkRegex, '<a href="$2" target="_blank">$1</a>')
-                    .replace(nlRegex, '<br>');
-                return html;
             }
 
             function insertCodeInlineMD(targetId) {
@@ -2129,12 +2158,28 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 }
             }
 
+            const previewTimers = new Map();
             function updateLivePreview(targetId) {
-                var textarea = document.getElementById(targetId);
-                var body = document.getElementById('preview-body-' + targetId);
+                const textarea = document.getElementById(targetId);
+                const body = document.getElementById('preview-body-' + targetId);
                 if (!textarea || !body) return;
-                body.innerHTML = simpleMarkdownParse(textarea.value || '*(尚未輸入任何內容)*');
-                if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
+                clearTimeout(previewTimers.get(targetId));
+                const version = String(Number(body.dataset.version || 0) + 1);
+                body.dataset.version = version;
+                const content = textarea.value || '*(尚未輸入任何內容)*';
+                previewTimers.set(targetId, setTimeout(async () => {
+                    try {
+                        const response = await fetch('/api/preview', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ content })
+                        });
+                        if (!response.ok) throw new Error('Preview unavailable');
+                        const data = await response.json();
+                        if (body.dataset.version === version) body.innerHTML = data.html;
+                    } catch {
+                        if (body.dataset.version === version) body.textContent = content;
+                    }
+                }, 200));
             }
 
             function openPostForm() {
@@ -2359,10 +2404,12 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 const displayUrl = previewUrl || url;
                 const markdownText = '![' + filename + '](' + url + ')';
 
-                card.innerHTML = '<img src="' + displayUrl + '" style="max-width:100%; height:120px; object-fit:cover; border-radius:8px; margin-bottom:10px;">' +
-                    '<div style="font-size:0.75rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--text-muted); margin-bottom:8px;">' + filename + '</div>' +
+                card.innerHTML = '<img style="max-width:100%; height:120px; object-fit:cover; border-radius:8px; margin-bottom:10px;">' +
+                    '<div style="font-size:0.75rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--text-muted); margin-bottom:8px;"></div>' +
                     '<button class="btn btn-secondary copy-btn" style="width:100%; padding:6px; font-size:0.75rem; justify-content:center;"><i data-lucide="copy" style="width:12px; height:12px;"></i> 複製 MD</button>';
                 
+                card.querySelector('img').src = displayUrl;
+                card.querySelector('div').textContent = filename;
                 const copyBtn = card.querySelector('.copy-btn');
                 if (copyBtn) {
                     copyBtn.onclick = function() { copyText(markdownText); };
@@ -2387,8 +2434,8 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     showToast('兩次輸入的新密碼不一致！', true);
                     return;
                 }
-                if (newPassword.length < 6) {
-                    showToast('新密碼必須至少為 6 個字元！', true);
+                if (newPassword.length < 8) {
+                    showToast('新密碼必須至少為 8 個字元！', true);
                     return;
                 }
 
@@ -2409,6 +2456,45 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 } catch (err) {
                     showToast('伺服器連線失敗', true);
                 }
+            }
+
+            async function loadUsers() {
+                const res = await fetch('/api/users');
+                if (!res.ok) return showToast('無法載入帳號', true);
+                const users = await res.json();
+                const tbody = document.getElementById('users-list');
+                tbody.replaceChildren();
+                for (const user of users) {
+                    const tr = document.createElement('tr');
+                    for (const value of [user.username, {president:'社長',finance:'財務',cadre:'一般幹部',member:'社員'}[user.role], user.active ? '啟用' : '停用']) {
+                        const td = document.createElement('td'); td.textContent = value; tr.appendChild(td);
+                    }
+                    const td = document.createElement('td');
+                    const role = document.createElement('select'); role.className = 'form-control';
+                    for (const [value, label] of Object.entries({president:'社長',finance:'財務',cadre:'一般幹部',member:'社員'})) {
+                        const option = new Option(label, value); role.add(option);
+                    }
+                    role.value = user.role;
+                    const save = document.createElement('button'); save.className = 'btn btn-secondary'; save.textContent = '儲存角色';
+                    save.onclick = () => updateUser(user.username, { role: role.value });
+                    const toggle = document.createElement('button'); toggle.className = 'btn btn-secondary'; toggle.textContent = user.active ? '停用' : '啟用';
+                    toggle.onclick = () => updateUser(user.username, { active: !user.active });
+                    const reset = document.createElement('button'); reset.className = 'btn btn-secondary'; reset.textContent = '重設密碼';
+                    reset.onclick = () => { const password = prompt('輸入新密碼（至少 8 位）'); if (password) updateUser(user.username, { password }); };
+                    td.append(role, save, toggle, reset); tr.appendChild(td); tbody.appendChild(tr);
+                }
+            }
+            async function updateUser(username, changes) {
+                const res = await fetch('/api/users', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ username, ...changes }) });
+                const data = await res.json(); showToast(res.ok ? '帳號已更新' : data.error, !res.ok);
+                if (res.ok) loadUsers();
+            }
+            async function createUser(event) {
+                event.preventDefault();
+                const body = { username: document.getElementById('account-username').value, password: document.getElementById('account-password').value, role: document.getElementById('account-role').value };
+                const res = await fetch('/api/users', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const data = await res.json(); showToast(res.ok ? '帳號已新增' : data.error, !res.ok);
+                if (res.ok) { event.target.reset(); loadUsers(); }
             }
 
             // ── Homepage Settings ───────────────────────────────────────
@@ -2444,7 +2530,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     });
                 } catch (e) { /* silently ignore */ }
             }
-            loadHomepageData();
+            ${viewCms ? "loadHomepageData();" : ""}
 
             async function saveHomepage() {
                 const payload = {};

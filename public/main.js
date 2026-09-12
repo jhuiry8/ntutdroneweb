@@ -2,7 +2,8 @@
 
 // ─── Theme (Dark / Light) Init — runs immediately to prevent FOUC ───
 (function() {
-    var savedTheme = localStorage.getItem('ntut-theme') || 'dark';
+    var savedTheme = 'dark';
+    try { savedTheme = localStorage.getItem('ntut-theme') || 'dark'; } catch (_) {}
     document.documentElement.setAttribute('data-theme', savedTheme);
 })();
 
@@ -10,7 +11,7 @@ window.toggleTheme = function() {
     var current = document.documentElement.getAttribute('data-theme') || 'dark';
     var next = current === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('ntut-theme', next);
+    try { localStorage.setItem('ntut-theme', next); } catch (_) {}
     // Update icon
     var btn = document.getElementById('theme-toggle-btn');
     if (btn) btn.textContent = next === 'dark' ? '☀️' : '🌙';
@@ -18,16 +19,17 @@ window.toggleTheme = function() {
 
 document.addEventListener('DOMContentLoaded', () => {
     // 0. Sync theme toggle icon on load
-    var savedTheme = localStorage.getItem('ntut-theme') || 'dark';
+    var savedTheme = document.documentElement.getAttribute('data-theme') || 'dark';
     var btn = document.getElementById('theme-toggle-btn');
     if (btn) btn.textContent = savedTheme === 'dark' ? '☀️' : '🌙';
 
     // 1. Initialize Lucide Icons
-    lucide.createIcons();
+    if (window.lucide && lucide.createIcons) lucide.createIcons();
 
     // 2. Sticky Navbar scroll handler
     const navbar = document.querySelector('.navbar');
     window.addEventListener('scroll', () => {
+        if (!navbar) return;
         if (window.scrollY > 50) {
             navbar.classList.add('scrolled');
         } else {
@@ -42,12 +44,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const drawerLinks = document.querySelectorAll('.drawer-link');
 
     function openDrawer() {
-        mobileDrawer.classList.add('active');
+        if (!mobileDrawer) return;
+        mobileDrawer.classList.add('open');
+        mobileMenuToggle?.setAttribute('aria-expanded', 'true');
         document.body.style.overflow = 'hidden'; // Disable scroll background
     }
 
     function closeDrawer() {
-        mobileDrawer.classList.remove('active');
+        if (!mobileDrawer) return;
+        mobileDrawer.classList.remove('open');
+        mobileMenuToggle?.setAttribute('aria-expanded', 'false');
         document.body.style.overflow = ''; // Re-enable scroll
     }
 
@@ -60,6 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
     drawerLinks.forEach(link => {
         link.addEventListener('click', closeDrawer);
     });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
 
     // 4. Hero Drone Mouse Parallax Effect
     const droneImg = document.getElementById('hero-drone');

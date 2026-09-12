@@ -1,5 +1,7 @@
 // NTUT Drone Club - Cloudflare Worker Entry Point (with i18n support)
 import { marked } from 'marked';
+import { sanitizeContent } from './html.js';
+import { passwordHash, verifyPassword, validRole, canManageUsers, canEditCms, canViewCms, publicUser } from './auth.js';
 import {
     renderLandingPage,
     renderBlogList,
@@ -39,12 +41,21 @@ function parseCookies(request) {
 
 // Helper: Check Authentication
 async function isAuthenticated(request, env) {
+    return !!(await sessionUser(request, env));
+}
+
+async function sessionUser(request, env) {
     const cookies = parseCookies(request);
     const sessionToken = cookies.session;
-    if (!sessionToken) return false;
+    if (!sessionToken) return null;
 
     const sessionUser = await env.DRONE_DB.get(`session:${sessionToken}`);
-    return !!sessionUser;
+    if (!sessionUser) return null;
+    if (sessionUser === 'admin') return await env.DRONE_DB.get('user:admin') ? null : { username: 'admin', role: 'president', active: true };
+    const session = JSON.parse(sessionUser);
+    const userJson = await env.DRONE_DB.get(`user:${session.username}`);
+    const user = userJson ? JSON.parse(userJson) : null;
+    return user?.active !== false && user?.version === session.version ? user : null;
 }
 
 export default {
@@ -165,15 +176,21 @@ export default {
                 if (authed) {
                     return Response.redirect(`${url.origin}/admin/dashboard`, 302);
                 }
-                return new Response(renderLogin(), {
+                return new Response(renderLogin('', env.TURNSTILE_SITE_KEY), {
                     headers: { 'Content-Type': 'text/html; charset=utf-8' }
                 });
             }
 
             if (path === '/admin/dashboard' && method === 'GET') {
-                const authed = await isAuthenticated(request, env);
-                if (!authed) {
+                const user = await sessionUser(request, env);
+                if (!user) {
                     return Response.redirect(`${url.origin}/admin`, 302);
+                }
+
+                if (!canViewCms(user)) {
+                    return new Response(renderAdminDashboard([], [], publicUser(user)), {
+                        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+                    });
                 }
 
                 const postsListJson = await env.DRONE_DB.get('posts_list');
@@ -182,26 +199,52 @@ export default {
                 const pagesListJson = await env.DRONE_DB.get('pages_list');
                 const pagesList = pagesListJson ? JSON.parse(pagesListJson) : [];
 
-                return new Response(renderAdminDashboard(postsList, pagesList), {
+                return new Response(renderAdminDashboard(postsList, pagesList, publicUser(user)), {
                     headers: { 'Content-Type': 'text/html; charset=utf-8' }
                 });
+            }
+
+            // Use the same server-side sanitizer for editor previews and published content.
+            if (path === '/api/preview' && method === 'POST') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canViewCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const { content } = await request.json();
+                if (typeof content !== 'string') return Response.json({ error: '內容格式錯誤' }, { status: 400 });
+                return Response.json({ html: sanitizeContent(marked.parse(content)) });
             }
 
             // ==================== API: Login Action ====================
             if (path === '/api/login' && method === 'POST') {
                 const formData = await request.formData();
-                const password = formData.get('password');
-
-                let passHash = await env.DRONE_DB.get('admin_password_hash');
-                if (!passHash) {
-                    passHash = await hashPassword(DEFAULT_PASS);
-                    await env.DRONE_DB.put('admin_password_hash', passHash);
+                const username = String(formData.get('username') || '').trim().toLowerCase();
+                const password = String(formData.get('password') || '');
+                const attemptsKey = `login-attempts:${username}:${request.headers.get('CF-Connecting-IP') || 'unknown'}`;
+                const attempts = Number(await env.DRONE_DB.get(attemptsKey) || 0);
+                if (attempts >= 5) return new Response(renderLogin('登入嘗試過多，請 15 分鐘後再試。', env.TURNSTILE_SITE_KEY), { status: 429, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+                if (env.TURNSTILE_SECRET_KEY) {
+                    const token = String(formData.get('cf-turnstile-response') || '');
+                    if (!token) return new Response(renderLogin('請完成驗證碼。', env.TURNSTILE_SITE_KEY), { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+                    const verification = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+                        method: 'POST', body: new URLSearchParams({ secret: env.TURNSTILE_SECRET_KEY, response: token, remoteip: request.headers.get('CF-Connecting-IP') || '' })
+                    });
+                    if (!verification.ok || !(await verification.json()).success) return new Response(renderLogin('驗證碼無效，請重試。', env.TURNSTILE_SITE_KEY), { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
                 }
-
-                const inputHash = await hashPassword(password);
-                if (inputHash === passHash) {
+                let userJson = await env.DRONE_DB.get(`user:${username}`);
+                let user = userJson ? JSON.parse(userJson) : null;
+                if (username === 'admin' && !user) {
+                    const legacyHash = await env.DRONE_DB.get('admin_password_hash');
+                    const initialPassword = env.ADMIN_INITIAL_PASSWORD;
+                    if ((legacyHash && await hashPassword(password) === legacyHash) || (!legacyHash && initialPassword?.length >= 8 && password === initialPassword)) {
+                        user = { username: 'admin', role: 'president', active: true, passwordHash: await passwordHash(password), version: crypto.randomUUID(), createdAt: new Date().toISOString() };
+                        await env.DRONE_DB.put('user:admin', JSON.stringify(user));
+                        await env.DRONE_DB.delete('admin_password_hash');
+                    }
+                }
+                if (user?.active !== false && await verifyPassword(password, user?.passwordHash)) {
+                    await env.DRONE_DB.delete(attemptsKey);
                     const token = crypto.randomUUID();
-                    await env.DRONE_DB.put(`session:${token}`, 'admin', { expirationTtl: 86400 });
+                    await env.DRONE_DB.put(`session:${token}`, JSON.stringify({ username: user.username, version: user.version }), { expirationTtl: 86400 });
 
                     return new Response('', {
                         status: 302,
@@ -211,7 +254,8 @@ export default {
                         }
                     });
                 } else {
-                    return new Response(renderLogin('密碼不正確，請重新輸入！'), {
+                    await env.DRONE_DB.put(attemptsKey, String(attempts + 1), { expirationTtl: 900 });
+                    return new Response(renderLogin('帳號或密碼不正確，請重新輸入！', env.TURNSTILE_SITE_KEY), {
                         headers: { 'Content-Type': 'text/html; charset=utf-8' }
                     });
                 }
@@ -235,10 +279,9 @@ export default {
 
             // ==================== API: Posts CRUD (Admin Auth required) ====================
             if (path.startsWith('/api/posts') && ['POST', 'DELETE', 'GET'].includes(method)) {
-                const authed = await isAuthenticated(request, env);
-                if (!authed) {
-                    return new Response(JSON.stringify({ error: '未授權' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-                }
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (method !== 'GET' ? !canEditCms(user) : !canViewCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
 
                 if (method === 'GET') {
                     const slug = path.substring(11);
@@ -330,10 +373,9 @@ export default {
 
             // ==================== API: Pages CRUD (Admin Auth required) ====================
             if (path.startsWith('/api/pages') && ['POST', 'DELETE', 'GET'].includes(method)) {
-                const authed = await isAuthenticated(request, env);
-                if (!authed) {
-                    return new Response(JSON.stringify({ error: '未授權' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-                }
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (method !== 'GET' ? !canEditCms(user) : !canViewCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
 
                 if (method === 'GET') {
                     const slug = path.substring(11);
@@ -417,31 +459,63 @@ export default {
 
             // ==================== API: Change Password ====================
             if (path === '/api/change-password' && method === 'POST') {
-                const authed = await isAuthenticated(request, env);
-                if (!authed) {
-                    return new Response(JSON.stringify({ error: '未授權' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-                }
-
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
                 const { oldPassword, newPassword } = await request.json();
-                const passHash = await env.DRONE_DB.get('admin_password_hash');
-                const oldHash = await hashPassword(oldPassword);
-
-                if (oldHash !== passHash) {
+                if (!await verifyPassword(oldPassword, user.passwordHash)) {
                     return new Response(JSON.stringify({ error: '舊密碼輸入錯誤！' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
                 }
-
-                const newHash = await hashPassword(newPassword);
-                await env.DRONE_DB.put('admin_password_hash', newHash);
+                if (typeof newPassword !== 'string' || newPassword.length < 8) return Response.json({ error: '新密碼至少需要 8 個字元' }, { status: 400 });
+                user.passwordHash = await passwordHash(newPassword);
+                user.version = crypto.randomUUID();
+                await env.DRONE_DB.put(`user:${user.username}`, JSON.stringify(user));
 
                 return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
             }
 
+            if (path === '/api/users' && ['GET', 'POST', 'PATCH'].includes(method)) {
+                const actor = await sessionUser(request, env);
+                if (!actor) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageUsers(actor)) return Response.json({ error: '權限不足' }, { status: 403 });
+                if (method === 'GET') {
+                    const keys = await env.DRONE_DB.list({ prefix: 'user:' });
+                    const users = await Promise.all(keys.keys.map(async key => JSON.parse(await env.DRONE_DB.get(key.name))));
+                    return Response.json(users.map(publicUser));
+                }
+                const body = await request.json();
+                const username = String(body.username || '').trim().toLowerCase();
+                if (!/^[a-z0-9._-]{3,40}$/.test(username)) return Response.json({ error: '帳號須為 3–40 位英數字、點、底線或連字號' }, { status: 400 });
+                if (method === 'POST') {
+                    if (!validRole(body.role) || typeof body.password !== 'string' || body.password.length < 8) return Response.json({ error: '角色無效或密碼少於 8 字元' }, { status: 400 });
+                    if (await env.DRONE_DB.get(`user:${username}`)) return Response.json({ error: '帳號已存在' }, { status: 409 });
+                    const user = { username, role: body.role, active: true, passwordHash: await passwordHash(body.password), version: crypto.randomUUID(), createdAt: new Date().toISOString() };
+                    await env.DRONE_DB.put(`user:${username}`, JSON.stringify(user));
+                    return Response.json(publicUser(user), { status: 201 });
+                }
+                const existing = await env.DRONE_DB.get(`user:${username}`);
+                if (!existing) return Response.json({ error: '帳號不存在' }, { status: 404 });
+                const user = JSON.parse(existing);
+                if (body.role !== undefined) {
+                    if (!validRole(body.role)) return Response.json({ error: '角色無效' }, { status: 400 });
+                    user.role = body.role;
+                }
+                if (body.active !== undefined) user.active = body.active === true;
+                if (body.password !== undefined) {
+                    if (typeof body.password !== 'string' || body.password.length < 8) return Response.json({ error: '密碼至少需要 8 個字元' }, { status: 400 });
+                    user.passwordHash = await passwordHash(body.password);
+                }
+                if (username === 'admin' && (user.role !== 'president' || !user.active)) return Response.json({ error: '不可停用或降權主要管理員' }, { status: 400 });
+                if (username === actor.username && !user.active) return Response.json({ error: '不可停用自己' }, { status: 400 });
+                user.version = crypto.randomUUID();
+                await env.DRONE_DB.put(`user:${username}`, JSON.stringify(user));
+                return Response.json(publicUser(user));
+            }
+
             // ==================== API: Upload Image to GitHub ====================
             if (path === '/api/upload' && method === 'POST') {
-                const authed = await isAuthenticated(request, env);
-                if (!authed) {
-                    return new Response(JSON.stringify({ error: '未授權' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-                }
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canEditCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
 
                 if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) {
                     return new Response(JSON.stringify({ error: 'Worker 尚未設定 GITHUB_TOKEN 或 GITHUB_REPO 變數！' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
@@ -497,16 +571,18 @@ export default {
 
             // ==================== API: Get Homepage Content ====================
             if (path === '/api/homepage' && method === 'GET') {
-                const authed = await isAuthenticated(request, env);
-                if (!authed) return new Response(JSON.stringify({ error: '未授權' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canViewCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
                 const data = await env.DRONE_DB.get('homepage_content');
                 return new Response(data || '{}', { headers: { 'Content-Type': 'application/json' } });
             }
 
             // ==================== API: Save Homepage Content ====================
             if (path === '/api/homepage' && method === 'POST') {
-                const authed = await isAuthenticated(request, env);
-                if (!authed) return new Response(JSON.stringify({ error: '未授權' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canEditCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
                 const body = await request.json();
                 // Whitelist allowed keys for full homepage customization
                 const allowed = [

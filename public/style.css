@@ -97,7 +97,9 @@ body {
     overflow-x: hidden;
     position: relative;
     -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
 }
+img, video, iframe { max-width: 100%; }
 
 /* Remove old telemetry canvas if present */
 canvas#telemetry-bg {
@@ -801,19 +803,25 @@ footer {
 .mobile-drawer {
     position: fixed;
     top: 0;
-    right: -100%;
-    width: 300px;
+    right: 0;
+    width: min(320px, 100vw);
     height: 100vh;
+    height: 100dvh;
     background: var(--bg-page);
     border-left: 2px solid var(--border-color);
     z-index: 2000;
-    padding: 30px 24px;
+    padding: max(30px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(30px, env(safe-area-inset-bottom)) 24px;
     transition: var(--transition-smooth);
     box-shadow: -10px 0 30px rgba(0, 0, 0, 0.15);
+    transform: translateX(110%);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    visibility: hidden;
 }
 
 .mobile-drawer.open {
-    right: 0;
+    transform: translateX(0);
+    visibility: visible;
 }
 
 .drawer-header {
@@ -879,8 +887,40 @@ footer {
         display: none;
     }
     .mobile-menu-toggle {
-        display: block;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 44px;
+        min-height: 44px;
     }
+    .nav-container { padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); }
+    .nav-socials { gap: 4px; }
+    .nav-socials > .social-icon-btn { display: none; }
+    .section-header { flex-wrap: wrap; gap: 12px; }
+    .section-title { font-size: clamp(1.6rem, 7vw, 2.25rem); }
+    .hero-description { font-size: 1.1rem; }
+    .hero-search-input { min-width: 0; font-size: 16px; }
+    .footer-bottom { flex-wrap: wrap; gap: 12px; }
+    .drawer-link, .drawer-cta-btn, .drawer-close { min-height: 44px; }
+    .drawer-close { min-width: 44px; }
+    .hero-container, .footer-container { padding-left: max(20px, env(safe-area-inset-left)); padding-right: max(20px, env(safe-area-inset-right)); }
+    .markdown-body, .preview-body { overflow-wrap: anywhere; }
+    .markdown-body pre, .markdown-body table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    input, select, textarea { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+@media (hover: none) {
+    .nav-link::after { display: none; }
+    .mobile-menu-toggle, .drawer-link, .drawer-close { -webkit-tap-highlight-color: transparent; }
+}
+@media (max-width: 768px) {
+    .mobile-drawer:not(.open) { pointer-events: none; }
+    .blog-grid { grid-template-columns: minmax(0, 1fr) !important; }
+    .ig-cards-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 768px) {
     .popular-grid, .grid-3, .grid-2, .footer-container {
         grid-template-columns: 1fr;
     }
@@ -896,7 +936,17 @@ footer {
     }
     .section-container {
         padding: 50px 20px;
+        padding-left: max(20px, env(safe-area-inset-left));
+        padding-right: max(20px, env(safe-area-inset-right));
     }
+}
+@media (max-width: 380px) {
+    .brand-en { font-size: 1rem; }
+    .brand-zh { font-size: 0.75rem; }
+    .logo { gap: 8px; }
+    .logo-icon { width: 34px; height: 34px; }
+    .hero-title { font-size: 1.85rem; }
+    .hero-search-btn { width: 100%; }
 }
 
 /* --- Instagram Live Feed Section --- */

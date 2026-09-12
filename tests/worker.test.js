@@ -15,6 +15,9 @@ function createMockKV(initialData = {}) {
         async delete(key) {
             store.delete(key);
         },
+        async list({ prefix }) {
+            return { keys: [...store.keys()].filter(name => name.startsWith(prefix)).map(name => ({ name })) };
+        },
         _store: store
     };
 }
@@ -117,4 +120,72 @@ test('Worker test suite - Cloudflare Worker Routes & CMS APIs', async (t) => {
         const res = await worker.fetch(req, mockEnv);
         assert.equal(res.status, 200);
     });
+});
+
+test('individual accounts enforce roles and password rotation', async () => {
+    const env = { DRONE_DB: createMockKV(), ADMIN_INITIAL_PASSWORD: 'initial-admin-secret' };
+    const login = async (username, password) => worker.fetch(new Request('https://example.com/api/login', {
+        method: 'POST', body: new URLSearchParams({ username, password })
+    }), env);
+    const adminLogin = await login('admin', 'initial-admin-secret');
+    assert.equal(adminLogin.status, 302);
+    const adminCookie = adminLogin.headers.get('set-cookie').split(';')[0];
+    const create = await worker.fetch(new Request('https://example.com/api/users', {
+        method: 'POST', headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'treasurer', password: 'finance-secret-123', role: 'finance' })
+    }), env);
+    assert.equal(create.status, 201);
+    const financeLogin = await login('treasurer', 'finance-secret-123');
+    assert.equal(financeLogin.status, 302);
+    const financeCookie = financeLogin.headers.get('set-cookie').split(';')[0];
+    const read = await worker.fetch(new Request('https://example.com/api/homepage', { headers: { Cookie: financeCookie } }), env);
+    assert.equal(read.status, 200);
+    const denied = await worker.fetch(new Request('https://example.com/api/homepage', {
+        method: 'POST', headers: { Cookie: financeCookie, 'Content-Type': 'application/json' }, body: '{}'
+    }), env);
+    assert.equal(denied.status, 403);
+    const passwordChange = await worker.fetch(new Request('https://example.com/api/change-password', {
+        method: 'POST', headers: { Cookie: financeCookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword: 'finance-secret-123', newPassword: 'updated-finance-secret' })
+    }), env);
+    assert.equal(passwordChange.status, 200);
+    assert.equal((await login('treasurer', 'finance-secret-123')).status, 200);
+    assert.equal((await login('treasurer', 'updated-finance-secret')).status, 302);
+    assert.equal((await worker.fetch(new Request('https://example.com/api/homepage', { headers: { Cookie: financeCookie } }), env)).status, 401);
+});
+
+test('login requires configured CAPTCHA and limits repeated bad passwords', async () => {
+    const env = { DRONE_DB: createMockKV(), ADMIN_INITIAL_PASSWORD: 'adminpass', TURNSTILE_SITE_KEY: 'site-key', TURNSTILE_SECRET_KEY: 'secret-key' };
+    const page = await worker.fetch(new Request('https://example.com/admin'), env);
+    assert.match(await page.text(), /cf-turnstile/);
+    const missingCaptcha = await worker.fetch(new Request('https://example.com/api/login', {
+        method: 'POST', body: new URLSearchParams({ username: 'admin', password: 'adminpass' })
+    }), env);
+    assert.equal(missingCaptcha.status, 400);
+    delete env.TURNSTILE_SECRET_KEY;
+    for (let i = 0; i < 5; i++) {
+        const response = await worker.fetch(new Request('https://example.com/api/login', {
+            method: 'POST', body: new URLSearchParams({ username: 'admin', password: 'wrongpass' })
+        }), env);
+        assert.equal(response.status, 200);
+    }
+    const limited = await worker.fetch(new Request('https://example.com/api/login', {
+        method: 'POST', body: new URLSearchParams({ username: 'admin', password: 'adminpass' })
+    }), env);
+    assert.equal(limited.status, 429);
+});
+
+test('legacy shared password migrates to admin account without losing content', async () => {
+    const legacy = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('oldpassword' + 'ntut_drone_salt_123'));
+    const hash = [...new Uint8Array(legacy)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+    const env = { DRONE_DB: createMockKV({ admin_password_hash: hash, posts_list: '[{"title":"保留文章"}]', 'session:legacy': 'admin' }) };
+    const response = await worker.fetch(new Request('https://example.com/api/login', {
+        method: 'POST', body: new URLSearchParams({ username: 'admin', password: 'oldpassword' })
+    }), env);
+    assert.equal(response.status, 302);
+    assert.equal(await env.DRONE_DB.get('admin_password_hash'), null);
+    assert.ok(await env.DRONE_DB.get('user:admin'));
+    assert.equal(await env.DRONE_DB.get('posts_list'), '[{"title":"保留文章"}]');
+    const oldSession = await worker.fetch(new Request('https://example.com/api/homepage', { headers: { Cookie: 'session=legacy' } }), env);
+    assert.equal(oldSession.status, 401);
 });
