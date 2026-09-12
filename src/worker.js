@@ -1,7 +1,7 @@
 // NTUT Drone Club - Cloudflare Worker Entry Point (with i18n support)
 import { marked } from 'marked';
 import { sanitizeContent } from './html.js';
-import { passwordHash, verifyPassword, validRole, canManageUsers, canEditCms, canViewCms, publicUser } from './auth.js';
+import { passwordHash, verifyPassword, PasswordResetRequiredError, validRole, canManageUsers, canEditCms, canViewCms, publicUser } from './auth.js';
 import {
     renderLandingPage,
     renderBlogList,
@@ -612,6 +612,14 @@ export default {
             return new Response('Not Found', { status: 404 });
 
         } catch (e) {
+            if (e instanceof PasswordResetRequiredError) {
+                if (path === '/api/login') {
+                    return new Response(renderLogin(e.message, env.TURNSTILE_SITE_KEY), {
+                        status: 409, headers: { 'Content-Type': 'text/html; charset=utf-8' }
+                    });
+                }
+                return Response.json({ error: e.message }, { status: 409 });
+            }
             return new Response(`伺服器內部錯誤 Internal Server Error: ${e.message}`, { status: 500 });
         }
     }

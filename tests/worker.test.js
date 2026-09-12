@@ -1,6 +1,18 @@
-import test from 'node:test';
+import test, { beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../src/worker.js';
+
+const deriveBits = crypto.subtle.deriveBits.bind(crypto.subtle);
+// Local WebCrypto is more permissive than production Workers. Apply the real
+// limit to every route test, including bootstrap, migration, and password changes.
+beforeEach(t => {
+    t.mock.method(crypto.subtle, 'deriveBits', (params, key, length) => {
+        if (params.name === 'PBKDF2' && params.iterations > 100000) {
+            throw new Error(`Pbkdf2 failed: iteration counts above 100000 are not supported (requested ${params.iterations}).`);
+        }
+        return deriveBits(params, key, length);
+    });
+});
 
 // Create Mock KV Store for Cloudflare DRONE_DB
 function createMockKV(initialData = {}) {
@@ -188,4 +200,31 @@ test('legacy shared password migrates to admin account without losing content', 
     assert.equal(await env.DRONE_DB.get('posts_list'), '[{"title":"保留文章"}]');
     const oldSession = await worker.fetch(new Request('https://example.com/api/homepage', { headers: { Cookie: 'session=legacy' } }), env);
     assert.equal(oldSession.status, 401);
+});
+
+test('unsupported existing account hash gives a recovery message without overwriting credentials', async () => {
+    const user = JSON.stringify({ username: 'imported', role: 'member', active: true, version: 'v1', passwordHash: `pbkdf2:old-salt:${'a'.repeat(64)}` });
+    const env = { DRONE_DB: createMockKV({ 'user:imported': user }), ADMIN_INITIAL_PASSWORD: 'bootstrap-password' };
+    const response = await worker.fetch(new Request('https://example.com/api/login', {
+        method: 'POST', body: new URLSearchParams({ username: 'imported', password: 'some-password' })
+    }), env);
+    assert.equal(response.status, 409);
+    assert.match(await response.text(), /重設密碼/);
+    assert.equal(response.headers.get('set-cookie'), null);
+    assert.equal(await env.DRONE_DB.get('user:imported'), user);
+
+    const adminLogin = await worker.fetch(new Request('https://example.com/api/login', {
+        method: 'POST', body: new URLSearchParams({ username: 'admin', password: 'bootstrap-password' })
+    }), env);
+    assert.equal(adminLogin.status, 302);
+    const reset = await worker.fetch(new Request('https://example.com/api/users', {
+        method: 'PATCH', headers: { Cookie: adminLogin.headers.get('set-cookie').split(';')[0], 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'imported', password: 'reset-password' })
+    }), env);
+    assert.equal(reset.status, 200);
+    assert.match(JSON.parse(await env.DRONE_DB.get('user:imported')).passwordHash, /^pbkdf2:100000:/);
+    const loginAfterReset = await worker.fetch(new Request('https://example.com/api/login', {
+        method: 'POST', body: new URLSearchParams({ username: 'imported', password: 'reset-password' })
+    }), env);
+    assert.equal(loginAfterReset.status, 302);
 });
