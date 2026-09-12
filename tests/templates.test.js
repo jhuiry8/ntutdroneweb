@@ -26,7 +26,7 @@ test('Templates test suite - HTML Rendering & Component Generator', async (t) =>
     ];
 
     await t.test('All inline client <script> tags in generated HTML must parse cleanly in V8 JS VM', () => {
-        const adminHtml = renderAdminDashboard(mockPosts, mockPages, null);
+        const adminHtml = renderAdminDashboard(mockPosts, mockPages, { role: 'president' });
         const scriptRegex = /<script>([\s\S]*?)<\/script>/gi;
         let match;
         let scriptCount = 0;
@@ -58,7 +58,7 @@ test('Templates test suite - HTML Rendering & Component Generator', async (t) =>
     });
 
     await t.test('renderAdminDashboard should render login / management interface cleanly without syntax errors', () => {
-        const adminHtml = renderAdminDashboard(mockPosts, mockPages, null);
+        const adminHtml = renderAdminDashboard(mockPosts, mockPages, { role: 'president' });
         assert.ok(adminHtml.includes('後台管理面板'), 'Admin title should be present');
         assert.ok(adminHtml.includes('md-editor-container'), 'Rich Markdown editor container should exist');
         assert.ok(adminHtml.includes('insertCodeInlineMD'), 'Rich editor helper function should be present');

@@ -1,5 +1,6 @@
 // NTUT Drone Club - Cloudflare Worker Entry Point (with i18n support)
 import { marked } from 'marked';
+import { sanitizeContent } from './html.js';
 import { passwordHash, verifyPassword, validRole, canManageUsers, canEditCms, canViewCms, publicUser } from './auth.js';
 import {
     renderLandingPage,
@@ -186,6 +187,12 @@ export default {
                     return Response.redirect(`${url.origin}/admin`, 302);
                 }
 
+                if (!canViewCms(user)) {
+                    return new Response(renderAdminDashboard([], [], publicUser(user)), {
+                        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+                    });
+                }
+
                 const postsListJson = await env.DRONE_DB.get('posts_list');
                 const postsList = postsListJson ? JSON.parse(postsListJson) : [];
                 
@@ -195,6 +202,16 @@ export default {
                 return new Response(renderAdminDashboard(postsList, pagesList, publicUser(user)), {
                     headers: { 'Content-Type': 'text/html; charset=utf-8' }
                 });
+            }
+
+            // Use the same server-side sanitizer for editor previews and published content.
+            if (path === '/api/preview' && method === 'POST') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canViewCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const { content } = await request.json();
+                if (typeof content !== 'string') return Response.json({ error: '內容格式錯誤' }, { status: 400 });
+                return Response.json({ html: sanitizeContent(marked.parse(content)) });
             }
 
             // ==================== API: Login Action ====================
