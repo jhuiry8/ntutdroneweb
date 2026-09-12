@@ -934,8 +934,12 @@ export function renderLogin(errorMessage = '') {
             
             <form action="/api/login" method="POST">
                 <div class="form-group">
-                    <label for="password">管理員密碼</label>
-                    <input type="password" name="password" id="password" class="form-control" placeholder="請輸入後台密碼" required autofocus>
+                    <label for="username">帳號</label>
+                    <input type="text" name="username" id="username" class="form-control" autocomplete="username" required autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="password">密碼</label>
+                    <input type="password" name="password" id="password" class="form-control" autocomplete="current-password" required>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%; border-radius: 12px; padding: 14px; margin-top: 10px;">安全登入</button>
             </form>
@@ -971,7 +975,7 @@ export function renderLogin(errorMessage = '') {
 }
 
 // 6. Render Admin Dashboard Page with i18n Post Creation
-export function renderAdminDashboard(posts = [], pages = []) {
+export function renderAdminDashboard(posts = [], pages = [], user = { username: 'admin', role: 'president' }) {
     return `
     <!DOCTYPE html>
     <html lang="zh-TW">
@@ -1012,6 +1016,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 });
                 if (typeof closePostForm === 'function') closePostForm();
                 if (typeof closePageForm === 'function') closePageForm();
+                document.body.classList.remove('menu-open');
             }
 
             function logout() {
@@ -1146,6 +1151,19 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 padding: 40px;
                 overflow-y: auto;
                 max-height: 100vh;
+            }
+            .mobile-admin-bar { display: none; }
+            @media (max-width: 768px) {
+                body { display: block; }
+                .mobile-admin-bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--bg-darker); position: sticky; top: 0; z-index: 20; }
+                .mobile-admin-bar button { background: transparent; border: 1px solid var(--border-glass); color: white; border-radius: 8px; padding: 8px 12px; }
+                .sidebar { display: none; position: fixed; inset: 54px 0 0 0; width: min(300px, 85vw); z-index: 30; overflow-y: auto; box-shadow: 20px 0 40px rgba(0,0,0,.5); }
+                body.menu-open .sidebar { display: flex; }
+                .main-content { padding: 16px; max-height: none; min-height: calc(100vh - 54px); }
+                .panel { padding: 16px; }
+                .content-header { flex-wrap: wrap; gap: 12px; }
+                .table-container { overflow-x: auto; }
+                input, textarea, select { max-width: 100%; }
             }
             .content-header {
                 display: flex;
@@ -1457,17 +1475,19 @@ export function renderAdminDashboard(posts = [], pages = []) {
         </style>
     </head>
     <body>
+        <div class="mobile-admin-bar"><button type="button" onclick="document.body.classList.toggle('menu-open')" aria-label="開啟後台選單">☰</button><strong>NTUT DRONE 後台</strong></div>
         <div class="sidebar">
             <div>
                 <div class="sidebar-logo">
                     <img src="/assets/images/logo_ntut.jpg" alt="NTUT Drone" style="width: 28px; height: 28px; object-fit: contain; border-radius: 6px; vertical-align: middle; margin-right: 8px;"> NTUT DRONE 後台
                 </div>
                 <div class="sidebar-nav">
-                    <button class="nav-item active" onclick="showPanel('posts')"><i data-lucide="book-open"></i> 文章管理</button>
+                    ${user?.role !== 'member' ? `<button class="nav-item active" onclick="showPanel('posts')"><i data-lucide="book-open"></i> 文章管理</button>
                     <button class="nav-item" onclick="showPanel('pages')"><i data-lucide="file-text"></i> 頁面管理</button>
                     <button class="nav-item" onclick="showPanel('media')"><i data-lucide="image"></i> 媒體庫上傳</button>
-                    <button class="nav-item" onclick="showPanel('homepage')"><i data-lucide="home"></i> 首頁設定</button>
+                    <button class="nav-item" onclick="showPanel('homepage')"><i data-lucide="home"></i> 首頁設定</button>` : ''}
                     <button class="nav-item" onclick="showPanel('settings')"><i data-lucide="settings"></i> 系統設定</button>
+                    ${user?.role === 'president' ? `<button class="nav-item" onclick="showPanel('users'); loadUsers()"><i data-lucide="users"></i> 帳號與權限</button>` : ''}
                 </div>
             </div>
             <div>
@@ -1478,7 +1498,7 @@ export function renderAdminDashboard(posts = [], pages = []) {
 
         <div class="main-content">
             <!-- Posts Panel -->
-            <div id="panel-posts" class="panel active">
+            <div id="panel-posts" class="panel ${user?.role === 'member' ? '' : 'active'}">
                 <div class="content-header">
                     <h1>文章管理</h1>
                     <button class="btn btn-primary" onclick="openPostForm()"><i data-lucide="plus"></i> 新增文章</button>
@@ -1973,19 +1993,19 @@ export function renderAdminDashboard(posts = [], pages = []) {
             </div>
 
             <!-- Settings Panel -->
-            <div id="panel-settings" class="panel">
+            <div id="panel-settings" class="panel ${user?.role === 'member' ? 'active' : ''}">
                 <div class="content-header">
                     <h1>系統帳號設定</h1>
                 </div>
                 
                 <form onsubmit="changePassword(event)" style="max-width: 450px;">
                     <div class="form-group">
-                        <label for="old-password">目前管理密碼</label>
+                        <label for="old-password">目前密碼</label>
                         <input type="password" id="old-password" class="form-control" required>
                     </div>
                     <div class="form-group">
                         <label for="new-password">設定新密碼</label>
-                        <input type="password" id="new-password" class="form-control" placeholder="至少 6 位字元" required>
+                        <input type="password" id="new-password" class="form-control" placeholder="至少 12 位字元" required>
                     </div>
                     <div class="form-group">
                         <label for="new-password-confirm">再次輸入新密碼</label>
@@ -1994,6 +2014,16 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     <button type="submit" class="btn btn-primary" style="margin-top: 10px;">儲存新密碼</button>
                 </form>
             </div>
+            ${user?.role === 'president' ? `<div id="panel-users" class="panel">
+                <div class="content-header"><h1>帳號與權限</h1></div>
+                <form onsubmit="createUser(event)" style="display:grid; gap:12px; max-width:520px; margin-bottom:24px;">
+                    <input id="account-username" class="form-control" placeholder="帳號（英數字，至少 3 位）" required>
+                    <input id="account-password" type="password" class="form-control" placeholder="初始密碼（至少 12 位）" minlength="12" required>
+                    <select id="account-role" class="form-control"><option value="president">社長</option><option value="finance">財務</option><option value="cadre">一般幹部</option><option value="member">社員</option></select>
+                    <button class="btn btn-primary" type="submit">新增帳號</button>
+                </form>
+                <div class="table-container"><table><thead><tr><th>帳號</th><th>角色</th><th>狀態</th><th>操作</th></tr></thead><tbody id="users-list"></tbody></table></div>
+            </div>` : ''}
         </div>
 
         <!-- Toast Notice -->
@@ -2387,8 +2417,8 @@ export function renderAdminDashboard(posts = [], pages = []) {
                     showToast('兩次輸入的新密碼不一致！', true);
                     return;
                 }
-                if (newPassword.length < 6) {
-                    showToast('新密碼必須至少為 6 個字元！', true);
+                if (newPassword.length < 12) {
+                    showToast('新密碼必須至少為 12 個字元！', true);
                     return;
                 }
 
@@ -2409,6 +2439,45 @@ export function renderAdminDashboard(posts = [], pages = []) {
                 } catch (err) {
                     showToast('伺服器連線失敗', true);
                 }
+            }
+
+            async function loadUsers() {
+                const res = await fetch('/api/users');
+                if (!res.ok) return showToast('無法載入帳號', true);
+                const users = await res.json();
+                const tbody = document.getElementById('users-list');
+                tbody.replaceChildren();
+                for (const user of users) {
+                    const tr = document.createElement('tr');
+                    for (const value of [user.username, {president:'社長',finance:'財務',cadre:'一般幹部',member:'社員'}[user.role], user.active ? '啟用' : '停用']) {
+                        const td = document.createElement('td'); td.textContent = value; tr.appendChild(td);
+                    }
+                    const td = document.createElement('td');
+                    const role = document.createElement('select'); role.className = 'form-control';
+                    for (const [value, label] of Object.entries({president:'社長',finance:'財務',cadre:'一般幹部',member:'社員'})) {
+                        const option = new Option(label, value); role.add(option);
+                    }
+                    role.value = user.role;
+                    const save = document.createElement('button'); save.className = 'btn btn-secondary'; save.textContent = '儲存角色';
+                    save.onclick = () => updateUser(user.username, { role: role.value });
+                    const toggle = document.createElement('button'); toggle.className = 'btn btn-secondary'; toggle.textContent = user.active ? '停用' : '啟用';
+                    toggle.onclick = () => updateUser(user.username, { active: !user.active });
+                    const reset = document.createElement('button'); reset.className = 'btn btn-secondary'; reset.textContent = '重設密碼';
+                    reset.onclick = () => { const password = prompt('輸入新密碼（至少 12 位）'); if (password) updateUser(user.username, { password }); };
+                    td.append(role, save, toggle, reset); tr.appendChild(td); tbody.appendChild(tr);
+                }
+            }
+            async function updateUser(username, changes) {
+                const res = await fetch('/api/users', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ username, ...changes }) });
+                const data = await res.json(); showToast(res.ok ? '帳號已更新' : data.error, !res.ok);
+                if (res.ok) loadUsers();
+            }
+            async function createUser(event) {
+                event.preventDefault();
+                const body = { username: document.getElementById('account-username').value, password: document.getElementById('account-password').value, role: document.getElementById('account-role').value };
+                const res = await fetch('/api/users', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const data = await res.json(); showToast(res.ok ? '帳號已新增' : data.error, !res.ok);
+                if (res.ok) { event.target.reset(); loadUsers(); }
             }
 
             // ── Homepage Settings ───────────────────────────────────────

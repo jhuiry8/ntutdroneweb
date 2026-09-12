@@ -15,6 +15,9 @@ function createMockKV(initialData = {}) {
         async delete(key) {
             store.delete(key);
         },
+        async list({ prefix }) {
+            return { keys: [...store.keys()].filter(name => name.startsWith(prefix)).map(name => ({ name })) };
+        },
         _store: store
     };
 }
@@ -117,4 +120,36 @@ test('Worker test suite - Cloudflare Worker Routes & CMS APIs', async (t) => {
         const res = await worker.fetch(req, mockEnv);
         assert.equal(res.status, 200);
     });
+});
+
+test('individual accounts enforce roles and password rotation', async () => {
+    const env = { DRONE_DB: createMockKV(), ADMIN_INITIAL_PASSWORD: 'initial-admin-secret' };
+    const login = async (username, password) => worker.fetch(new Request('https://example.com/api/login', {
+        method: 'POST', body: new URLSearchParams({ username, password })
+    }), env);
+    const adminLogin = await login('admin', 'initial-admin-secret');
+    assert.equal(adminLogin.status, 302);
+    const adminCookie = adminLogin.headers.get('set-cookie').split(';')[0];
+    const create = await worker.fetch(new Request('https://example.com/api/users', {
+        method: 'POST', headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'treasurer', password: 'finance-secret-123', role: 'finance' })
+    }), env);
+    assert.equal(create.status, 201);
+    const financeLogin = await login('treasurer', 'finance-secret-123');
+    assert.equal(financeLogin.status, 302);
+    const financeCookie = financeLogin.headers.get('set-cookie').split(';')[0];
+    const read = await worker.fetch(new Request('https://example.com/api/homepage', { headers: { Cookie: financeCookie } }), env);
+    assert.equal(read.status, 200);
+    const denied = await worker.fetch(new Request('https://example.com/api/homepage', {
+        method: 'POST', headers: { Cookie: financeCookie, 'Content-Type': 'application/json' }, body: '{}'
+    }), env);
+    assert.equal(denied.status, 403);
+    const passwordChange = await worker.fetch(new Request('https://example.com/api/change-password', {
+        method: 'POST', headers: { Cookie: financeCookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword: 'finance-secret-123', newPassword: 'updated-finance-secret' })
+    }), env);
+    assert.equal(passwordChange.status, 200);
+    assert.equal((await login('treasurer', 'finance-secret-123')).status, 200);
+    assert.equal((await login('treasurer', 'updated-finance-secret')).status, 302);
+    assert.equal((await worker.fetch(new Request('https://example.com/api/homepage', { headers: { Cookie: financeCookie } }), env)).status, 401);
 });
