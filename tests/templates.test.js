@@ -78,6 +78,17 @@ test('Templates test suite - HTML Rendering & Component Generator', async (t) =>
         assert.ok(pageHtml.includes('FPV 獨立頁面內容'), 'Custom page content must be rendered');
     });
 
+    await t.test('finance and member modules are shown only to finance managers', () => {
+        const financeHtml = renderAdminDashboard([], [], { username: 'treasurer', role: 'finance' });
+        assert.match(financeHtml, /財務管理/);
+        assert.match(financeHtml, /社員管理/);
+        assert.match(financeHtml, /待審核/);
+        const memberHtml = renderAdminDashboard([], [], { username: 'member', role: 'member' });
+        assert.doesNotMatch(memberHtml, /id="panel-finance"|id="panel-members"/);
+        const cadreHtml = renderAdminDashboard([], [], { username: 'cadre', role: 'cadre' });
+        assert.doesNotMatch(cadreHtml, /id="panel-finance"|id="panel-members"/);
+    });
+
     await t.test('mobile navigation uses the same open state in script and stylesheet', () => {
         const script = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
         const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');

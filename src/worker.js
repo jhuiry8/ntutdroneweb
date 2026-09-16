@@ -1,7 +1,7 @@
 // NTUT Drone Club - Cloudflare Worker Entry Point (with i18n support)
 import { marked } from 'marked';
 import { sanitizeContent } from './html.js';
-import { passwordHash, verifyPassword, PasswordResetRequiredError, validRole, canManageUsers, canEditCms, canViewCms, publicUser } from './auth.js';
+import { passwordHash, verifyPassword, PasswordResetRequiredError, validRole, canManageUsers, canEditCms, canViewCms, canManageFinance, canManageMembers, publicUser } from './auth.js';
 import {
     renderLandingPage,
     renderBlogList,
@@ -42,6 +42,64 @@ function parseCookies(request) {
 // Helper: Check Authentication
 async function isAuthenticated(request, env) {
     return !!(await sessionUser(request, env));
+}
+
+const FINANCE_BUDGETS_KEY = 'finance:budgets';
+const FINANCE_TRANSACTIONS_KEY = 'finance:transactions';
+const MEMBERS_KEY = 'members:list';
+
+class FinanceValidationError extends Error {}
+
+function financeAmount(value) {
+    const amount = Number(value);
+    return Number.isSafeInteger(amount) && amount >= 0 && amount <= 1000000000 ? amount : null;
+}
+
+function financeText(value, field, maxLength = 100) {
+    const text = String(value ?? '').trim();
+    if (!text || text.length > maxLength) throw new FinanceValidationError(`${field} 為必填，且不可超過 ${maxLength} 字`);
+    return text;
+}
+
+function financeDate(value) {
+    const date = String(value ?? '');
+    const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) throw new FinanceValidationError('日期格式必須為 YYYY-MM-DD');
+    const parsed = new Date(`${date}T00:00:00Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.getUTCFullYear() !== Number(match[1]) || parsed.getUTCMonth() + 1 !== Number(match[2]) || parsed.getUTCDate() !== Number(match[3])) throw new FinanceValidationError('日期不存在');
+    return date;
+}
+
+function parseFinanceList(json) {
+    if (!json) return [];
+    const list = JSON.parse(json);
+    if (!Array.isArray(list)) throw new Error('財務資料格式錯誤');
+    return list;
+}
+
+function importedDate(value) {
+    const match = String(value ?? '').trim().match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+    if (!match) throw new FinanceValidationError('日期格式必須為 YYYY/MM/DD 或 YYYY-MM-DD');
+    return financeDate(`${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`);
+}
+
+function importAmount(value, field) {
+    if (value === '' || value === null || value === undefined) return 0;
+    const normalized = String(value).replace(/[,$\s]/g, '');
+    const amount = Number(normalized);
+    if (!Number.isSafeInteger(amount) || amount < 0 || amount > 1000000000) throw new FinanceValidationError(`${field} 必須為 0 至 1,000,000,000 的整數`);
+    return amount;
+}
+
+function transactionTotals(transactions) {
+    const approved = transactions.filter(item => item.status === 'approved');
+    const pending = transactions.filter(item => item.status === 'pending');
+    const sum = (items, key) => items.reduce((total, item) => total + (item[key] || 0), 0);
+    return {
+        cashBalance: sum(approved, 'cashDelta'), postalBalance: sum(approved, 'postalDelta'),
+        income: sum(approved, 'income'), expense: sum(approved, 'expense'),
+        pendingCount: pending.length, pendingIncome: sum(pending, 'income'), pendingExpense: sum(pending, 'expense')
+    };
 }
 
 async function sessionUser(request, env) {
@@ -511,6 +569,145 @@ export default {
                 return Response.json(publicUser(user));
             }
 
+            // ==================== API: Finance ledger, budget, import, and review ====================
+            if (path === '/api/finance/summary' && method === 'GET') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageFinance(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const transactions = parseFinanceList(await env.DRONE_DB.get(FINANCE_TRANSACTIONS_KEY));
+                const budgets = parseFinanceList(await env.DRONE_DB.get(FINANCE_BUDGETS_KEY));
+                const approved = transactions.filter(item => item.status === 'approved');
+                const spentByCategory = Object.fromEntries(budgets.map(item => [item.id, 0]));
+                for (const item of approved) if (item.kind === 'expense' && item.budgetId && spentByCategory[item.budgetId] !== undefined) spentByCategory[item.budgetId] += item.expense;
+                return Response.json({
+                    transactions: transactions.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)),
+                    budgets: budgets.map(item => ({ ...item, spent: spentByCategory[item.id] || 0 })),
+                    totals: transactionTotals(transactions)
+                });
+            }
+
+            if (path === '/api/finance/transactions' && method === 'POST') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageFinance(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const body = await request.json();
+                const kind = String(body.kind || '');
+                if (!['income', 'expense', 'transfer'].includes(kind)) return Response.json({ error: '收支類型無效' }, { status: 400 });
+                const amount = financeAmount(body.amount);
+                if (!amount) return Response.json({ error: '金額必須為 1 至 1,000,000,000 的整數' }, { status: 400 });
+                const account = String(body.account || 'cash');
+                if (!['cash', 'postal'].includes(account)) return Response.json({ error: '帳戶無效' }, { status: 400 });
+                const item = financeText(body.item, '事由', 120);
+                const date = financeDate(body.date);
+                const transaction = {
+                    id: crypto.randomUUID(), date, item, kind, amount,
+                    income: kind === 'income' ? amount : 0, expense: kind === 'expense' ? amount : 0,
+                    cashDelta: kind === 'transfer' ? (account === 'cash' ? -amount : amount) : (account === 'cash' ? (kind === 'income' ? amount : -amount) : 0),
+                    postalDelta: kind === 'transfer' ? (account === 'cash' ? amount : -amount) : (account === 'postal' ? (kind === 'income' ? amount : -amount) : 0),
+                    budgetId: typeof body.budgetId === 'string' ? body.budgetId : '', status: 'pending',
+                    createdBy: user.username, createdAt: new Date().toISOString(), source: 'manual'
+                };
+                const transactions = parseFinanceList(await env.DRONE_DB.get(FINANCE_TRANSACTIONS_KEY));
+                transactions.push(transaction);
+                await env.DRONE_DB.put(FINANCE_TRANSACTIONS_KEY, JSON.stringify(transactions));
+                return Response.json(transaction, { status: 201 });
+            }
+
+            if (path.startsWith('/api/finance/transactions/') && path.endsWith('/review') && method === 'PATCH') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageUsers(user)) return Response.json({ error: '僅社長可審核收支' }, { status: 403 });
+                const id = path.slice('/api/finance/transactions/'.length, -'/review'.length);
+                const body = await request.json();
+                const status = body.status === 'approved' || body.status === 'rejected' ? body.status : null;
+                if (!status) return Response.json({ error: '審核結果無效' }, { status: 400 });
+                const transactions = parseFinanceList(await env.DRONE_DB.get(FINANCE_TRANSACTIONS_KEY));
+                const transaction = transactions.find(item => item.id === id);
+                if (!transaction) return Response.json({ error: '帳目不存在' }, { status: 404 });
+                if (transaction.status !== 'pending') return Response.json({ error: '此帳目已完成審核' }, { status: 409 });
+                transaction.status = status;
+                transaction.reviewedBy = user.username;
+                transaction.reviewedAt = new Date().toISOString();
+                transaction.reviewNote = status === 'rejected' ? financeText(body.note, '退回原因', 200) : '';
+                await env.DRONE_DB.put(FINANCE_TRANSACTIONS_KEY, JSON.stringify(transactions));
+                return Response.json(transaction);
+            }
+
+            if (path === '/api/finance/budgets' && ['GET', 'PUT'].includes(method)) {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageFinance(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                if (method === 'GET') return Response.json(parseFinanceList(await env.DRONE_DB.get(FINANCE_BUDGETS_KEY)));
+                const { budgets } = await request.json();
+                if (!Array.isArray(budgets) || budgets.length > 100) return Response.json({ error: '預算最多 100 個分類' }, { status: 400 });
+                const names = new Set();
+                const normalized = budgets.map(item => {
+                    const name = financeText(item.name, '分類名稱', 60);
+                    if (names.has(name)) throw new FinanceValidationError('預算分類不可重複');
+                    names.add(name);
+                    const planned = financeAmount(item.planned);
+                    if (planned === null) throw new FinanceValidationError('預算金額無效');
+                    return { id: typeof item.id === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(item.id) ? item.id : crypto.randomUUID(), name, planned };
+                });
+                await env.DRONE_DB.put(FINANCE_BUDGETS_KEY, JSON.stringify(normalized));
+                return Response.json(normalized);
+            }
+
+            if (path === '/api/finance/import' && method === 'POST') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageFinance(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const { rows } = await request.json();
+                if (!Array.isArray(rows) || rows.length < 1 || rows.length > 1000) return Response.json({ error: '匯入資料需介於 1 至 1,000 筆' }, { status: 400 });
+                let previousCash = 0, previousPostal = 0;
+                const imported = rows.map((row, index) => {
+                    const date = importedDate(row.date);
+                    const item = financeText(row.item, `第 ${index + 1} 列事宜`, 120);
+                    const income = importAmount(row.income, `第 ${index + 1} 列收入`);
+                    const expense = importAmount(row.expense, `第 ${index + 1} 列支出`);
+                    if (income && expense) throw new FinanceValidationError(`第 ${index + 1} 列不可同時填寫收入與支出`);
+                    const cashBalance = importAmount(row.cashBalance, `第 ${index + 1} 列現金餘額`);
+                    const postalBalance = importAmount(row.postalBalance, `第 ${index + 1} 列郵局餘額`);
+                    const cashDelta = cashBalance - previousCash;
+                    const postalDelta = postalBalance - previousPostal;
+                    previousCash = cashBalance; previousPostal = postalBalance;
+                    return { id: crypto.randomUUID(), date, item, kind: income ? 'income' : expense ? 'expense' : 'transfer', amount: income || expense || Math.abs(cashDelta) || Math.abs(postalDelta), income, expense, cashDelta, postalDelta, budgetId: '', status: 'pending', createdBy: user.username, createdAt: new Date().toISOString(), source: 'legacy-spreadsheet' };
+                });
+                const transactions = parseFinanceList(await env.DRONE_DB.get(FINANCE_TRANSACTIONS_KEY));
+                await env.DRONE_DB.put(FINANCE_TRANSACTIONS_KEY, JSON.stringify([...transactions, ...imported]));
+                return Response.json({ imported: imported.length, transactions: imported }, { status: 201 });
+            }
+
+            // ==================== API: Member directory ====================
+            if (path === '/api/members' && ['GET', 'POST'].includes(method)) {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const members = parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY));
+                if (method === 'GET') {
+                    const query = String(url.searchParams.get('q') || '').trim().toLowerCase();
+                    return Response.json(query ? members.filter(member => [member.name, member.studentId, member.email, member.phone].some(value => String(value || '').toLowerCase().includes(query))) : members);
+                }
+                const body = await request.json();
+                const studentId = String(body.studentId || '').trim();
+                if (studentId && (studentId.length > 30 || members.some(member => member.studentId === studentId))) return Response.json({ error: '學號已存在或格式錯誤' }, { status: 409 });
+                const member = { id: crypto.randomUUID(), name: financeText(body.name, '姓名', 50), studentId, email: String(body.email || '').trim().slice(0, 100), phone: String(body.phone || '').trim().slice(0, 30), joinedAt: financeDate(body.joinedAt || new Date().toISOString().slice(0, 10)), createdAt: new Date().toISOString() };
+                members.push(member);
+                await env.DRONE_DB.put(MEMBERS_KEY, JSON.stringify(members));
+                return Response.json(member, { status: 201 });
+            }
+
+            if (path.startsWith('/api/members/') && method === 'DELETE') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const id = path.slice('/api/members/'.length);
+                const members = parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY));
+                if (!members.some(member => member.id === id)) return Response.json({ error: '社員不存在' }, { status: 404 });
+                await env.DRONE_DB.put(MEMBERS_KEY, JSON.stringify(members.filter(member => member.id !== id)));
+                return Response.json({ success: true });
+            }
+
             // ==================== API: Upload Image to GitHub ====================
             if (path === '/api/upload' && method === 'POST') {
                 const user = await sessionUser(request, env);
@@ -612,6 +809,7 @@ export default {
             return new Response('Not Found', { status: 404 });
 
         } catch (e) {
+            if (e instanceof FinanceValidationError) return Response.json({ error: e.message }, { status: 400 });
             if (e instanceof PasswordResetRequiredError) {
                 if (path === '/api/login') {
                     return new Response(renderLogin(e.message, env.TURNSTILE_SITE_KEY), {

@@ -1,6 +1,6 @@
 // NTUT Drone Club CMS - HTML Templates with i18n support
 import { locales } from './locales.js';
-import { canViewCms } from './auth.js';
+import { canViewCms, canManageFinance, canManageMembers } from './auth.js';
 import { escapeHtml, safeUrl, sanitizeContent, sanitizeInline } from './html.js';
 
 // Helper: Common Header
@@ -991,6 +991,8 @@ export function renderLogin(errorMessage = '', turnstileSiteKey = '') {
 // 6. Render Admin Dashboard Page with i18n Post Creation
 export function renderAdminDashboard(posts = [], pages = [], user = { username: 'admin', role: 'president' }) {
     const viewCms = canViewCms(user);
+    const manageFinance = canManageFinance(user);
+    const manageMembers = canManageMembers(user);
     if (!viewCms) { posts = []; pages = []; }
     return `
     <!DOCTYPE html>
@@ -1191,6 +1193,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 .content-header { flex-wrap: wrap; gap: 12px; }
                 .table-container { overflow-x: auto; }
                 .responsive-form-grid { grid-template-columns: minmax(0, 1fr) !important; }
+                .finance-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
                 #uploaded-files-grid { grid-template-columns: minmax(0, 1fr) !important; }
                 input, textarea, select { max-width: 100%; font-size: 16px !important; }
                 .btn { min-height: 44px; }
@@ -1206,6 +1209,10 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 font-size: 1.85rem;
                 font-weight: 800;
             }
+            .finance-summary { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin:20px 0; }
+            .finance-card { padding:16px; border:1px solid var(--border-glass); border-radius:12px; background:rgba(255,255,255,.03); display:grid; gap:6px; }
+            .finance-card span { color:var(--text-muted); font-size:.85rem; }
+            .finance-card strong { font-size:1.2rem; color:var(--color-cyan); }
             
             /* Panels */
             .panel {
@@ -1517,6 +1524,8 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     <button class="nav-item" onclick="showPanel('pages')"><i data-lucide="file-text"></i> 頁面管理</button>
                     <button class="nav-item" onclick="showPanel('media')"><i data-lucide="image"></i> 媒體庫上傳</button>
                     <button class="nav-item" onclick="showPanel('homepage')"><i data-lucide="home"></i> 首頁設定</button>` : ''}
+                    ${manageFinance ? `<button class="nav-item" onclick="showPanel('finance'); loadFinance()"><i data-lucide="wallet-cards"></i> 財務管理</button>` : ''}
+                    ${manageMembers ? `<button class="nav-item" onclick="showPanel('members'); loadMembers()"><i data-lucide="contact-round"></i> 社員管理</button>` : ''}
                     <button class="nav-item" onclick="showPanel('settings')"><i data-lucide="settings"></i> 系統設定</button>
                     ${user?.role === 'president' ? `<button class="nav-item" onclick="showPanel('users'); loadUsers()"><i data-lucide="users"></i> 帳號與權限</button>` : ''}
                 </div>
@@ -2024,6 +2033,39 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             </div>
 
             ` : ''}
+            ${manageFinance ? `<div id="panel-finance" class="panel">
+                <div class="content-header"><div><h1>財務管理</h1><p style="color:var(--text-muted); margin-top:6px;">收支送審後，只有社長核准才會計入餘額。</p></div><button type="button" class="btn btn-secondary" onclick="exportFinanceCsv()">匯出 CSV</button></div>
+                <div class="finance-summary" id="finance-summary"></div>
+                <div class="responsive-form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin:24px 0;">
+                    <form onsubmit="saveFinanceTransaction(event)" style="display:grid; gap:12px; padding:18px; border:1px solid var(--border-glass); border-radius:12px;">
+                        <h2 style="font-size:1.1rem;">新增收支</h2>
+                        <input id="finance-date" class="form-control" type="date" required>
+                        <input id="finance-item" class="form-control" placeholder="事由，例如：社員社費" maxlength="120" required>
+                        <div class="responsive-form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><select id="finance-kind" class="form-control"><option value="income">收入</option><option value="expense">支出</option><option value="transfer">現金／郵局轉帳</option></select><select id="finance-account" class="form-control"><option value="cash">現金帳戶</option><option value="postal">郵局帳戶</option></select></div>
+                        <input id="finance-amount" class="form-control" type="number" min="1" step="1" placeholder="金額（新台幣）" required>
+                        <select id="finance-budget" class="form-control"><option value="">不歸入預算分類</option></select>
+                        <button class="btn btn-primary" type="submit">送交審核</button>
+                    </form>
+                    <div style="display:grid; gap:12px; padding:18px; border:1px solid var(--border-glass); border-radius:12px;">
+                        <h2 style="font-size:1.1rem;">匯入既有帳本</h2>
+                        <p style="font-size:.88rem; color:var(--text-muted); line-height:1.6;">支援 CSV 或 TSV（從 Google 試算表／Excel 下載或貼上）。欄位名稱可使用：日期、事宜、收入、支出、現金餘額、郵局餘額、總計。資料會先列為待審核，不會立刻改變餘額。</p>
+                        <input id="finance-import-file" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values" class="form-control">
+                        <textarea id="finance-import-text" class="form-control" rows="4" placeholder="或直接貼上試算表資料（包含第一列標題）"></textarea>
+                        <button type="button" class="btn btn-secondary" onclick="importFinanceLedger()">驗證並匯入待審核帳目</button>
+                    </div>
+                </div>
+                <div class="responsive-form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px;">
+                    <div style="padding:18px; border:1px solid var(--border-glass); border-radius:12px;"><div style="display:flex; justify-content:space-between; gap:12px; align-items:center;"><h2 style="font-size:1.1rem;">預算分類</h2><button type="button" class="btn btn-secondary" onclick="addBudgetRow()">新增分類</button></div><div id="finance-budgets" style="display:grid; gap:8px; margin-top:14px;"></div><button type="button" class="btn btn-primary" style="margin-top:14px;" onclick="saveBudgets()">儲存預算</button></div>
+                    <div style="padding:18px; border:1px solid var(--border-glass); border-radius:12px;"><h2 style="font-size:1.1rem;">匯入既有預算</h2><p style="font-size:.88rem; color:var(--text-muted);">貼上或上傳兩欄資料：<code>分類,預算</code>。例如 <code>器材,20000</code>。</p><input id="budget-import-file" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values" class="form-control"><textarea id="budget-import-text" class="form-control" rows="4" placeholder="分類,預算\n器材,20000"></textarea><button type="button" class="btn btn-secondary" style="margin-top:12px;" onclick="importBudgets()">匯入預算分類</button></div>
+                </div>
+                <h2 style="font-size:1.1rem; margin-bottom:12px;">帳目與審核</h2><div class="table-container"><table><thead><tr><th>日期</th><th>事由</th><th>收入</th><th>支出</th><th>現金變動</th><th>郵局變動</th><th>狀態</th><th>操作</th></tr></thead><tbody id="finance-transactions"></tbody></table></div>
+            </div>` : ''}
+            ${manageMembers ? `<div id="panel-members" class="panel">
+                <div class="content-header"><div><h1>社員管理</h1><p style="color:var(--text-muted); margin-top:6px;">社員名冊獨立於登入帳號，可安全維護社團資料。</p></div></div>
+                <form onsubmit="createMember(event)" class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:18px;"><input id="member-name" class="form-control" placeholder="姓名 *" maxlength="50" required><input id="member-student-id" class="form-control" placeholder="學號（選填）" maxlength="30"><input id="member-email" class="form-control" type="email" placeholder="Email（選填）" maxlength="100"><input id="member-phone" class="form-control" placeholder="電話（選填）" maxlength="30"><input id="member-joined-at" class="form-control" type="date" required><button class="btn btn-primary" type="submit">新增社員</button></form>
+                <div style="display:flex; gap:12px; margin-bottom:14px;"><input id="member-search" class="form-control" placeholder="依姓名、學號、Email 或電話搜尋" oninput="loadMembers()"><button type="button" class="btn btn-secondary" onclick="loadMembers()">查詢</button></div>
+                <div class="table-container"><table><thead><tr><th>姓名</th><th>學號</th><th>Email</th><th>電話</th><th>加入日期</th><th>操作</th></tr></thead><tbody id="members-list"></tbody></table></div>
+            </div>` : ''}
             <!-- Settings Panel -->
             <div id="panel-settings" class="panel ${!viewCms ? 'active' : ''}">
                 <div class="content-header">
@@ -2496,6 +2538,76 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 const data = await res.json(); showToast(res.ok ? '帳號已新增' : data.error, !res.ok);
                 if (res.ok) { event.target.reset(); loadUsers(); }
             }
+
+            const financeCanReview = ${user?.role === 'president'};
+            let financeState = { transactions: [], budgets: [], totals: {} };
+            const money = value => 'NT$ ' + new Intl.NumberFormat('zh-TW').format(Number(value || 0));
+            const escapeText = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
+
+            function setFinanceDate() {
+                const date = document.getElementById('finance-date');
+                if (date && !date.value) date.value = new Date().toISOString().slice(0, 10);
+            }
+            function financeStatus(item) {
+                if (item.status === 'approved') return '<span style="color:#34d399">已核准</span>';
+                if (item.status === 'rejected') return '<span style="color:#f87171">已退回</span>';
+                return '<span style="color:#fbbf24">待審核</span>';
+            }
+            function renderFinance() {
+                const totals = financeState.totals || {};
+                const summary = document.getElementById('finance-summary');
+                if (summary) summary.innerHTML = '<div class="finance-card"><span>現金餘額</span><strong>' + money(totals.cashBalance) + '</strong></div><div class="finance-card"><span>郵局餘額</span><strong>' + money(totals.postalBalance) + '</strong></div><div class="finance-card"><span>核准總餘額</span><strong>' + money((totals.cashBalance || 0) + (totals.postalBalance || 0)) + '</strong></div><div class="finance-card"><span>待審核帳目</span><strong>' + (totals.pendingCount || 0) + ' 筆</strong></div>';
+                const budget = document.getElementById('finance-budget');
+                if (budget) budget.innerHTML = '<option value="">不歸入預算分類</option>' + financeState.budgets.map(item => '<option value="' + escapeText(item.id) + '">' + escapeText(item.name) + '（剩餘 ' + money(item.planned - item.spent) + '）</option>').join('');
+                const budgetRows = document.getElementById('finance-budgets');
+                if (budgetRows) budgetRows.innerHTML = financeState.budgets.map(item => budgetRow(item)).join('') || '<p style="color:var(--text-muted);">尚無預算分類。</p>';
+                const body = document.getElementById('finance-transactions');
+                if (body) body.innerHTML = financeState.transactions.map(item => '<tr><td>' + escapeText(item.date) + '</td><td>' + escapeText(item.item) + (item.reviewNote ? '<br><small style="color:#f87171">退回：' + escapeText(item.reviewNote) + '</small>' : '') + '</td><td>' + (item.income ? money(item.income) : '') + '</td><td>' + (item.expense ? money(item.expense) : '') + '</td><td>' + money(item.cashDelta) + '</td><td>' + money(item.postalDelta) + '</td><td>' + financeStatus(item) + '</td><td>' + (financeCanReview && item.status === 'pending' ? '<button class="btn btn-primary" data-id="' + escapeText(item.id) + '" onclick="reviewFinance(this.dataset.id, &quot;approved&quot;)">核准</button> <button class="btn btn-danger" data-id="' + escapeText(item.id) + '" onclick="reviewFinance(this.dataset.id, &quot;rejected&quot;)">退回</button>' : '') + '</td></tr>').join('') || '<tr><td colspan="8" style="text-align:center; color:var(--text-muted)">尚無帳目。</td></tr>';
+            }
+            function budgetRow(item = {}) { return '<div class="responsive-form-grid finance-budget-row" data-id="' + escapeText(item.id || '') + '" style="display:grid; grid-template-columns:1fr 150px auto; gap:8px;"><input class="form-control budget-name" placeholder="分類，例如：器材" value="' + escapeText(item.name || '') + '"><input class="form-control budget-planned" type="number" min="0" step="1" placeholder="預算" value="' + (Number.isSafeInteger(item.planned) ? item.planned : '') + '"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">刪除</button></div>'; }
+            function addBudgetRow() { const container = document.getElementById('finance-budgets'); if (container) { if (container.querySelector('p')) container.innerHTML = ''; container.insertAdjacentHTML('beforeend', budgetRow()); } }
+            async function loadFinance() {
+                setFinanceDate();
+                const res = await fetch('/api/finance/summary');
+                if (!res.ok) return showToast('無法載入財務資料', true);
+                financeState = await res.json(); renderFinance();
+            }
+            async function saveFinanceTransaction(event) {
+                event.preventDefault();
+                const body = { date: document.getElementById('finance-date').value, item: document.getElementById('finance-item').value, kind: document.getElementById('finance-kind').value, account: document.getElementById('finance-account').value, amount: Number(document.getElementById('finance-amount').value), budgetId: document.getElementById('finance-budget').value };
+                const res = await fetch('/api/finance/transactions', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+                const data = await res.json(); showToast(res.ok ? '已送交審核' : data.error, !res.ok);
+                if (res.ok) { event.target.reset(); setFinanceDate(); loadFinance(); }
+            }
+            async function reviewFinance(id, status) {
+                const note = status === 'rejected' ? prompt('請輸入退回原因') : '';
+                if (status === 'rejected' && !note) return;
+                const res = await fetch('/api/finance/transactions/' + encodeURIComponent(id) + '/review', { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status, note}) });
+                const data = await res.json(); showToast(res.ok ? (status === 'approved' ? '已核准帳目' : '已退回帳目') : data.error, !res.ok); if (res.ok) loadFinance();
+            }
+            async function saveBudgets() {
+                const budgets = [...document.querySelectorAll('.finance-budget-row')].map(row => ({id:row.dataset.id, name:row.querySelector('.budget-name').value, planned:Number(row.querySelector('.budget-planned').value)})).filter(item => item.name || item.planned);
+                const res = await fetch('/api/finance/budgets', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({budgets})}); const data = await res.json(); showToast(res.ok ? '預算已儲存' : data.error, !res.ok); if (res.ok) loadFinance();
+            }
+            function parseSheet(text) {
+                const delimiter = text.includes('\\t') ? '\\t' : ',';
+                const rows = []; let row = [], cell = '', quoted = false;
+                for (let i = 0; i < text.length; i++) { const char = text[i], next = text[i + 1]; if (char === '"' && quoted && next === '"') { cell += '"'; i++; } else if (char === '"') quoted = !quoted; else if (char === delimiter && !quoted) { row.push(cell.trim()); cell = ''; } else if ((char === '\\n' || char === '\\r') && !quoted) { if (char === '\\r' && next === '\\n') i++; row.push(cell.trim()); if (row.some(value => value)) rows.push(row); row = []; cell = ''; } else cell += char; } if (cell || row.length) { row.push(cell.trim()); rows.push(row); } return rows;
+            }
+            async function sourceText(fileId, textId) { const text = document.getElementById(textId).value.trim(); if (text) return text; const file = document.getElementById(fileId).files[0]; return file ? await file.text() : ''; }
+            async function importFinanceLedger() {
+                const text = await sourceText('finance-import-file', 'finance-import-text'); if (!text) return showToast('請選擇檔案或貼上資料', true);
+                const rows = parseSheet(text); const header = rows.shift().map(value => value.replace(/^\uFEFF/, '').trim()); const index = name => header.indexOf(name);
+                const required = ['日期','事宜','收入','支出','現金餘額','郵局餘額']; if (required.some(name => index(name) < 0)) return showToast('欄位需包含：' + required.join('、'), true);
+                const data = rows.filter(row => row[index('日期')]).map(row => ({date:row[index('日期')], item:row[index('事宜')], income:row[index('收入')], expense:row[index('支出')], cashBalance:row[index('現金餘額')], postalBalance:row[index('郵局餘額')] }));
+                const res = await fetch('/api/finance/import', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:data})}); const result = await res.json(); showToast(res.ok ? '已匯入 ' + result.imported + ' 筆待審核帳目' : result.error, !res.ok); if (res.ok) loadFinance();
+            }
+            async function importBudgets() { const text = await sourceText('budget-import-file', 'budget-import-text'); if (!text) return showToast('請選擇檔案或貼上預算', true); const rows = parseSheet(text); const header = rows[0].map(value => value.replace(/^\uFEFF/, '').trim()); const hasHeader = header.includes('分類') && header.includes('預算'); if (hasHeader) rows.shift(); const budgets = rows.filter(row => row[0]).map(row => ({name:row[0], planned:Number(String(row[1] || '').replace(/[,\s]/g,''))})); const res = await fetch('/api/finance/budgets',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({budgets})}); const data=await res.json(); showToast(res.ok?'預算已匯入':data.error,!res.ok); if(res.ok)loadFinance(); }
+            function exportFinanceCsv() { const header = ['日期','事宜','收入','支出','現金變動','郵局變動','狀態','建立者','審核者']; const quote = value => '"' + String(value ?? '').replace(/"/g,'""') + '"'; const rows = financeState.transactions.map(item => [item.date,item.item,item.income,item.expense,item.cashDelta,item.postalDelta,item.status,item.createdBy,item.reviewedBy]); const blob = new Blob(['\\uFEFF' + [header,...rows].map(row=>row.map(quote).join(',')).join('\\r\\n')],{type:'text/csv;charset=utf-8'}); const link=document.createElement('a'); link.href=URL.createObjectURL(blob); link.download='ntut-drone-finance.csv'; link.click(); URL.revokeObjectURL(link.href); }
+
+            async function loadMembers() { const query = document.getElementById('member-search')?.value || ''; const res = await fetch('/api/members?q=' + encodeURIComponent(query)); if (!res.ok) return showToast('無法載入社員資料', true); const members = await res.json(); const body = document.getElementById('members-list'); body.innerHTML = members.map(item => '<tr><td>' + escapeText(item.name) + '</td><td>' + escapeText(item.studentId) + '</td><td>' + escapeText(item.email) + '</td><td>' + escapeText(item.phone) + '</td><td>' + escapeText(item.joinedAt) + '</td><td><button class="btn btn-danger" data-id="' + escapeText(item.id) + '" onclick="deleteMember(this.dataset.id)">刪除</button></td></tr>').join('') || '<tr><td colspan="6" style="text-align:center; color:var(--text-muted)">查無社員資料。</td></tr>'; }
+            async function createMember(event) { event.preventDefault(); const body = {name:document.getElementById('member-name').value,studentId:document.getElementById('member-student-id').value,email:document.getElementById('member-email').value,phone:document.getElementById('member-phone').value,joinedAt:document.getElementById('member-joined-at').value}; const res=await fetch('/api/members',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const data=await res.json(); showToast(res.ok?'社員已新增':data.error,!res.ok); if(res.ok){event.target.reset();document.getElementById('member-joined-at').value=new Date().toISOString().slice(0,10);loadMembers();} }
+            async function deleteMember(id) { if (!confirm('確定刪除此社員？此操作無法復原。')) return; const res=await fetch('/api/members/'+encodeURIComponent(id),{method:'DELETE'}); const data=await res.json(); showToast(res.ok?'社員已刪除':data.error,!res.ok); if(res.ok)loadMembers(); }
 
             // ── Homepage Settings ───────────────────────────────────────
             const hpFieldIdMap = {
