@@ -37,6 +37,8 @@ export function validRole(role) { return roles.includes(role); }
 export function canManageUsers(user) { return user?.role === 'president'; }
 export function canEditCms(user) { return ['president', 'cadre'].includes(user?.role); }
 export function canViewCms(user) { return ['president', 'finance', 'cadre'].includes(user?.role); }
+export function canManageFinance(user) { return ['president', 'finance'].includes(user?.role); }
+export function canManageMembers(user) { return ['president', 'finance'].includes(user?.role); }
 export function publicUser(user) {
     return { username: user.username, role: user.role, active: user.active !== false, createdAt: user.createdAt };
 }
