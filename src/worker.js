@@ -1105,77 +1105,67 @@ async function handleRequest(request, env, ctx) {
 export class EquipmentStore {
     constructor(ctx) {
         this.ctx = ctx;
-        this.kv = ctx.storage.kv;
+        this.storage = ctx.storage;
     }
 
-    listAssets() {
-        return [...this.kv.list({ prefix: 'equipment:asset:', limit: 5001 }).values()];
+    async listAssets(storage = this.storage) {
+        const entries = await storage.list({ prefix: 'equipment:asset:', limit: 5001 });
+        return [...entries.values()];
     }
 
-    fetch(request) {
+    async fetch(request) {
         try {
             if (request.method !== 'POST') return Response.json({ error: '方法不允許' }, { status: 405 });
             const url = new URL(request.url);
-            const payloadPromise = request.json();
-            return payloadPromise.then(payload => {
-                let result;
-                this.ctx.storage.transactionSync(() => {
+            const payload = await request.json();
+            const result = await this.storage.transaction(async storage => {
                     if (url.pathname === '/initialize') {
-                        if (!this.kv.get('equipment:initialized')) {
+                        if (!(await storage.get('equipment:initialized'))) {
                             for (const asset of Array.isArray(payload.assets) ? payload.assets : []) {
                                 if (!asset || typeof asset.id !== 'string' || !/^[\w-]{1,80}$/.test(asset.id) || typeof asset.assetNo !== 'string' || typeof asset.assetName !== 'string') continue;
-                                this.kv.put(`equipment:asset:${asset.id}`, asset);
+                                await storage.put(`equipment:asset:${asset.id}`, asset);
                             }
-                            this.kv.put('equipment:initialized', true);
+                            await storage.put('equipment:initialized', true);
                         }
-                        result = { status: 200, body: { success: true } };
-                        return;
+                        return { status: 200, body: { success: true } };
                     }
-                    if (!this.kv.get('equipment:initialized')) {
-                        result = { status: 503, body: { error: '設備儲存尚未初始化' } };
-                        return;
+                    if (!(await storage.get('equipment:initialized'))) {
+                        return { status: 503, body: { error: '設備儲存尚未初始化' } };
                     }
                     if (url.pathname === '/list') {
                         const query = String(payload.query || '').trim().toLowerCase();
-                        const assets = this.listAssets();
-                        result = { status: 200, body: query ? assets.filter(asset => [asset.assetNo, asset.assetName, asset.category, asset.serialNo, asset.status, asset.location, asset.custodian, asset.note].some(value => String(value || '').toLowerCase().includes(query))) : assets };
-                        return;
+                        const assets = await this.listAssets(storage);
+                        return { status: 200, body: query ? assets.filter(asset => [asset.assetNo, asset.assetName, asset.category, asset.serialNo, asset.status, asset.location, asset.custodian, asset.note].some(value => String(value || '').toLowerCase().includes(query))) : assets };
                     }
                     if (url.pathname === '/create') {
-                        const assets = this.listAssets();
-                        if (assets.length >= 5000) { result = { status: 409, body: { error: '設備列管上限為 5,000 件' } }; return; }
+                        const assets = await this.listAssets(storage);
+                        if (assets.length >= 5000) return { status: 409, body: { error: '設備列管上限為 5,000 件' } };
                         const fields = normalizeEquipmentInput(payload.fields);
                         const serialNo = fields.serialNo.toUpperCase();
-                        if (serialNo && assets.some(item => String(item.serialNo || '').trim().toUpperCase() === serialNo)) { result = { status: 409, body: { error: '原廠序號已列管' } }; return; }
+                        if (serialNo && assets.some(item => String(item.serialNo || '').trim().toUpperCase() === serialNo)) return { status: 409, body: { error: '原廠序號已列管' } };
                         const now = new Date().toISOString();
                         const asset = { id: crypto.randomUUID(), assetNo: createAssetNumber(assets), ...fields, createdBy: String(payload.username || ''), updatedBy: String(payload.username || ''), createdAt: now, updatedAt: now };
-                        this.kv.put(`equipment:asset:${asset.id}`, asset);
-                        result = { status: 201, body: asset };
-                        return;
+                        await storage.put(`equipment:asset:${asset.id}`, asset);
+                        return { status: 201, body: asset };
                     }
                     const updateMatch = /^\/update\/([\w-]{1,80})$/.exec(url.pathname);
                     if (updateMatch) {
                         const id = updateMatch[1];
-                        const asset = this.kv.get(`equipment:asset:${id}`);
-                        if (!asset) { result = { status: 404, body: { error: '設備不存在' } }; return; }
+                        const asset = await storage.get(`equipment:asset:${id}`);
+                        if (!asset) return { status: 404, body: { error: '設備不存在' } };
                         const fields = normalizeEquipmentInput({ ...asset, ...(payload.fields || {}) });
                         const serialNo = fields.serialNo.toUpperCase();
                         const previousSerial = String(asset.serialNo || '').trim().toUpperCase();
-                        if (serialNo && serialNo !== previousSerial && this.listAssets().some(item => item.id !== id && String(item.serialNo || '').trim().toUpperCase() === serialNo)) { result = { status: 409, body: { error: '原廠序號已列管' } }; return; }
+                        if (serialNo && serialNo !== previousSerial && (await this.listAssets(storage)).some(item => item.id !== id && String(item.serialNo || '').trim().toUpperCase() === serialNo)) return { status: 409, body: { error: '原廠序號已列管' } };
                         Object.assign(asset, fields, { updatedBy: String(payload.username || ''), updatedAt: new Date().toISOString() });
-                        this.kv.put(`equipment:asset:${id}`, asset);
-                        result = { status: 200, body: asset };
-                        return;
+                        await storage.put(`equipment:asset:${id}`, asset);
+                        return { status: 200, body: asset };
                     }
-                    result = { status: 404, body: { error: '設備操作不存在' } };
+                    return { status: 404, body: { error: '設備操作不存在' } };
                 });
-                return Response.json(result.body, { status: result.status });
-            }).catch(error => {
-                if (error instanceof FinanceValidationError) return Response.json({ error: error.message }, { status: 400 });
-                console.error('Equipment store operation failed', error?.message || String(error));
-                return Response.json({ error: '設備資料操作失敗' }, { status: 500 });
-            });
+            return Response.json(result.body, { status: result.status });
         } catch (error) {
+            if (error instanceof FinanceValidationError) return Response.json({ error: error.message }, { status: 400 });
             console.error('Equipment store operation failed', error?.message || String(error));
             return Response.json({ error: '設備資料操作失敗' }, { status: 500 });
         }

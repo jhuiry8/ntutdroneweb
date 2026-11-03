@@ -15,14 +15,17 @@ function createMockKV(initial = {}) {
 
 function createMockEquipmentStore() {
     const values = new Map();
+    let transactionTail = Promise.resolve();
     const storage = {
-        kv: {
-            get(key) { return values.get(key); },
-            put(key, value) { values.set(key, structuredClone(value)); },
-            delete(key) { return values.delete(key); },
-            list({ prefix = '', limit = Infinity } = {}) { return new Map([...values.entries()].filter(([key]) => key.startsWith(prefix)).sort(([a], [b]) => a.localeCompare(b)).slice(0, limit)); }
-        },
-        transactionSync(callback) { return callback(); }
+        async get(key) { return values.get(key); },
+        async put(key, value) { values.set(key, structuredClone(value)); },
+        async delete(key) { return values.delete(key); },
+        async list({ prefix = '', limit = Infinity } = {}) { return new Map([...values.entries()].filter(([key]) => key.startsWith(prefix)).sort(([a], [b]) => a.localeCompare(b)).slice(0, limit)); },
+        transaction(callback) {
+            const result = transactionTail.then(() => callback(storage));
+            transactionTail = result.catch(() => {});
+            return result;
+        }
     };
     const object = new EquipmentStore({ storage });
     return { idFromName: name => name, get: () => ({ fetch: (input, init) => object.fetch(input instanceof Request ? input : new Request(input, init)) }), values };
