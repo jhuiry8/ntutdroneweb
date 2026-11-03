@@ -51,6 +51,7 @@ const MEMBERS_KEY = 'members:list';
 const MEMBERSHIP_RECEIPTS_KEY = 'members:fee-receipts';
 const NOTES_KEY = 'club:class-notes';
 const EQUIPMENT_KEY = 'equipment:assets';
+const EQUIPMENT_MIGRATION_KEY = 'equipment:durable-object-migrated';
 
 class FinanceValidationError extends Error {}
 class PayloadTooLargeError extends Error {}
@@ -110,7 +111,7 @@ function importedDate(value) {
     return financeDate(`${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`);
 }
 
-function normalizeMemberInput(body, index = null) {
+function normalizeMemberInput(body, index = null, defaultJoinedAt = true) {
     const prefix = index === null ? '' : `第 ${index + 1} 筆：`;
     const name = String(body?.name ?? '').trim();
     const studentId = String(body?.studentId ?? '').trim().toUpperCase();
@@ -122,7 +123,7 @@ function normalizeMemberInput(body, index = null) {
     if (email.length > 100 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new FinanceValidationError(`${prefix}Email 格式無效或超過 100 字`);
     if (phone.length > 30 || position.length > 60 || note.length > 1000) throw new FinanceValidationError(`${prefix}電話、職務或備註超過允許長度`);
     const joinedAt = String(body?.joinedAt ?? '').trim();
-    return { name, studentId, email, phone, position, note, joinedAt: joinedAt ? importedDate(joinedAt) : new Date().toISOString().slice(0, 10) };
+    return { name, studentId, email, phone, position, note, joinedAt: joinedAt ? importedDate(joinedAt) : (defaultJoinedAt ? new Date().toISOString().slice(0, 10) : '') };
 }
 
 function normalizeEquipmentInput(body) {
@@ -152,6 +153,22 @@ function createAssetNumber(existing) {
         if (!existing.some(item => item.assetNo === assetNo)) return assetNo;
     }
     throw new Error('Unable to allocate unique asset number');
+}
+
+async function equipmentStoreRequest(env, path, payload = {}) {
+    const namespace = env.EQUIPMENT_STORE;
+    const stub = namespace.get(namespace.idFromName('club-equipment-inventory'));
+    if (await env.DRONE_DB.get(EQUIPMENT_MIGRATION_KEY) !== '1') {
+        const legacyAssets = parseFinanceList(await env.DRONE_DB.get(EQUIPMENT_KEY));
+        const initialized = await stub.fetch('https://equipment-store/initialize', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assets: legacyAssets })
+        });
+        if (!initialized.ok) return initialized;
+        await env.DRONE_DB.put(EQUIPMENT_MIGRATION_KEY, '1');
+    }
+    return stub.fetch(`https://equipment-store${path}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
 }
 
 function importAmount(value, field) {
@@ -299,6 +316,7 @@ async function handleRequest(request, env, ctx) {
                         } catch (e) {}
                     }
                 }
+
                 if (!postJson) {
                     return new Response('文章未找到 Article Not Found', { status: 404 });
                 }
@@ -784,21 +802,12 @@ async function handleRequest(request, env, ctx) {
                 const user = await sessionUser(request, env);
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
                 if (!canManageEquipment(user)) return Response.json({ error: '權限不足' }, { status: 403 });
-                const assets = parseFinanceList(await env.DRONE_DB.get(EQUIPMENT_KEY));
                 if (method === 'GET') {
                     const query = String(url.searchParams.get('q') || '').trim().toLowerCase();
-                    return Response.json(query ? assets.filter(item => [item.assetNo, item.assetName, item.category, item.serialNo, item.status, item.location, item.custodian, item.note].some(value => String(value || '').toLowerCase().includes(query))) : assets);
+                    return equipmentStoreRequest(env, '/list', { query });
                 }
-                if (assets.length >= 5000) return Response.json({ error: '設備列管上限為 5,000 件' }, { status: 409 });
                 const body = await request.json();
-                const fields = normalizeEquipmentInput(body);
-                const serialNo = fields.serialNo.toUpperCase();
-                if (serialNo && assets.some(item => String(item.serialNo || '').trim().toUpperCase() === serialNo)) return Response.json({ error: '原廠序號已列管' }, { status: 409 });
-                const now = new Date().toISOString();
-                const asset = { id: crypto.randomUUID(), assetNo: createAssetNumber(assets), ...fields, createdBy: user.username, updatedBy: user.username, createdAt: now, updatedAt: now };
-                assets.push(asset);
-                await env.DRONE_DB.put(EQUIPMENT_KEY, JSON.stringify(assets));
-                return Response.json(asset, { status: 201 });
+                return equipmentStoreRequest(env, '/create', { fields: body, username: user.username });
             }
 
             if (path.startsWith('/api/equipment/') && method === 'PATCH') {
@@ -806,16 +815,8 @@ async function handleRequest(request, env, ctx) {
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
                 if (!canManageEquipment(user)) return Response.json({ error: '權限不足' }, { status: 403 });
                 const id = path.slice('/api/equipment/'.length);
-                const assets = parseFinanceList(await env.DRONE_DB.get(EQUIPMENT_KEY));
-                const asset = assets.find(item => item.id === id);
-                if (!asset) return Response.json({ error: '設備不存在' }, { status: 404 });
                 const body = await request.json();
-                const fields = normalizeEquipmentInput({ ...asset, ...body });
-                const serialNo = fields.serialNo.toUpperCase();
-                if (serialNo && assets.some(item => item.id !== id && String(item.serialNo || '').trim().toUpperCase() === serialNo)) return Response.json({ error: '原廠序號已列管' }, { status: 409 });
-                Object.assign(asset, fields, { updatedBy: user.username, updatedAt: new Date().toISOString() });
-                await env.DRONE_DB.put(EQUIPMENT_KEY, JSON.stringify(assets));
-                return Response.json(asset);
+                return equipmentStoreRequest(env, `/update/${encodeURIComponent(id)}`, { fields: body, username: user.username });
             }
 
             // ==================== API: Club class notes ====================
@@ -918,7 +919,7 @@ async function handleRequest(request, env, ctx) {
                 const member = members.find(item => item.id === id);
                 if (!member) return Response.json({ error: '社員不存在' }, { status: 404 });
                 const body = await request.json();
-                const fields = normalizeMemberInput(body);
+                const fields = normalizeMemberInput({ ...member, ...body }, null, false);
                 const studentId = fields.studentId;
                 if (studentId && members.some(item => item.id !== id && String(item.studentId || '').trim().toUpperCase() === studentId)) return Response.json({ error: '學號已存在' }, { status: 409 });
                 Object.assign(member, fields, { updatedAt: new Date().toISOString() });
@@ -1085,4 +1086,84 @@ async function handleRequest(request, env, ctx) {
             console.error('Worker request failed', { path, method, error: e?.message || String(e) });
             return Response.json({ error: '伺服器內部錯誤' }, { status: 500 });
         }
+}
+
+export class EquipmentStore {
+    constructor(ctx) {
+        this.ctx = ctx;
+        this.kv = ctx.storage.kv;
+    }
+
+    listAssets() {
+        return [...this.kv.list({ prefix: 'equipment:asset:', limit: 5001 }).values()];
+    }
+
+    fetch(request) {
+        try {
+            if (request.method !== 'POST') return Response.json({ error: '方法不允許' }, { status: 405 });
+            const url = new URL(request.url);
+            const payloadPromise = request.json();
+            return payloadPromise.then(payload => {
+                let result;
+                this.ctx.storage.transactionSync(() => {
+                    if (url.pathname === '/initialize') {
+                        if (!this.kv.get('equipment:initialized')) {
+                            for (const asset of Array.isArray(payload.assets) ? payload.assets : []) {
+                                if (!asset || typeof asset.id !== 'string' || !/^[\w-]{1,80}$/.test(asset.id) || typeof asset.assetNo !== 'string' || typeof asset.assetName !== 'string') continue;
+                                this.kv.put(`equipment:asset:${asset.id}`, asset);
+                            }
+                            this.kv.put('equipment:initialized', true);
+                        }
+                        result = { status: 200, body: { success: true } };
+                        return;
+                    }
+                    if (!this.kv.get('equipment:initialized')) {
+                        result = { status: 503, body: { error: '設備儲存尚未初始化' } };
+                        return;
+                    }
+                    if (url.pathname === '/list') {
+                        const query = String(payload.query || '').trim().toLowerCase();
+                        const assets = this.listAssets();
+                        result = { status: 200, body: query ? assets.filter(asset => [asset.assetNo, asset.assetName, asset.category, asset.serialNo, asset.status, asset.location, asset.custodian, asset.note].some(value => String(value || '').toLowerCase().includes(query))) : assets };
+                        return;
+                    }
+                    if (url.pathname === '/create') {
+                        const assets = this.listAssets();
+                        if (assets.length >= 5000) { result = { status: 409, body: { error: '設備列管上限為 5,000 件' } }; return; }
+                        const fields = normalizeEquipmentInput(payload.fields);
+                        const serialNo = fields.serialNo.toUpperCase();
+                        if (serialNo && assets.some(item => String(item.serialNo || '').trim().toUpperCase() === serialNo)) { result = { status: 409, body: { error: '原廠序號已列管' } }; return; }
+                        const now = new Date().toISOString();
+                        const asset = { id: crypto.randomUUID(), assetNo: createAssetNumber(assets), ...fields, createdBy: String(payload.username || ''), updatedBy: String(payload.username || ''), createdAt: now, updatedAt: now };
+                        this.kv.put(`equipment:asset:${asset.id}`, asset);
+                        result = { status: 201, body: asset };
+                        return;
+                    }
+                    const updateMatch = /^\/update\/([\w-]{1,80})$/.exec(url.pathname);
+                    if (updateMatch) {
+                        const id = updateMatch[1];
+                        const asset = this.kv.get(`equipment:asset:${id}`);
+                        if (!asset) { result = { status: 404, body: { error: '設備不存在' } }; return; }
+                        const fields = normalizeEquipmentInput({ ...asset, ...(payload.fields || {}) });
+                        const serialNo = fields.serialNo.toUpperCase();
+                        const previousSerial = String(asset.serialNo || '').trim().toUpperCase();
+                        if (serialNo && serialNo !== previousSerial && this.listAssets().some(item => item.id !== id && String(item.serialNo || '').trim().toUpperCase() === serialNo)) { result = { status: 409, body: { error: '原廠序號已列管' } }; return; }
+                        Object.assign(asset, fields, { updatedBy: String(payload.username || ''), updatedAt: new Date().toISOString() });
+                        this.kv.put(`equipment:asset:${id}`, asset);
+                        result = { status: 200, body: asset };
+                        return;
+                    }
+                    result = { status: 404, body: { error: '設備操作不存在' } };
+                });
+                return Response.json(result.body, { status: result.status });
+            }).catch(error => {
+                if (error instanceof FinanceValidationError) return Response.json({ error: error.message }, { status: 400 });
+                console.error('Equipment store operation failed', error?.message || String(error));
+                return Response.json({ error: '設備資料操作失敗' }, { status: 500 });
+            });
+        } catch (error) {
+            console.error('Equipment store operation failed', error?.message || String(error));
+            return Response.json({ error: '設備資料操作失敗' }, { status: 500 });
+        }
+    }
 }

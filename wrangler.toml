@@ -9,3 +9,11 @@ directory = "./public"
 [[kv_namespaces]]
 binding = "DRONE_DB"
 id = "YOUR_KV_NAMESPACE_ID" # Replace with your Cloudflare KV Namespace ID after creation
+
+[[durable_objects.bindings]]
+name = "EQUIPMENT_STORE"
+class_name = "EquipmentStore"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["EquipmentStore"]
