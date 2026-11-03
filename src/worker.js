@@ -751,6 +751,20 @@ async function handleRequest(request, env, ctx) {
                 return Response.json(transaction);
             }
 
+            if (path.startsWith('/api/finance/transactions/') && method === 'DELETE') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageFinance(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const id = path.slice('/api/finance/transactions/'.length);
+                if (!id || id.includes('/')) return Response.json({ error: '帳目編號無效' }, { status: 400 });
+                const transactions = parseFinanceList(await env.DRONE_DB.get(FINANCE_TRANSACTIONS_KEY));
+                const transaction = transactions.find(item => item.id === id);
+                if (!transaction) return Response.json({ error: '帳目不存在' }, { status: 404 });
+                if (transaction.status !== 'rejected') return Response.json({ error: '只有已退回帳目可以刪除' }, { status: 409 });
+                await env.DRONE_DB.put(FINANCE_TRANSACTIONS_KEY, JSON.stringify(transactions.filter(item => item.id !== id)));
+                return Response.json({ success: true });
+            }
+
             if (path === '/api/finance/budgets' && ['GET', 'PUT'].includes(method)) {
                 const user = await sessionUser(request, env);
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });

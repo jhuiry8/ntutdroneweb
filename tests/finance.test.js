@@ -71,6 +71,25 @@ test('finance submits transactions and only presidents can approve them', async 
     assert.equal(summary.totals.postalBalance, 250);
 });
 
+test('finance can delete rejected transactions only', async () => {
+    const { request } = fixture();
+    const pendingResponse = await request('/api/finance/transactions', 'finance', 'POST', {
+        date: '2026-10-29', item: '測試退回帳目', kind: 'expense', account: 'cash', amount: 500
+    });
+    const rejected = await pendingResponse.json();
+    await request(`/api/finance/transactions/${rejected.id}/review`, 'president', 'PATCH', { status: 'rejected', note: '資料不完整' });
+    assert.equal((await request(`/api/finance/transactions/${rejected.id}`, 'cadre', 'DELETE')).status, 403);
+    assert.equal((await request(`/api/finance/transactions/${rejected.id}`, 'finance', 'DELETE')).status, 200);
+    assert.deepEqual(await (await request('/api/finance/summary', 'finance')).json().then(summary => summary.transactions), []);
+
+    const approvedResponse = await request('/api/finance/transactions', 'finance', 'POST', {
+        date: '2026-10-29', item: '測試核准帳目', kind: 'expense', account: 'cash', amount: 100
+    });
+    const approved = await approvedResponse.json();
+    await request(`/api/finance/transactions/${approved.id}/review`, 'president', 'PATCH', { status: 'approved' });
+    assert.equal((await request(`/api/finance/transactions/${approved.id}`, 'finance', 'DELETE')).status, 409);
+});
+
 test('spreadsheet import accepts the requested cash and postal balance format', async () => {
     const { request } = fixture();
     const imported = await request('/api/finance/import', 'finance', 'POST', { rows: [
