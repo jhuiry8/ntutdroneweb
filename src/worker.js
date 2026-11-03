@@ -1,7 +1,7 @@
 // NTUT Drone Club - Cloudflare Worker Entry Point (with i18n support)
 import { marked } from 'marked';
 import { sanitizeContent } from './html.js';
-import { passwordHash, verifyPassword, PasswordResetRequiredError, validRole, canManageUsers, canEditCms, canViewCms, canManageFinance, canManageMembers, publicUser } from './auth.js';
+import { passwordHash, verifyPassword, PasswordResetRequiredError, validRole, canManageUsers, canEditCms, canViewCms, canManageFinance, canManageMembers, canManageEquipment, publicUser } from './auth.js';
 import {
     renderLandingPage,
     renderBlogList,
@@ -34,7 +34,8 @@ function parseCookies(request) {
         name = name.trim();
         if (!name) return;
         const value = rest.join('=').trim();
-        list[name] = decodeURIComponent(value);
+        try { list[name] = decodeURIComponent(value); }
+        catch { list[name] = value; }
     });
     return list;
 }
@@ -47,8 +48,35 @@ async function isAuthenticated(request, env) {
 const FINANCE_BUDGETS_KEY = 'finance:budgets';
 const FINANCE_TRANSACTIONS_KEY = 'finance:transactions';
 const MEMBERS_KEY = 'members:list';
+const MEMBERSHIP_RECEIPTS_KEY = 'members:fee-receipts';
+const NOTES_KEY = 'club:class-notes';
+const EQUIPMENT_KEY = 'equipment:assets';
+const EQUIPMENT_MIGRATION_KEY = 'equipment:durable-object-migrated';
 
 class FinanceValidationError extends Error {}
+class PayloadTooLargeError extends Error {}
+
+async function readJsonLimited(request, maxBytes) {
+    const reader = request.body?.getReader();
+    if (!reader) throw new FinanceValidationError('請提供 JSON 格式資料');
+    const chunks = [];
+    let size = 0;
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > maxBytes) {
+            await reader.cancel();
+            throw new PayloadTooLargeError();
+        }
+        chunks.push(value);
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
+    catch { throw new FinanceValidationError('JSON 格式錯誤'); }
+}
 
 function financeAmount(value) {
     const amount = Number(value);
@@ -81,6 +109,66 @@ function importedDate(value) {
     const match = String(value ?? '').trim().match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
     if (!match) throw new FinanceValidationError('日期格式必須為 YYYY/MM/DD 或 YYYY-MM-DD');
     return financeDate(`${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`);
+}
+
+function normalizeMemberInput(body, index = null, defaultJoinedAt = true) {
+    const prefix = index === null ? '' : `第 ${index + 1} 筆：`;
+    const name = String(body?.name ?? '').trim();
+    const studentId = String(body?.studentId ?? '').trim().toUpperCase();
+    const email = String(body?.email ?? '').trim().toLowerCase();
+    const phone = String(body?.phone ?? '').trim();
+    const position = String(body?.position ?? '').trim();
+    const note = String(body?.note ?? '').trim();
+    if ((!name && !studentId) || name.length > 50 || studentId.length > 30) throw new FinanceValidationError(`${prefix}請至少填寫姓名或學號，且姓名不可超過 50 字、學號不可超過 30 字`);
+    if (email.length > 100 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new FinanceValidationError(`${prefix}Email 格式無效或超過 100 字`);
+    if (phone.length > 30 || position.length > 60 || note.length > 1000) throw new FinanceValidationError(`${prefix}電話、職務或備註超過允許長度`);
+    const joinedAt = String(body?.joinedAt ?? '').trim();
+    return { name, studentId, email, phone, position, note, joinedAt: joinedAt ? importedDate(joinedAt) : (defaultJoinedAt ? new Date().toISOString().slice(0, 10) : '') };
+}
+
+function normalizeEquipmentInput(body) {
+    const assetName = financeText(body?.assetName, '設備名稱', 100);
+    const category = String(body?.category ?? '').trim() || '其他';
+    const serialNo = String(body?.serialNo ?? '').trim();
+    const location = String(body?.location ?? '').trim();
+    const custodian = String(body?.custodian ?? '').trim();
+    const note = String(body?.note ?? '').trim();
+    if (category.length > 60 || serialNo.length > 100 || location.length > 100 || custodian.length > 50 || note.length > 1000) throw new FinanceValidationError('設備欄位超過允許長度');
+    const purchaseDateRaw = String(body?.purchaseDate ?? '').trim();
+    const purchaseDate = purchaseDateRaw ? importedDate(purchaseDateRaw) : '';
+    const purchasePrice = body?.purchasePrice === '' || body?.purchasePrice === null || body?.purchasePrice === undefined ? 0 : financeAmount(body.purchasePrice);
+    if (purchasePrice === null) throw new FinanceValidationError('購入金額需為 0 至 1,000,000,000 的整數');
+    const condition = String(body?.condition || 'good');
+    const status = String(body?.status || 'storage');
+    if (!['good', 'fair', 'poor'].includes(condition)) throw new FinanceValidationError('設備狀況無效');
+    if (!['storage', 'in_use', 'repair', 'retired'].includes(status)) throw new FinanceValidationError('設備狀態無效');
+    return { assetName, category, serialNo, purchaseDate, purchasePrice, condition, status, location, custodian, note };
+}
+
+function createAssetNumber(existing) {
+    const year = new Date().getUTCFullYear();
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const suffix = Array.from(crypto.getRandomValues(new Uint8Array(5)), value => value.toString(16).padStart(2, '0')).join('').toUpperCase();
+        const assetNo = `NTUT-DR-${year}-${suffix}`;
+        if (!existing.some(item => item.assetNo === assetNo)) return assetNo;
+    }
+    throw new Error('Unable to allocate unique asset number');
+}
+
+async function equipmentStoreRequest(env, path, payload = {}) {
+    const namespace = env.EQUIPMENT_STORE;
+    const stub = namespace.get(namespace.idFromName('club-equipment-inventory'));
+    if (await env.DRONE_DB.get(EQUIPMENT_MIGRATION_KEY) !== '1') {
+        const legacyAssets = parseFinanceList(await env.DRONE_DB.get(EQUIPMENT_KEY));
+        const initialized = await stub.fetch('https://equipment-store/initialize', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assets: legacyAssets })
+        });
+        if (!initialized.ok) return initialized;
+        await env.DRONE_DB.put(EQUIPMENT_MIGRATION_KEY, '1');
+    }
+    return stub.fetch(`https://equipment-store${path}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
 }
 
 function importAmount(value, field) {
@@ -116,13 +204,42 @@ async function sessionUser(request, env) {
     return user?.active !== false && user?.version === session.version ? user : null;
 }
 
+function addSecurityHeaders(response, request) {
+    const headers = new Headers(response.headers);
+    headers.set('X-Content-Type-Options', 'nosniff');
+    headers.set('X-Frame-Options', 'DENY');
+    headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    if (new URL(request.url).protocol === 'https:') headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 export default {
     async fetch(request, env, ctx) {
+        const response = await handleRequest(request, env, ctx);
+        return addSecurityHeaders(response, request);
+    }
+};
+
+async function handleRequest(request, env, ctx) {
         const url = new URL(request.url);
         const path = url.pathname;
         const method = request.method;
 
         try {
+            // SameSite cookies are the first CSRF barrier; reject explicit cross-origin
+            // browser writes as a second barrier for every state-changing route.
+            if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+                const origin = request.headers.get('Origin');
+                const fetchSite = request.headers.get('Sec-Fetch-Site');
+                let originIsForeign = false;
+                if (origin) {
+                    try { originIsForeign = new URL(origin).origin !== url.origin; }
+                    catch { originIsForeign = true; }
+                }
+                if (originIsForeign || fetchSite === 'cross-site') return Response.json({ error: '跨來源請求已拒絕' }, { status: 403 });
+            }
+
             // ==================== LANGUAGE DETECTION ====================
             const cookieLang = parseCookies(request).lang;
             const queryLang = url.searchParams.get('lang');
@@ -199,6 +316,7 @@ export default {
                         } catch (e) {}
                     }
                 }
+
                 if (!postJson) {
                     return new Response('文章未找到 Article Not Found', { status: 404 });
                 }
@@ -679,6 +797,100 @@ export default {
             }
 
             // ==================== API: Member directory ====================
+            // ==================== API: Equipment inventory ====================
+            if (path === '/api/equipment' && ['GET', 'POST'].includes(method)) {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageEquipment(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                if (method === 'GET') {
+                    const query = String(url.searchParams.get('q') || '').trim().toLowerCase();
+                    return equipmentStoreRequest(env, '/list', { query });
+                }
+                const body = await request.json();
+                return equipmentStoreRequest(env, '/create', { fields: body, username: user.username });
+            }
+
+            if (path.startsWith('/api/equipment/') && method === 'PATCH') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageEquipment(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const id = path.slice('/api/equipment/'.length);
+                const body = await request.json();
+                return equipmentStoreRequest(env, `/update/${encodeURIComponent(id)}`, { fields: body, username: user.username });
+            }
+
+            // ==================== API: Club class notes ====================
+            if (path === '/api/notes' && ['GET', 'POST'].includes(method)) {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                const notes = parseFinanceList(await env.DRONE_DB.get(NOTES_KEY));
+                if (method === 'GET') {
+                    if (!canViewCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                    return Response.json(notes.sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt)));
+                }
+                if (!canEditCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const body = await request.json();
+                const title = financeText(body.title, '社課名稱', 120);
+                const date = financeDate(body.date);
+                const content = String(body.content ?? '').trim();
+                if (content.length > 5000) return Response.json({ error: '備忘內容不可超過 5000 字' }, { status: 400 });
+                const links = Array.isArray(body.links) ? body.links : [];
+                if (links.length > 20) return Response.json({ error: '每則備忘最多 20 個網址' }, { status: 400 });
+                const normalizedLinks = links.map((link, index) => {
+                    const label = String(link?.label || '').trim().slice(0, 100);
+                    const value = String(link?.url || '').trim();
+                    let parsed;
+                    try { parsed = new URL(value); } catch { throw new FinanceValidationError(`第 ${index + 1} 個網址格式無效`); }
+                    if (!['http:', 'https:'].includes(parsed.protocol) || value.length > 2048) throw new FinanceValidationError(`第 ${index + 1} 個網址僅可使用 http 或 https，且不可超過 2048 字`);
+                    return { label: label || value, url: parsed.href };
+                });
+                const now = new Date().toISOString();
+                const note = { id: crypto.randomUUID(), title, date, content, links: normalizedLinks, createdBy: user.username, createdAt: now, updatedAt: now };
+                notes.push(note);
+                await env.DRONE_DB.put(NOTES_KEY, JSON.stringify(notes));
+                return Response.json(note, { status: 201 });
+            }
+
+            if (path.startsWith('/api/notes/') && method === 'DELETE') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canEditCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const id = path.slice('/api/notes/'.length);
+                const notes = parseFinanceList(await env.DRONE_DB.get(NOTES_KEY));
+                if (!notes.some(note => note.id === id)) return Response.json({ error: '備忘錄不存在' }, { status: 404 });
+                await env.DRONE_DB.put(NOTES_KEY, JSON.stringify(notes.filter(note => note.id !== id)));
+                return Response.json({ success: true });
+            }
+
+            if (path === '/api/members/import' && method === 'POST') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type') || '')) return Response.json({ error: 'Content-Type 必須為 application/json' }, { status: 415 });
+                const contentLength = Number(request.headers.get('Content-Length') || 0);
+                if (contentLength > 1_000_000) throw new PayloadTooLargeError();
+                const body = await readJsonLimited(request, 1_000_000);
+                if (!Array.isArray(body.rows) || body.rows.length < 1 || body.rows.length > 500) return Response.json({ error: '一次匯入需為 1 至 500 筆資料' }, { status: 400 });
+                const members = parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY));
+                const normalized = body.rows.map((row, index) => normalizeMemberInput(row, index));
+                const seenIds = new Set(members.map(member => String(member.studentId || '').trim().toUpperCase()).filter(Boolean));
+                const seenNames = new Set(members.map(member => String(member.name || '').trim().toLowerCase()).filter(Boolean));
+                const seenNamesWithoutId = new Set(members.filter(member => !String(member.studentId || '').trim()).map(member => String(member.name || '').trim().toLowerCase()).filter(Boolean));
+                const fresh = [], skipped = [];
+                for (let index = 0; index < normalized.length; index++) {
+                    const item = normalized[index];
+                    const id = item.studentId, name = item.name.toLowerCase();
+                    if (id ? (seenIds.has(id) || (name && seenNamesWithoutId.has(name))) : (name && seenNames.has(name))) { skipped.push({ row: index + 1, name: item.name, studentId: id }); continue; }
+                    if (id) seenIds.add(id);
+                    if (name) { seenNames.add(name); if (!id) seenNamesWithoutId.add(name); }
+                    fresh.push(item);
+                }
+                const now = new Date().toISOString();
+                const imported = fresh.map(item => ({ id: crypto.randomUUID(), ...item, createdAt: now, updatedAt: now }));
+                if (imported.length) await env.DRONE_DB.put(MEMBERS_KEY, JSON.stringify([...members, ...imported]));
+                return Response.json({ imported: imported.length, skipped: skipped.length, skippedRows: skipped }, { status: 201 });
+            }
+
             if (path === '/api/members' && ['GET', 'POST'].includes(method)) {
                 const user = await sessionUser(request, env);
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
@@ -686,15 +898,67 @@ export default {
                 const members = parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY));
                 if (method === 'GET') {
                     const query = String(url.searchParams.get('q') || '').trim().toLowerCase();
-                    return Response.json(query ? members.filter(member => [member.name, member.studentId, member.email, member.phone].some(value => String(value || '').toLowerCase().includes(query))) : members);
+                    return Response.json(query ? members.filter(member => [member.name, member.studentId, member.email, member.phone, member.note, member.position].some(value => String(value || '').toLowerCase().includes(query))) : members);
                 }
                 const body = await request.json();
-                const studentId = String(body.studentId || '').trim();
-                if (studentId && (studentId.length > 30 || members.some(member => member.studentId === studentId))) return Response.json({ error: '學號已存在或格式錯誤' }, { status: 409 });
-                const member = { id: crypto.randomUUID(), name: financeText(body.name, '姓名', 50), studentId, email: String(body.email || '').trim().slice(0, 100), phone: String(body.phone || '').trim().slice(0, 30), joinedAt: financeDate(body.joinedAt || new Date().toISOString().slice(0, 10)), createdAt: new Date().toISOString() };
+                const fields = normalizeMemberInput(body);
+                const studentId = fields.studentId;
+                if (studentId && members.some(member => String(member.studentId || '').trim().toUpperCase() === studentId)) return Response.json({ error: '學號已存在' }, { status: 409 });
+                const member = { id: crypto.randomUUID(), ...fields, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
                 members.push(member);
                 await env.DRONE_DB.put(MEMBERS_KEY, JSON.stringify(members));
                 return Response.json(member, { status: 201 });
+            }
+
+            if (path.startsWith('/api/members/') && method === 'PATCH') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const id = path.slice('/api/members/'.length);
+                const members = parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY));
+                const member = members.find(item => item.id === id);
+                if (!member) return Response.json({ error: '社員不存在' }, { status: 404 });
+                const body = await request.json();
+                const fields = normalizeMemberInput({ ...member, ...body }, null, false);
+                const studentId = fields.studentId;
+                if (studentId && members.some(item => item.id !== id && String(item.studentId || '').trim().toUpperCase() === studentId)) return Response.json({ error: '學號已存在' }, { status: 409 });
+                Object.assign(member, fields, { updatedAt: new Date().toISOString() });
+                await env.DRONE_DB.put(MEMBERS_KEY, JSON.stringify(members));
+                return Response.json(member);
+            }
+
+            if (path === '/api/member-fee-receipts' && ['GET', 'POST'].includes(method)) {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const receipts = parseFinanceList(await env.DRONE_DB.get(MEMBERSHIP_RECEIPTS_KEY));
+                if (method === 'GET') return Response.json(receipts.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)));
+                const body = await request.json();
+                const payerName = String(body.payerName || '').trim();
+                const studentId = String(body.studentId || '').trim();
+                if ((!payerName && !studentId) || payerName.length > 50 || studentId.length > 30) return Response.json({ error: '繳費者至少需填姓名或學號' }, { status: 400 });
+                const amount = financeAmount(body.amount);
+                if (!amount) return Response.json({ error: '社費金額必須為 1 至 1,000,000,000 的整數' }, { status: 400 });
+                const receiver = financeText(body.receiver, '收款人', 50);
+                const date = financeDate(body.date || new Date().toISOString().slice(0, 10));
+                const receiptNumber = String(body.receiptNumber || '').trim().slice(0, 80);
+                const note = String(body.note || '').trim().slice(0, 500);
+                const memberId = typeof body.memberId === 'string' ? body.memberId : '';
+                const record = { id: crypto.randomUUID(), memberId, payerName, studentId, amount, date, receiver, receiptNumber, note, recordedBy: user.username, createdAt: new Date().toISOString() };
+                receipts.push(record);
+                await env.DRONE_DB.put(MEMBERSHIP_RECEIPTS_KEY, JSON.stringify(receipts));
+                return Response.json(record, { status: 201 });
+            }
+
+            if (path.startsWith('/api/member-fee-receipts/') && method === 'DELETE') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const id = path.slice('/api/member-fee-receipts/'.length);
+                const receipts = parseFinanceList(await env.DRONE_DB.get(MEMBERSHIP_RECEIPTS_KEY));
+                if (!receipts.some(item => item.id === id)) return Response.json({ error: '簽收紀錄不存在' }, { status: 404 });
+                await env.DRONE_DB.put(MEMBERSHIP_RECEIPTS_KEY, JSON.stringify(receipts.filter(item => item.id !== id)));
+                return Response.json({ success: true });
             }
 
             if (path.startsWith('/api/members/') && method === 'DELETE') {
@@ -809,6 +1073,7 @@ export default {
             return new Response('Not Found', { status: 404 });
 
         } catch (e) {
+            if (e instanceof PayloadTooLargeError) return Response.json({ error: '匯入資料不可超過 1 MB' }, { status: 413 });
             if (e instanceof FinanceValidationError) return Response.json({ error: e.message }, { status: 400 });
             if (e instanceof PasswordResetRequiredError) {
                 if (path === '/api/login') {
@@ -818,7 +1083,87 @@ export default {
                 }
                 return Response.json({ error: e.message }, { status: 409 });
             }
-            return new Response(`伺服器內部錯誤 Internal Server Error: ${e.message}`, { status: 500 });
+            console.error('Worker request failed', { path, method, error: e?.message || String(e) });
+            return Response.json({ error: '伺服器內部錯誤' }, { status: 500 });
+        }
+}
+
+export class EquipmentStore {
+    constructor(ctx) {
+        this.ctx = ctx;
+        this.kv = ctx.storage.kv;
+    }
+
+    listAssets() {
+        return [...this.kv.list({ prefix: 'equipment:asset:', limit: 5001 }).values()];
+    }
+
+    fetch(request) {
+        try {
+            if (request.method !== 'POST') return Response.json({ error: '方法不允許' }, { status: 405 });
+            const url = new URL(request.url);
+            const payloadPromise = request.json();
+            return payloadPromise.then(payload => {
+                let result;
+                this.ctx.storage.transactionSync(() => {
+                    if (url.pathname === '/initialize') {
+                        if (!this.kv.get('equipment:initialized')) {
+                            for (const asset of Array.isArray(payload.assets) ? payload.assets : []) {
+                                if (!asset || typeof asset.id !== 'string' || !/^[\w-]{1,80}$/.test(asset.id) || typeof asset.assetNo !== 'string' || typeof asset.assetName !== 'string') continue;
+                                this.kv.put(`equipment:asset:${asset.id}`, asset);
+                            }
+                            this.kv.put('equipment:initialized', true);
+                        }
+                        result = { status: 200, body: { success: true } };
+                        return;
+                    }
+                    if (!this.kv.get('equipment:initialized')) {
+                        result = { status: 503, body: { error: '設備儲存尚未初始化' } };
+                        return;
+                    }
+                    if (url.pathname === '/list') {
+                        const query = String(payload.query || '').trim().toLowerCase();
+                        const assets = this.listAssets();
+                        result = { status: 200, body: query ? assets.filter(asset => [asset.assetNo, asset.assetName, asset.category, asset.serialNo, asset.status, asset.location, asset.custodian, asset.note].some(value => String(value || '').toLowerCase().includes(query))) : assets };
+                        return;
+                    }
+                    if (url.pathname === '/create') {
+                        const assets = this.listAssets();
+                        if (assets.length >= 5000) { result = { status: 409, body: { error: '設備列管上限為 5,000 件' } }; return; }
+                        const fields = normalizeEquipmentInput(payload.fields);
+                        const serialNo = fields.serialNo.toUpperCase();
+                        if (serialNo && assets.some(item => String(item.serialNo || '').trim().toUpperCase() === serialNo)) { result = { status: 409, body: { error: '原廠序號已列管' } }; return; }
+                        const now = new Date().toISOString();
+                        const asset = { id: crypto.randomUUID(), assetNo: createAssetNumber(assets), ...fields, createdBy: String(payload.username || ''), updatedBy: String(payload.username || ''), createdAt: now, updatedAt: now };
+                        this.kv.put(`equipment:asset:${asset.id}`, asset);
+                        result = { status: 201, body: asset };
+                        return;
+                    }
+                    const updateMatch = /^\/update\/([\w-]{1,80})$/.exec(url.pathname);
+                    if (updateMatch) {
+                        const id = updateMatch[1];
+                        const asset = this.kv.get(`equipment:asset:${id}`);
+                        if (!asset) { result = { status: 404, body: { error: '設備不存在' } }; return; }
+                        const fields = normalizeEquipmentInput({ ...asset, ...(payload.fields || {}) });
+                        const serialNo = fields.serialNo.toUpperCase();
+                        const previousSerial = String(asset.serialNo || '').trim().toUpperCase();
+                        if (serialNo && serialNo !== previousSerial && this.listAssets().some(item => item.id !== id && String(item.serialNo || '').trim().toUpperCase() === serialNo)) { result = { status: 409, body: { error: '原廠序號已列管' } }; return; }
+                        Object.assign(asset, fields, { updatedBy: String(payload.username || ''), updatedAt: new Date().toISOString() });
+                        this.kv.put(`equipment:asset:${id}`, asset);
+                        result = { status: 200, body: asset };
+                        return;
+                    }
+                    result = { status: 404, body: { error: '設備操作不存在' } };
+                });
+                return Response.json(result.body, { status: result.status });
+            }).catch(error => {
+                if (error instanceof FinanceValidationError) return Response.json({ error: error.message }, { status: 400 });
+                console.error('Equipment store operation failed', error?.message || String(error));
+                return Response.json({ error: '設備資料操作失敗' }, { status: 500 });
+            });
+        } catch (error) {
+            console.error('Equipment store operation failed', error?.message || String(error));
+            return Response.json({ error: '設備資料操作失敗' }, { status: 500 });
         }
     }
-};
+}

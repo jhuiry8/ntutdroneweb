@@ -82,11 +82,13 @@ test('Templates test suite - HTML Rendering & Component Generator', async (t) =>
         const financeHtml = renderAdminDashboard([], [], { username: 'treasurer', role: 'finance' });
         assert.match(financeHtml, /財務管理/);
         assert.match(financeHtml, /社員管理/);
+        assert.match(financeHtml, /網站管理[\s\S]*社務管理[\s\S]*設備管理/);
         assert.match(financeHtml, /待審核/);
         const memberHtml = renderAdminDashboard([], [], { username: 'member', role: 'member' });
-        assert.doesNotMatch(memberHtml, /id="panel-finance"|id="panel-members"/);
+        assert.doesNotMatch(memberHtml, /id="panel-finance"|id="panel-members"|id="panel-equipment"/);
         const cadreHtml = renderAdminDashboard([], [], { username: 'cadre', role: 'cadre' });
         assert.doesNotMatch(cadreHtml, /id="panel-finance"|id="panel-members"/);
+        assert.match(cadreHtml, /id="panel-equipment"/);
     });
 
     await t.test('mobile navigation uses the same open state in script and stylesheet', () => {
