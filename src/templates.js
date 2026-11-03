@@ -1,6 +1,6 @@
 // NTUT Drone Club CMS - HTML Templates with i18n support
 import { locales } from './locales.js';
-import { canViewCms, canManageFinance, canManageMembers } from './auth.js';
+import { canViewCms, canManageFinance, canManageMembers, canManageEquipment } from './auth.js';
 import { escapeHtml, safeUrl, sanitizeContent, sanitizeInline } from './html.js';
 
 // Helper: Common Header
@@ -993,6 +993,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
     const viewCms = canViewCms(user);
     const manageFinance = canManageFinance(user);
     const manageMembers = canManageMembers(user);
+    const manageEquipment = canManageEquipment(user);
     if (!viewCms) { posts = []; pages = []; }
     return `
     <!DOCTYPE html>
@@ -1143,9 +1144,11 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             .sidebar-nav {
                 display: flex;
                 flex-direction: column;
-                gap: 8px;
+                gap: 18px;
                 flex-grow: 1;
             }
+            .nav-group { display: grid; gap: 6px; }
+            .nav-group-label { margin: 0 12px 2px; color: #8492a8; font-size: .72rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
             .nav-item {
                 display: flex;
                 align-items: center;
@@ -1520,14 +1523,22 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     <img src="/assets/images/logo_ntut.jpg" alt="NTUT Drone" style="width: 28px; height: 28px; object-fit: contain; border-radius: 6px; vertical-align: middle; margin-right: 8px;"> NTUT DRONE 後台
                 </div>
                 <div class="sidebar-nav">
-                    ${viewCms ? `<button class="nav-item active" onclick="showPanel('posts')"><i data-lucide="book-open"></i> 文章管理</button>
-                    <button class="nav-item" onclick="showPanel('pages')"><i data-lucide="file-text"></i> 頁面管理</button>
-                    <button class="nav-item" onclick="showPanel('media')"><i data-lucide="image"></i> 媒體庫上傳</button>
-                    <button class="nav-item" onclick="showPanel('homepage')"><i data-lucide="home"></i> 首頁設定</button>` : ''}
-                    ${manageFinance ? `<button class="nav-item" onclick="showPanel('finance'); loadFinance()"><i data-lucide="wallet-cards"></i> 財務管理</button>` : ''}
-                    ${manageMembers ? `<button class="nav-item" onclick="showPanel('members'); loadMembers()"><i data-lucide="contact-round"></i> 社員管理</button>` : ''}
-                    <button class="nav-item" onclick="showPanel('settings')"><i data-lucide="settings"></i> 系統設定</button>
-                    ${user?.role === 'president' ? `<button class="nav-item" onclick="showPanel('users'); loadUsers()"><i data-lucide="users"></i> 帳號與權限</button>` : ''}
+                    ${viewCms ? `<div class="nav-group"><p class="nav-group-label">網站管理</p>
+                        <button class="nav-item active" onclick="showPanel('posts')"><i data-lucide="book-open"></i> 文章管理</button>
+                        <button class="nav-item" onclick="showPanel('pages')"><i data-lucide="file-text"></i> 頁面管理</button>
+                        <button class="nav-item" onclick="showPanel('media')"><i data-lucide="image"></i> 媒體庫上傳</button>
+                        <button class="nav-item" onclick="showPanel('homepage')"><i data-lucide="home"></i> 首頁設定</button>
+                    </div>` : ''}
+                    ${(manageFinance || manageMembers || manageEquipment || viewCms) ? `<div class="nav-group"><p class="nav-group-label">社務管理</p>
+                        ${manageMembers ? `<button class="nav-item" onclick="showPanel('members'); loadMembers()"><i data-lucide="contact-round"></i> 社員管理</button>` : ''}
+                        ${manageFinance ? `<button class="nav-item" onclick="showPanel('finance'); loadFinance()"><i data-lucide="wallet-cards"></i> 財務管理</button>` : ''}
+                        ${manageEquipment ? `<button class="nav-item" onclick="showPanel('equipment'); loadEquipment()"><i data-lucide="package-check"></i> 設備管理</button>` : ''}
+                        ${viewCms ? `<button class="nav-item" onclick="showPanel('notes'); loadNotes()"><i data-lucide="sticky-note"></i> 社課備忘錄</button>` : ''}
+                    </div>` : ''}
+                    <div class="nav-group"><p class="nav-group-label">系統管理</p>
+                        <button class="nav-item" onclick="showPanel('settings')"><i data-lucide="settings"></i> 系統設定</button>
+                        ${user?.role === 'president' ? `<button class="nav-item" onclick="showPanel('users'); loadUsers()"><i data-lucide="users"></i> 帳號與權限</button>` : ''}
+                    </div>
                 </div>
             </div>
             <div>
@@ -2061,10 +2072,34 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 <h2 style="font-size:1.1rem; margin-bottom:12px;">帳目與審核</h2><div class="table-container"><table><thead><tr><th>日期</th><th>事由</th><th>收入</th><th>支出</th><th>現金變動</th><th>郵局變動</th><th>狀態</th><th>操作</th></tr></thead><tbody id="finance-transactions"></tbody></table></div>
             </div>` : ''}
             ${manageMembers ? `<div id="panel-members" class="panel">
-                <div class="content-header"><div><h1>社員管理</h1><p style="color:var(--text-muted); margin-top:6px;">社員名冊獨立於登入帳號，可安全維護社團資料。</p></div></div>
-                <form onsubmit="createMember(event)" class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:18px;"><input id="member-name" class="form-control" placeholder="姓名 *" maxlength="50" required><input id="member-student-id" class="form-control" placeholder="學號（選填）" maxlength="30"><input id="member-email" class="form-control" type="email" placeholder="Email（選填）" maxlength="100"><input id="member-phone" class="form-control" placeholder="電話（選填）" maxlength="30"><input id="member-joined-at" class="form-control" type="date" required><button class="btn btn-primary" type="submit">新增社員</button></form>
+                <div class="content-header"><div><h1>社員管理</h1><p style="color:var(--text-muted); margin-top:6px;">快速匯入、搜尋與維護社員名冊。僅社長與財務可存取。</p></div></div>
+                <div style="margin-bottom:18px; padding:18px; border:1px solid var(--border-glass); border-radius:12px;"><h2 style="font-size:1.05rem; margin-bottom:6px;">大量新增</h2><p style="color:var(--text-muted); font-size:.88rem; margin-bottom:12px;">可匯入社員名冊 CSV／TSV，也能直接貼上社費帳本；系統會辨識欄位、從「事宜」擷取社費繳費者，並提供逐筆修改。重複學號會自動跳過；無學號資料以姓名比對。單次最多 500 筆。</p><div class="responsive-form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><input id="member-import-file" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values" class="form-control" onchange="invalidateMemberImport()"><textarea id="member-import-text" class="form-control" rows="4" oninput="invalidateMemberImport()" placeholder="貼上 CSV／TSV，或選擇社費帳本檔案"></textarea></div><div style="display:flex; gap:10px; margin-top:12px;"><button type="button" class="btn btn-secondary" onclick="previewMemberImport()">自動辨識並預覽</button><button id="member-import-submit" type="button" class="btn btn-primary" onclick="submitMemberImport()" disabled>確認新增</button></div><div id="member-import-preview" aria-live="polite" style="margin-top:12px;"></div></div>
+                <details style="margin-bottom:18px; padding:16px; border:1px solid var(--border-glass); border-radius:12px;"><summary style="cursor:pointer; font-weight:600;">單筆新增／編輯社員</summary><form id="member-form" onsubmit="saveMember(event)" class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px;"><input id="member-edit-id" type="hidden"><input id="member-name" class="form-control" placeholder="姓名（姓名或學號至少填一項）" maxlength="50"><input id="member-student-id" class="form-control" placeholder="學號" maxlength="30"><input id="member-position" class="form-control" placeholder="幹部職務（選填）" maxlength="60"><input id="member-email" class="form-control" type="email" placeholder="Email（選填）" maxlength="100"><input id="member-phone" class="form-control" placeholder="電話（選填）" maxlength="30"><input id="member-joined-at" class="form-control" type="date"><textarea id="member-note" class="form-control" rows="2" maxlength="1000" placeholder="備註（選填）"></textarea><button class="btn btn-primary" type="submit">儲存社員資料</button><button class="btn btn-secondary" type="button" onclick="resetMemberForm()">清除表單</button></form></details>
                 <div style="display:flex; gap:12px; margin-bottom:14px;"><input id="member-search" class="form-control" placeholder="依姓名、學號、Email 或電話搜尋" oninput="loadMembers()"><button type="button" class="btn btn-secondary" onclick="loadMembers()">查詢</button></div>
-                <div class="table-container"><table><thead><tr><th>姓名</th><th>學號</th><th>Email</th><th>電話</th><th>加入日期</th><th>操作</th></tr></thead><tbody id="members-list"></tbody></table></div>
+                <div class="table-container"><table><thead><tr><th>姓名／學號</th><th>幹部職務</th><th>Email／電話</th><th>備註</th><th>加入日期</th><th>操作</th></tr></thead><tbody id="members-list"></tbody></table></div>
+                <div style="margin-top:32px; padding:18px; border:1px solid var(--border-glass); border-radius:12px;">
+                    <h2 style="font-size:1.15rem;">社費簽收</h2><p style="color:var(--text-muted); margin:6px 0 16px;">記錄繳費者、收款人與收據線索；此簽收紀錄獨立保存，不會自動登成已核准財務帳目。</p>
+                    <form onsubmit="createFeeReceipt(event)" class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:20px;"><select id="fee-member" class="form-control" onchange="fillFeePayer()"><option value="">選社員或手動填寫</option></select><input id="fee-payer-name" class="form-control" placeholder="繳費者姓名（或只填學號）" maxlength="50"><input id="fee-student-id" class="form-control" placeholder="繳費者學號" maxlength="30"><input id="fee-amount" class="form-control" type="number" min="1" step="1" placeholder="收取金額（元）" required><input id="fee-date" class="form-control" type="date" required><input id="fee-receiver" class="form-control" placeholder="收款人姓名（必填）" maxlength="50" required><input id="fee-receipt-number" class="form-control" placeholder="收據編號／收據線索（選填）" maxlength="80"><input id="fee-note" class="form-control" placeholder="備註（選填）" maxlength="500"><button class="btn btn-primary" type="submit">記錄社費簽收</button></form>
+                    <div class="table-container"><table><thead><tr><th>日期</th><th>繳費者</th><th>金額</th><th>收款人</th><th>收據資訊</th><th>紀錄人</th><th>操作</th></tr></thead><tbody id="fee-receipts-list"></tbody></table></div>
+                </div>
+            </div>` : ''}
+            ${manageEquipment ? `<div id="panel-equipment" class="panel">
+                <div class="content-header"><div><h1>設備管理</h1><p style="color:var(--text-muted); margin-top:6px;">集中列管社團設備、保管狀態與財產編號；可選取多件設備列印標籤。</p></div><button type="button" class="btn btn-secondary" onclick="loadEquipment()">重新載入</button></div>
+                <div id="equipment-summary" class="finance-summary" style="margin-bottom:22px;"></div>
+                <details id="equipment-form-details" style="margin-bottom:22px; padding:18px; border:1px solid var(--border-glass); border-radius:12px;"><summary style="cursor:pointer; font-weight:600;">新增設備</summary><form id="equipment-form" onsubmit="saveEquipment(event)" class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px;"><input id="equipment-edit-id" type="hidden"><input id="equipment-name" class="form-control" placeholder="設備名稱（必填）" maxlength="100" required><input id="equipment-category" class="form-control" placeholder="分類，例如：空拍機、電池" maxlength="60"><input id="equipment-serial" class="form-control" placeholder="原廠序號（選填）" maxlength="100"><input id="equipment-purchase-date" class="form-control" type="date" aria-label="購入日期"><input id="equipment-price" class="form-control" type="number" min="0" max="1000000000" step="1" placeholder="購入金額（元）"><select id="equipment-condition" class="form-control"><option value="good">狀況良好</option><option value="fair">尚可</option><option value="poor">待維修</option></select><select id="equipment-status" class="form-control"><option value="storage">庫存保管</option><option value="in_use">使用中</option><option value="repair">維修中</option><option value="retired">已除列</option></select><input id="equipment-location" class="form-control" placeholder="存放位置" maxlength="100"><input id="equipment-custodian" class="form-control" placeholder="保管人" maxlength="50"><textarea id="equipment-note" class="form-control" rows="2" placeholder="備註（型號、配件等）" maxlength="1000"></textarea><button id="equipment-save-button" class="btn btn-primary" type="submit">建立列管資料</button><button class="btn btn-secondary" type="button" onclick="resetEquipmentForm()">清除表單</button></form></details>
+                <div style="display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap;"><input id="equipment-search" class="form-control" style="max-width:480px;" placeholder="搜尋編號、名稱、序號、分類、保管人或位置" oninput="loadEquipment()"><button type="button" class="btn btn-primary" onclick="printSelectedEquipmentLabels()">列印已選標籤 <span id="equipment-selected-count">0</span></button></div>
+                <div class="table-container"><table><thead><tr><th><input type="checkbox" aria-label="全選目前設備" onchange="toggleAllEquipment(this.checked)"></th><th>財產編號</th><th>設備／分類</th><th>狀態／狀況</th><th>存放位置／保管人</th><th>購入日期／金額</th><th>操作</th></tr></thead><tbody id="equipment-list"></tbody></table></div>
+            </div>` : ''}
+            ${viewCms ? `<div id="panel-notes" class="panel">
+                <div class="content-header"><div><h1>社課備忘錄</h1><p style="color:var(--text-muted); margin-top:6px;">記錄每次社課重點，集中保存簡報、教材與相關網址。</p></div></div>
+                ${user?.role === 'president' || user?.role === 'cadre' ? `<form onsubmit="createNote(event)" style="display:grid; gap:12px; max-width:900px; padding:18px; margin-bottom:24px; border:1px solid var(--border-glass); border-radius:12px;">
+                    <h2 style="font-size:1.1rem;">新增社課紀錄</h2>
+                    <div class="responsive-form-grid" style="display:grid; grid-template-columns:2fr 1fr; gap:12px;"><input id="note-title" class="form-control" placeholder="社課名稱，例如：焊接與電路基礎" maxlength="120" required><input id="note-date" class="form-control" type="date" required></div>
+                    <textarea id="note-content" class="form-control" rows="4" maxlength="5000" placeholder="課程重點、作業或下次社課提醒"></textarea>
+                    <div id="note-links" style="display:grid; gap:8px;"><div class="note-link-row responsive-form-grid" style="display:grid; grid-template-columns:1fr 2fr auto; gap:8px;"><input class="form-control note-link-label" placeholder="網址說明，例如：課程投影片" maxlength="100"><input class="form-control note-link-url" type="url" placeholder="https://..." maxlength="2048"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()" aria-label="移除此網址">移除</button></div></div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;"><button type="button" class="btn btn-secondary" onclick="addNoteLink()">新增網址欄位</button><button class="btn btn-primary" type="submit">儲存社課紀錄</button></div>
+                </form>` : ''}
+                <div id="notes-list" style="display:grid; gap:14px;"><p style="color:var(--text-muted);">載入社課紀錄中…</p></div>
             </div>` : ''}
             <!-- Settings Panel -->
             <div id="panel-settings" class="panel ${!viewCms ? 'active' : ''}">
@@ -2605,9 +2640,147 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             async function importBudgets() { const text = await sourceText('budget-import-file', 'budget-import-text'); if (!text) return showToast('請選擇檔案或貼上預算', true); const rows = parseSheet(text); const header = rows[0].map(value => value.replace(/^\uFEFF/, '').trim()); const hasHeader = header.includes('分類') && header.includes('預算'); if (hasHeader) rows.shift(); const budgets = rows.filter(row => row[0]).map(row => ({name:row[0], planned:Number(String(row[1] || '').replace(/[,\s]/g,''))})); const res = await fetch('/api/finance/budgets',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({budgets})}); const data=await res.json(); showToast(res.ok?'預算已匯入':data.error,!res.ok); if(res.ok)loadFinance(); }
             function exportFinanceCsv() { const header = ['日期','事宜','收入','支出','現金變動','郵局變動','狀態','建立者','審核者']; const quote = value => '"' + String(value ?? '').replace(/"/g,'""') + '"'; const rows = financeState.transactions.map(item => [item.date,item.item,item.income,item.expense,item.cashDelta,item.postalDelta,item.status,item.createdBy,item.reviewedBy]); const blob = new Blob(['\\uFEFF' + [header,...rows].map(row=>row.map(quote).join(',')).join('\\r\\n')],{type:'text/csv;charset=utf-8'}); const link=document.createElement('a'); link.href=URL.createObjectURL(blob); link.download='ntut-drone-finance.csv'; link.click(); URL.revokeObjectURL(link.href); }
 
-            async function loadMembers() { const query = document.getElementById('member-search')?.value || ''; const res = await fetch('/api/members?q=' + encodeURIComponent(query)); if (!res.ok) return showToast('無法載入社員資料', true); const members = await res.json(); const body = document.getElementById('members-list'); body.innerHTML = members.map(item => '<tr><td>' + escapeText(item.name) + '</td><td>' + escapeText(item.studentId) + '</td><td>' + escapeText(item.email) + '</td><td>' + escapeText(item.phone) + '</td><td>' + escapeText(item.joinedAt) + '</td><td><button class="btn btn-danger" data-id="' + escapeText(item.id) + '" onclick="deleteMember(this.dataset.id)">刪除</button></td></tr>').join('') || '<tr><td colspan="6" style="text-align:center; color:var(--text-muted)">查無社員資料。</td></tr>'; }
-            async function createMember(event) { event.preventDefault(); const body = {name:document.getElementById('member-name').value,studentId:document.getElementById('member-student-id').value,email:document.getElementById('member-email').value,phone:document.getElementById('member-phone').value,joinedAt:document.getElementById('member-joined-at').value}; const res=await fetch('/api/members',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const data=await res.json(); showToast(res.ok?'社員已新增':data.error,!res.ok); if(res.ok){event.target.reset();document.getElementById('member-joined-at').value=new Date().toISOString().slice(0,10);loadMembers();} }
+            let equipmentCache = [];
+            const equipmentStatusLabel = {storage:'庫存保管',in_use:'使用中',repair:'維修中',retired:'已除列'};
+            const equipmentConditionLabel = {good:'狀況良好',fair:'尚可',poor:'待維修'};
+            async function loadEquipment() {
+                const query=document.getElementById('equipment-search')?.value||'';
+                const response=await fetch('/api/equipment?q='+encodeURIComponent(query));
+                const data=await response.json();
+                if(!response.ok)return showToast(data.error||'無法載入設備資料',true);
+                equipmentCache=data;
+                const body=document.getElementById('equipment-list');
+                body.innerHTML=data.map(item=>'<tr><td><input class="equipment-select" type="checkbox" aria-label="選取 '+escapeText(item.assetNo)+'" data-id="'+escapeText(item.id)+'" onchange="updateEquipmentSelectedCount()"></td><td><strong>'+escapeText(item.assetNo)+'</strong></td><td>'+escapeText(item.assetName)+'<br><small>'+escapeText(item.category||'其他')+(item.serialNo?' · 序號 '+escapeText(item.serialNo):'')+'</small></td><td>'+escapeText(equipmentStatusLabel[item.status]||item.status)+'<br><small>'+escapeText(equipmentConditionLabel[item.condition]||item.condition)+'</small></td><td>'+escapeText(item.location||'—')+'<br><small>'+escapeText(item.custodian||'未指定保管人')+'</small></td><td>'+escapeText(item.purchaseDate||'—')+'<br><small>'+(item.purchasePrice?'NT$ '+new Intl.NumberFormat('zh-TW').format(item.purchasePrice):'未記錄金額')+'</small></td><td><button type="button" class="btn btn-secondary" data-id="'+escapeText(item.id)+'" onclick="editEquipment(this.dataset.id)">編輯</button></td></tr>').join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">查無設備資料。</td></tr>';
+                const totalValue=equipmentCache.reduce((sum,item)=>sum+(Number(item.purchasePrice)||0),0);
+                const summary=document.getElementById('equipment-summary');
+                summary.innerHTML='<div class="finance-card"><span>列管設備</span><strong>'+equipmentCache.length+' 件</strong></div><div class="finance-card"><span>使用中</span><strong>'+equipmentCache.filter(item=>item.status==='in_use').length+' 件</strong></div><div class="finance-card"><span>維修中</span><strong>'+equipmentCache.filter(item=>item.status==='repair'||item.condition==='poor').length+' 件</strong></div><div class="finance-card"><span>購入金額合計（目前結果）</span><strong>NT$ '+new Intl.NumberFormat('zh-TW').format(totalValue)+'</strong></div>';
+                updateEquipmentSelectedCount();
+            }
+            function resetEquipmentForm() { document.getElementById('equipment-form').reset(); document.getElementById('equipment-edit-id').value=''; document.getElementById('equipment-save-button').textContent='建立列管資料'; document.querySelector('#equipment-form-details summary').textContent='新增設備'; }
+            function editEquipment(id) {
+                const item=equipmentCache.find(asset=>asset.id===id); if(!item)return;
+                document.getElementById('equipment-edit-id').value=item.id;
+                document.getElementById('equipment-name').value=item.assetName||'';
+                document.getElementById('equipment-category').value=item.category||'';
+                document.getElementById('equipment-serial').value=item.serialNo||'';
+                document.getElementById('equipment-purchase-date').value=item.purchaseDate||'';
+                document.getElementById('equipment-price').value=item.purchasePrice||'';
+                document.getElementById('equipment-condition').value=item.condition||'good';
+                document.getElementById('equipment-status').value=item.status||'storage';
+                document.getElementById('equipment-location').value=item.location||'';
+                document.getElementById('equipment-custodian').value=item.custodian||'';
+                document.getElementById('equipment-note').value=item.note||'';
+                document.getElementById('equipment-save-button').textContent='儲存設備變更';
+                document.querySelector('#equipment-form-details summary').textContent='編輯設備 · '+item.assetNo;
+                document.getElementById('equipment-form-details').open=true;
+                document.getElementById('equipment-form').scrollIntoView({behavior:'smooth',block:'center'});
+            }
+            async function saveEquipment(event) {
+                event.preventDefault();
+                const id=document.getElementById('equipment-edit-id').value;
+                const body={assetName:document.getElementById('equipment-name').value,category:document.getElementById('equipment-category').value,serialNo:document.getElementById('equipment-serial').value,purchaseDate:document.getElementById('equipment-purchase-date').value,purchasePrice:document.getElementById('equipment-price').value,condition:document.getElementById('equipment-condition').value,status:document.getElementById('equipment-status').value,location:document.getElementById('equipment-location').value,custodian:document.getElementById('equipment-custodian').value,note:document.getElementById('equipment-note').value};
+                const response=await fetch(id?'/api/equipment/'+encodeURIComponent(id):'/api/equipment',{method:id?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+                const data=await response.json();
+                showToast(response.ok?(id?'設備資料已更新：'+data.assetNo:'已建立財產編號：'+data.assetNo):data.error,!response.ok);
+                if(response.ok){resetEquipmentForm();document.querySelector('#equipment-form-details summary').textContent='新增設備';document.getElementById('equipment-form-details').open=false;loadEquipment();}
+            }
+            function toggleAllEquipment(checked) { document.querySelectorAll('.equipment-select').forEach(input=>input.checked=checked);updateEquipmentSelectedCount(); }
+            function updateEquipmentSelectedCount() { const count=[...document.querySelectorAll('.equipment-select:checked')].length; const label=document.getElementById('equipment-selected-count'); if(label)label.textContent=count; }
+            function printSelectedEquipmentLabels() {
+                const ids=new Set([...document.querySelectorAll('.equipment-select:checked')].map(input=>input.dataset.id));
+                const items=equipmentCache.filter(item=>ids.has(item.id));
+                if(!items.length)return showToast('請先選取要列印標籤的設備',true);
+                const popup=window.open('','_blank','width=900,height=700');
+                if(!popup)return showToast('瀏覽器封鎖了列印視窗，請允許此網站開啟視窗',true);
+                const labels=items.map(item=>'<article class="label"><div class="brand">NTUT DRONE CLUB · 設備列管</div><h1>'+escapeText(item.assetName)+'</h1><div class="asset-code">'+escapeText(item.assetNo)+'</div><div class="meta">'+escapeText(item.category||'其他')+(item.serialNo?'　·　序號 '+escapeText(item.serialNo):'')+'</div></article>').join('');
+                popup.opener=null;
+                popup.document.open();
+                popup.document.write('<!doctype html><html lang="zh-TW"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>設備財產標籤</title><style>*{box-sizing:border-box}body{font-family:Arial,"Noto Sans TC",sans-serif;margin:12mm;color:#111}.sheet{display:grid;grid-template-columns:repeat(2,85mm);gap:6mm}.label{height:45mm;border:1px solid #222;border-radius:3mm;padding:4mm;display:flex;flex-direction:column;justify-content:space-between;break-inside:avoid}.brand{font-size:9pt;font-weight:700;letter-spacing:.04em}.label h1{font-size:16pt;line-height:1.15;margin:2mm 0;overflow-wrap:anywhere}.asset-code{font:700 14pt ui-monospace,monospace;letter-spacing:.08em}.meta{font-size:8pt;color:#333}@media print{body{margin:8mm}.label{border:1px solid #111}}</style><main class="sheet">'+labels+'</main></html>');
+                popup.document.close(); popup.focus(); popup.print();
+            }
+
+            let memberCache = [];
+            let memberImportRows = [];
+            function invalidateMemberImport() { memberImportRows=[]; const button=document.getElementById('member-import-submit'); if(button)button.disabled=true; const preview=document.getElementById('member-import-preview'); if(preview)preview.innerHTML=''; }
+            const importFields = {name:'姓名',studentId:'學號',email:'Email',phone:'電話',position:'職務',joinedAt:'加入日期',note:'備註'};
+            function renderMemberImportPreview() {
+                const seenIds=new Set(), seenNames=new Set(), seenNamesWithoutId=new Set(); let duplicates=0;
+                const rows=memberImportRows.map((item,index)=>{
+                    const id=String(item.studentId||'').trim().toUpperCase(), name=String(item.name||'').trim().toLowerCase();
+                    const duplicate=id?(seenIds.has(id)||seenNamesWithoutId.has(name)):seenNames.has(name);
+                    if(id)seenIds.add(id); if(name){seenNames.add(name);if(!id)seenNamesWithoutId.add(name);}
+                    if(duplicate)duplicates++;
+                    const cells=Object.keys(importFields).map(key=>'<td><input class="form-control" data-key="'+key+'" aria-label="'+importFields[key]+'，第 '+(index+1)+' 筆" value="'+escapeText(item[key]||'')+'" maxlength="'+({name:50,studentId:30,email:100,phone:30,position:60,joinedAt:10,note:1000}[key])+'" onchange="updateMemberImport('+index+',this.dataset.key,this.value)" '+(key==='joinedAt'?'type="date"':'')+'></td>').join('');
+                    return '<tr>'+cells+'<td>'+ (duplicate?'<span style="color:#fbbf24">重複，將跳過</span>':'<span style="color:#34d399">待新增</span>')+'</td><td><button type="button" class="btn btn-danger" onclick="removeMemberImportRow('+index+')">移除</button></td></tr>';
+                }).join('');
+                document.getElementById('member-import-preview').innerHTML='<p style="margin-bottom:8px;">辨識 '+memberImportRows.length+' 筆；目前 '+duplicates+' 筆重複資料將略過。可直接修改欄位或移除列。</p><div class="table-container"><table style="min-width:1100px"><thead><tr>'+Object.values(importFields).map(label=>'<th>'+label+'</th>').join('')+'<th>狀態</th><th>操作</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+                document.getElementById('member-import-submit').disabled=!memberImportRows.length;
+            }
+            function updateMemberImport(index,key,value) { if(memberImportRows[index]){memberImportRows[index][key]=value;renderMemberImportPreview();} }
+            function removeMemberImportRow(index) { memberImportRows.splice(index,1);renderMemberImportPreview(); }
+            function previewMemberImport() {
+                const input = document.getElementById('member-import-text').value.trim();
+                const file = document.getElementById('member-import-file').files[0];
+                Promise.resolve(input || (file ? file.text() : '')).then(text => {
+                    if (!text) { memberImportRows = []; document.getElementById('member-import-submit').disabled = true; return showToast('請選擇 CSV／TSV 檔案或貼上資料', true); }
+                    const rows = parseSheet(text); if (!rows.length) return showToast('沒有可匯入的資料', true);
+                    const headers = rows.shift().map(value => value.replace(/^\uFEFF/, '').trim().toLowerCase());
+                    const aliases = {name:['姓名','name'],studentId:['學號','studentid','student id'],email:['email','電子郵件'],phone:['電話','手機','phone'],position:['職務','幹部職務','position'],joinedAt:['加入日期','入社日期','joinedat','joined at'],note:['備註','note']};
+                    const columns = Object.fromEntries(Object.entries(aliases).map(([key, names]) => [key, headers.findIndex(value => names.includes(value))]));
+                    let data;
+                    const dateColumn=headers.indexOf('日期'), itemColumn=headers.indexOf('事宜'), incomeColumn=headers.indexOf('收入');
+                    if(itemColumn>=0 && dateColumn>=0 && incomeColumn>=0) {
+                        data=rows.filter(row=>row[itemColumn] && /社費/.test(row[itemColumn]) && !/社費存郵局/.test(row[itemColumn]) && Number(String(row[incomeColumn]||'').replace(/[,$\\s]/g,''))>0).map(row=>{
+                            const raw=String(row[itemColumn]).replace(/社費/g,'').replace(/[。．·\\s]/g,'').trim();
+                            const studentId=/^(?:\\d{9}|\\d{4}[a-z]\\d{4})$/i.test(raw)?raw.toUpperCase():'';
+                            const rawDate=String(row[dateColumn]||'').trim(); const dateMatch=/^(\\d{4})[/-](\\d{1,2})[/-](\\d{1,2})$/.exec(rawDate);
+                            const feeDate=dateMatch?dateMatch[1]+'-'+dateMatch[2].padStart(2,'0')+'-'+dateMatch[3].padStart(2,'0'):'';
+                            return {name:studentId?'':raw,studentId,email:'',phone:'',position:'',joinedAt:'',note:feeDate?'社費紀錄日期：'+feeDate:''};
+                        }).filter(item=>item.name||item.studentId);
+                    } else {
+                        if (columns.name < 0 && columns.studentId < 0) { memberImportRows=[]; return showToast('找不到可辨識的社員欄位；請提供姓名／學號欄，或社費帳本的日期、事宜、收入欄', true); }
+                        data = rows.filter(row => row.some(value => value)).map(row => Object.fromEntries(Object.entries(columns).map(([key, col]) => [key, col < 0 ? '' : (row[col] || '')])));
+                    }
+                    if (!data.length || data.length > 500) { memberImportRows=[]; return showToast('匯入資料需為 1 至 500 筆', true); }
+                    memberImportRows=data; renderMemberImportPreview();
+                }).catch(() => showToast('讀取匯入資料失敗', true));
+            }
+            async function submitMemberImport() {
+                if (!memberImportRows.length) return showToast('請先完成匯入預覽', true);
+                if (!confirm('確認處理這 '+memberImportRows.length+' 筆資料？重複資料會自動略過。')) return;
+                const button=document.getElementById('member-import-submit'); button.disabled=true;
+                try { const res=await fetch('/api/members/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:memberImportRows})}); const data=await res.json(); showToast(res.ok?'已新增 '+data.imported+' 位，略過重複 '+data.skipped+' 位':data.error,!res.ok); if(res.ok){memberImportRows=[];document.getElementById('member-import-text').value='';document.getElementById('member-import-file').value='';document.getElementById('member-import-preview').innerHTML='';loadMembers();} }
+                catch { showToast('匯入失敗，請稍後重試',true); } finally { button.disabled=!memberImportRows.length; }
+            }
+            async function loadMembers() { const query = document.getElementById('member-search')?.value || ''; const res = await fetch('/api/members?q=' + encodeURIComponent(query)); if (!res.ok) return showToast('無法載入社員資料', true); const members = await res.json(); memberCache = members; const body = document.getElementById('members-list'); body.innerHTML = members.map(item => '<tr><td>' + escapeText(item.name || '（姓名待查）') + '<br><small>' + escapeText(item.studentId || '無學號') + '</small></td><td>' + escapeText(item.position || '—') + '</td><td>' + escapeText([item.email,item.phone].filter(Boolean).join('／') || '—') + '</td><td style="white-space:pre-wrap">' + escapeText(item.note || '—') + '</td><td>' + escapeText(item.joinedAt || '—') + '</td><td><button class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="editMember(this.dataset.id)">編輯</button> <button class="btn btn-danger" data-id="' + escapeText(item.id) + '" onclick="deleteMember(this.dataset.id)">刪除</button></td></tr>').join('') || '<tr><td colspan="6" style="text-align:center; color:var(--text-muted)">查無社員資料。</td></tr>'; const select=document.getElementById('fee-member'); if(select){const current=select.value;select.innerHTML='<option value="">選社員或手動填寫</option>'+members.map(item=>'<option value="'+escapeText(item.id)+'">'+escapeText(item.name||'姓名待查')+'（'+escapeText(item.studentId||'無學號')+'）</option>').join('');select.value=current;} }
+            function resetMemberForm() { const form=document.getElementById('member-form'); if(form)form.reset(); document.getElementById('member-edit-id').value=''; }
+            function editMember(id) { const item=memberCache.find(member=>member.id===id); if(!item)return; document.getElementById('member-edit-id').value=item.id; document.getElementById('member-name').value=item.name||''; document.getElementById('member-student-id').value=item.studentId||''; document.getElementById('member-position').value=item.position||''; document.getElementById('member-email').value=item.email||''; document.getElementById('member-phone').value=item.phone||''; document.getElementById('member-note').value=item.note||''; document.getElementById('member-joined-at').value=item.joinedAt||''; document.getElementById('member-form').closest('details').open=true; document.getElementById('member-form').scrollIntoView({behavior:'smooth',block:'center'}); }
+            async function saveMember(event) { event.preventDefault(); const id=document.getElementById('member-edit-id').value; const body={name:document.getElementById('member-name').value,studentId:document.getElementById('member-student-id').value,position:document.getElementById('member-position').value,email:document.getElementById('member-email').value,phone:document.getElementById('member-phone').value,note:document.getElementById('member-note').value,joinedAt:document.getElementById('member-joined-at').value}; const res=await fetch(id?'/api/members/'+encodeURIComponent(id):'/api/members',{method:id?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const data=await res.json(); showToast(res.ok?(id?'社員資料已更新':'社員已新增'):data.error,!res.ok); if(res.ok){resetMemberForm();loadMembers();} }
             async function deleteMember(id) { if (!confirm('確定刪除此社員？此操作無法復原。')) return; const res=await fetch('/api/members/'+encodeURIComponent(id),{method:'DELETE'}); const data=await res.json(); showToast(res.ok?'社員已刪除':data.error,!res.ok); if(res.ok)loadMembers(); }
+            function fillFeePayer() { const item=memberCache.find(member=>member.id===document.getElementById('fee-member').value); if(!item)return; document.getElementById('fee-payer-name').value=item.name||''; document.getElementById('fee-student-id').value=item.studentId||''; }
+            async function loadFeeReceipts() { const body=document.getElementById('fee-receipts-list'); if(!body)return; const res=await fetch('/api/member-fee-receipts'); const data=await res.json(); if(!res.ok){body.innerHTML='<tr><td colspan="7">'+escapeText(data.error||'無法載入簽收紀錄')+'</td></tr>';return;} body.innerHTML=data.map(item=>'<tr><td>'+escapeText(item.date)+'</td><td>'+escapeText(item.payerName||'姓名待查')+'<br><small>'+escapeText(item.studentId||'無學號')+'</small></td><td>NT$ '+new Intl.NumberFormat('zh-TW').format(item.amount)+'</td><td>'+escapeText(item.receiver)+'</td><td>'+escapeText(item.receiptNumber||'—')+(item.note?'<br><small>'+escapeText(item.note)+'</small>':'')+'</td><td>'+escapeText(item.recordedBy)+'</td><td><button class="btn btn-danger" data-id="'+escapeText(item.id)+'" onclick="deleteFeeReceipt(this.dataset.id)">刪除</button></td></tr>').join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">尚無社費簽收紀錄。</td></tr>'; const date=document.getElementById('fee-date'); if(date&&!date.value)date.value=new Date().toISOString().slice(0,10); }
+            async function createFeeReceipt(event) { event.preventDefault(); const memberId=document.getElementById('fee-member').value; const body={memberId,payerName:document.getElementById('fee-payer-name').value,studentId:document.getElementById('fee-student-id').value,amount:Number(document.getElementById('fee-amount').value),date:document.getElementById('fee-date').value,receiver:document.getElementById('fee-receiver').value,receiptNumber:document.getElementById('fee-receipt-number').value,note:document.getElementById('fee-note').value}; const res=await fetch('/api/member-fee-receipts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const data=await res.json(); showToast(res.ok?'社費簽收已記錄':data.error,!res.ok); if(res.ok){event.target.reset();loadFeeReceipts();} }
+            async function deleteFeeReceipt(id) { if(!confirm('確定刪除此簽收紀錄？'))return; const res=await fetch('/api/member-fee-receipts/'+encodeURIComponent(id),{method:'DELETE'}); const data=await res.json(); showToast(res.ok?'簽收紀錄已刪除':data.error,!res.ok); if(res.ok)loadFeeReceipts(); }
+            ${manageMembers ? 'loadFeeReceipts();' : ''}
+
+            function setNoteDate() { const date = document.getElementById('note-date'); if (date && !date.value) date.value = new Date().toISOString().slice(0, 10); }
+            function addNoteLink() { const container = document.getElementById('note-links'); if (!container || container.children.length >= 20) return showToast('每則備忘最多 20 個網址', true); container.insertAdjacentHTML('beforeend', '<div class="note-link-row responsive-form-grid" style="display:grid; grid-template-columns:1fr 2fr auto; gap:8px;"><input class="form-control note-link-label" placeholder="網址說明，例如：課程投影片" maxlength="100"><input class="form-control note-link-url" type="url" placeholder="https://..." maxlength="2048"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()" aria-label="移除此網址">移除</button></div>'); }
+            async function loadNotes() {
+                const container = document.getElementById('notes-list'); if (!container) return;
+                const res = await fetch('/api/notes'); const data = await res.json();
+                if (!res.ok) { container.innerHTML = '<p style="color:#f87171;">' + escapeText(data.error || '無法載入備忘錄') + '</p>'; return; }
+                container.innerHTML = data.map(note => '<article style="padding:18px; border:1px solid var(--border-glass); border-radius:12px; background:rgba(255,255,255,.025);"><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;"><div><p style="color:var(--color-cyan); font-size:.85rem; margin-bottom:6px;">' + escapeText(note.date) + '</p><h2 style="font-size:1.15rem;">' + escapeText(note.title) + '</h2></div>' + (${user?.role === 'president' || user?.role === 'cadre'} ? '<button type="button" class="btn btn-danger" data-id="' + escapeText(note.id) + '" onclick="deleteNote(this.dataset.id)">刪除</button>' : '') + '</div>' + (note.content ? '<p style="white-space:pre-wrap; margin-top:12px; line-height:1.7;">' + escapeText(note.content) + '</p>' : '') + (note.links?.length ? '<ul style="display:grid; gap:8px; margin:14px 0 0; padding-left:20px;">' + note.links.map(link => '<li><a href="' + escapeText(link.url) + '" target="_blank" rel="noopener noreferrer" style="color:var(--color-cyan);">' + escapeText(link.label) + ' ↗</a></li>').join('') + '</ul>' : '<p style="color:var(--text-muted); margin-top:12px;">尚未記錄相關網址。</p>') + '<small style="display:block; color:var(--text-muted); margin-top:12px;">紀錄者：' + escapeText(note.createdBy) + '</small></article>').join('') || '<p style="color:var(--text-muted);">尚無社課紀錄。</p>';
+                setNoteDate();
+            }
+            async function createNote(event) {
+                event.preventDefault();
+                const links = [...document.querySelectorAll('.note-link-row')].map(row => ({label:row.querySelector('.note-link-label').value, url:row.querySelector('.note-link-url').value})).filter(link => link.url.trim());
+                const res = await fetch('/api/notes', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:document.getElementById('note-title').value, date:document.getElementById('note-date').value, content:document.getElementById('note-content').value, links})});
+                const data = await res.json(); showToast(res.ok ? '社課紀錄已儲存' : data.error, !res.ok);
+                if (res.ok) { event.target.reset(); document.getElementById('note-links').innerHTML = '<div class="note-link-row responsive-form-grid" style="display:grid; grid-template-columns:1fr 2fr auto; gap:8px;"><input class="form-control note-link-label" placeholder="網址說明，例如：課程投影片" maxlength="100"><input class="form-control note-link-url" type="url" placeholder="https://..." maxlength="2048"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()" aria-label="移除此網址">移除</button></div>'; setNoteDate(); loadNotes(); }
+            }
+            async function deleteNote(id) { if (!confirm('確定刪除此社課紀錄？')) return; const res = await fetch('/api/notes/' + encodeURIComponent(id), {method:'DELETE'}); const data = await res.json(); showToast(res.ok ? '社課紀錄已刪除' : data.error, !res.ok); if (res.ok) loadNotes(); }
+            ${viewCms ? 'loadNotes(); setNoteDate();' : ''}
 
             // ── Homepage Settings ───────────────────────────────────────
             const hpFieldIdMap = {

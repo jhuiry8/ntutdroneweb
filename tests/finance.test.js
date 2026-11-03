@@ -98,3 +98,61 @@ test('finance can search, add, and delete member records without granting access
     assert.equal((await request(`/api/members/${member.id}`, 'finance', 'DELETE')).status, 200);
     assert.deepEqual(await (await request('/api/members', 'finance')).json(), []);
 });
+
+test('member batch import skips duplicates safely and reports security headers', async () => {
+    const { request, db } = fixture();
+    await request('/api/members', 'finance', 'POST', { name: '既有社員', studentId: '1152B0013' });
+    const response = await request('/api/members/import', 'finance', 'POST', { rows: [
+        { name: '既有社員改名', studentId: '1152b0013' },
+        { name: '新社員', studentId: '1152B0099', joinedAt: '2026-09-01' },
+        { name: '重複新社員', studentId: '1152b0099' },
+        { name: '新社員' }
+    ] });
+    assert.equal(response.status, 201);
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(response.headers.get('x-frame-options'), 'DENY');
+    assert.deepEqual(await response.json(), {
+        imported: 1,
+        skipped: 3,
+        skippedRows: [
+            { row: 1, name: '既有社員改名', studentId: '1152B0013' },
+            { row: 3, name: '重複新社員', studentId: '1152B0099' },
+            { row: 4, name: '新社員', studentId: '' }
+        ]
+    });
+    const members = JSON.parse(db.store.get('members:list'));
+    assert.equal(members.length, 2);
+    assert.equal((await request('/api/members/import', 'cadre', 'POST', { rows: [{ name: '不得匯入' }] })).status, 403);
+});
+
+test('cross-origin writes are rejected before changing state', async () => {
+    const { db } = fixture();
+    const response = await worker.fetch(new Request('https://example.com/api/members/import', {
+        method: 'POST',
+        headers: { Cookie: 'session=finance', Origin: 'https://attacker.example', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: [{ name: '惡意請求' }] })
+    }), { DRONE_DB: db });
+    assert.equal(response.status, 403);
+    assert.equal(db.store.has('members:list'), false);
+});
+
+test('equipment inventory creates unique labels, validates fields, and protects asset numbers', async () => {
+    const { request, db } = fixture();
+    assert.equal((await request('/api/equipment', 'member')).status, 403);
+    const created = await request('/api/equipment', 'cadre', 'POST', {
+        assetName: 'DJI Mini 4 Pro', category: '空拍機', serialNo: 'SN-001',
+        purchaseDate: '2026-08-12', purchasePrice: 28900, condition: 'good',
+        status: 'storage', location: '器材櫃 A', custodian: '器材長', note: '含電池與遙控器'
+    });
+    assert.equal(created.status, 201);
+    const asset = await created.json();
+    assert.match(asset.assetNo, /^NTUT-DR-\d{4}-[A-F0-9]{10}$/);
+    assert.equal(asset.createdBy, 'cadre');
+    assert.equal((await request('/api/equipment', 'finance', 'POST', { assetName: '重複序號設備', serialNo: 'sn-001' })).status, 409);
+    const updated = await request(`/api/equipment/${asset.id}`, 'president', 'PATCH', { assetName: 'DJI Mini 4 Pro 套組', assetNo: 'FORGED' });
+    assert.equal(updated.status, 200);
+    assert.equal((await updated.json()).assetNo, asset.assetNo);
+    assert.equal((await request(`/api/equipment/${asset.id}`, 'member', 'PATCH', { assetName: '無權限變更' })).status, 403);
+    assert.equal((await request(`/api/equipment/${asset.id}`, 'finance', 'PATCH', { status: 'unknown' })).status, 400);
+    assert.equal(JSON.parse(db.store.get('equipment:assets'))[0].assetName, 'DJI Mini 4 Pro 套組');
+});
