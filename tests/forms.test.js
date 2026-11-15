@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import worker, { FormStore } from '../src/worker.js';
 import { renderAdminDashboard } from '../src/templates.js';
 import { chineseAmount, formNumberPrefix, taipeiToday, normalizePublicLoan, normalizeFormData, renderFormPrint, parseLetterDraft, inclusiveDays, FormValidationError, sanitizeFormFill, formFillPrompt } from '../src/forms.js';
+import { createMockSiteStore, withSiteStore } from './helpers/site-store.js';
 
 // In-memory Durable Object storage whose transactions run one at a time, like the real runtime.
 function createMockFormStore() {
@@ -37,8 +38,11 @@ function fixture(extraEnv = {}) {
         store.set(`session:${name}`, JSON.stringify({ username: name, version: 'v1' }));
     }
     const formStore = createMockFormStore();
-    const env = { DRONE_DB: db, FORM_STORE: formStore, ...extraEnv };
-    const request = (path, who, method = 'GET', body, ip = '203.0.113.7') => worker.fetch(new Request(`https://example.com${path}`, {
+    const env = withSiteStore({ DRONE_DB: db, FORM_STORE: formStore, ...extraEnv });
+    // Public loan posts get a solved image CAPTCHA unless the test supplies its own fields.
+    const withCaptcha = (path, body) => path === '/api/public/equipment-loan' && body && !env.TURNSTILE_SECRET_KEY && !('captchaId' in body)
+        ? { ...body, ...env.SITE_STORE.issueCaptcha() } : body;
+    const request = (path, who, method = 'GET', rawBody, ip = '203.0.113.7', body = withCaptcha(path, rawBody)) => worker.fetch(new Request(`https://example.com${path}`, {
         method,
         headers: { 'CF-Connecting-IP': ip, ...(who ? { Cookie: `session=${who}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
@@ -273,7 +277,10 @@ test('public equipment loan page needs no login and offers no AI', async () => {
 });
 
 test('public loan requires student ID and phone, and prints only with its token', async () => {
-    const { request } = fixture();
+    const { request, env } = fixture();
+    assert.equal((await request('/api/public/equipment-loan', null, 'POST', { data: publicLoan, captchaId: '', captcha: '' })).status, 400, 'image CAPTCHA is required without Turnstile');
+    assert.equal((await request('/api/public/equipment-loan', null, 'POST', { data: publicLoan, ...env.SITE_STORE.issueCaptcha(), captcha: 'WRONG' })).status, 400);
+    assert.match(await (await request('/forms/equipment-loan')).text(), /id="pl-captcha"/);
     assert.equal((await request('/api/public/equipment-loan', null, 'POST', { data: { ...publicLoan, studentId: '' } })).status, 400);
     assert.equal((await request('/api/public/equipment-loan', null, 'POST', { data: { ...publicLoan, phone: '' } })).status, 400);
     const created = await request('/api/public/equipment-loan', null, 'POST', { data: publicLoan });

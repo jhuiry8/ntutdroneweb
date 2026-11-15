@@ -1,9 +1,9 @@
 // Self-hosted image CAPTCHA for the admin login.
 //
 // Characters are drawn as jittered SVG stroke paths (never as <text>), so the
-// answer is not present in the page source. Each challenge is stored in KV with
-// a short TTL and is single-use: it is deleted on the first verification
-// attempt, whether or not the answer was correct.
+// answer is not present in the page source. Each challenge is stored in the
+// SiteStore Durable Object with a short TTL and is single-use: it is deleted on
+// the first verification attempt, whether or not the answer was correct.
 
 export const CAPTCHA_TTL_SECONDS = 300;
 const CAPTCHA_LENGTH = 5;
@@ -98,19 +98,20 @@ export function renderCaptchaSvg(code) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" role="img" aria-label="驗證碼圖片"><rect width="100%" height="100%" fill="#f4f1e8"/>${parts.join('')}</svg>`;
 }
 
-export async function createCaptcha(kv) {
+// `store` is a function (path, payload) => { status, body } that talks to the
+// serialized SiteStore Durable Object, so a challenge can only be used once.
+export async function createCaptcha(store) {
     const id = crypto.randomUUID();
     const code = randomCaptchaCode();
-    await kv.put(`captcha:${id}`, code, { expirationTtl: CAPTCHA_TTL_SECONDS });
+    const created = await store('/captcha/create', { id, code, ttlSeconds: CAPTCHA_TTL_SECONDS });
+    if (created.status !== 201) throw new Error('Unable to store captcha');
     return { id, svg: renderCaptchaSvg(code) };
 }
 
-export async function verifyCaptcha(kv, id, answer) {
+export async function verifyCaptcha(store, id, answer) {
     if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/i.test(id)) return false;
-    const key = `captcha:${id}`;
-    const expected = await kv.get(key);
-    if (!expected) return false;
-    await kv.delete(key); // single use
+    const expected = (await store('/captcha/take', { id })).body?.code; // single use
+    if (typeof expected !== 'string' || !expected) return false;
     const normalized = String(answer || '').replace(/\s+/g, '').toUpperCase();
     if (normalized.length !== expected.length) return false;
     let difference = 0;

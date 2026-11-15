@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../src/worker.js';
 import { CAPTCHA_CHARSET, createCaptcha, randomCaptchaCode, renderCaptchaSvg, verifyCaptcha } from '../src/captcha.js';
+import { createMockSiteStore, withSiteStore } from './helpers/site-store.js';
 
 function createMockKV() {
     const store = new Map();
@@ -30,20 +31,43 @@ test('captcha codes use the readable charset and are drawn as paths, not text', 
 });
 
 test('captcha verification is case-insensitive and single use', async () => {
-    const kv = createMockKV();
-    const { id } = await createCaptcha(kv);
-    const code = await kv.get(`captcha:${id}`);
-    assert.equal(await verifyCaptcha(kv, id, code.toLowerCase()), true);
-    assert.equal(await verifyCaptcha(kv, id, code), false, 'reused challenge must fail');
+    const env = withSiteStore({ DRONE_DB: createMockKV() });
+    const store = (path, payload) => env.SITE_STORE.get().fetch(`https://site-store${path}`, { method: 'POST', body: JSON.stringify(payload) })
+        .then(async response => ({ status: response.status, body: await response.json() }));
+    const { id } = await createCaptcha(store);
+    const code = env.SITE_STORE.captchaCode(id);
+    assert.equal(await verifyCaptcha(store, id, code.toLowerCase()), true);
+    assert.equal(await verifyCaptcha(store, id, code), false, 'reused challenge must fail');
 
-    const second = await createCaptcha(kv);
-    assert.equal(await verifyCaptcha(kv, second.id, 'WRONG'), false);
-    assert.equal(await kv.get(`captcha:${second.id}`), null, 'failed attempt burns the challenge');
-    assert.equal(await verifyCaptcha(kv, 'not-a-uuid', 'X'), false);
+    const second = await createCaptcha(store);
+    assert.equal(await verifyCaptcha(store, second.id, 'WRONG'), false);
+    assert.equal(env.SITE_STORE.captchaCode(second.id), null, 'failed attempt burns the challenge');
+    assert.equal(await verifyCaptcha(store, 'not-a-uuid', 'X'), false);
+});
+
+test('one solved captcha cannot be replayed by parallel requests', async () => {
+    const env = withSiteStore({ DRONE_DB: createMockKV(), ADMIN_INITIAL_PASSWORD: 'adminpass' });
+    const id = captchaIdFrom(await loginPage(env));
+    const captcha = env.SITE_STORE.captchaCode(id);
+    const results = await Promise.all(Array.from({ length: 10 }, (_, i) => postLogin(env, { username: 'admin', password: `guess-${i}`, captcha_id: id, captcha })));
+    // A wrong password answers 200; a rejected CAPTCHA answers 400 and a rate limit 429.
+    const passedCaptcha = await Promise.all(results.map(async res => res.status === 200 && !/驗證碼錯誤/.test(await res.text())));
+    assert.equal(passedCaptcha.filter(Boolean).length, 1);
+});
+
+test('parallel bad passwords cannot exceed the per-account limit', async () => {
+    const env = withSiteStore({ DRONE_DB: createMockKV(), ADMIN_INITIAL_PASSWORD: 'adminpass' });
+    const attempts = [];
+    for (let i = 0; i < 12; i++) {
+        const id = captchaIdFrom(await loginPage(env));
+        attempts.push({ username: 'admin', password: `guess-${i}`, captcha_id: id, captcha: env.SITE_STORE.captchaCode(id) });
+    }
+    const results = await Promise.all(attempts.map(fields => postLogin(env, fields)));
+    assert.equal(results.filter(res => res.status === 429).length, 12 - 5);
 });
 
 test('login without Turnstile requires the image captcha', async () => {
-    const env = { DRONE_DB: createMockKV(), ADMIN_INITIAL_PASSWORD: 'adminpass' };
+    const env = withSiteStore({ DRONE_DB: createMockKV(), ADMIN_INITIAL_PASSWORD: 'adminpass' });
     const html = await loginPage(env);
     assert.match(html, /name="captcha"/);
     assert.doesNotMatch(html, /cf-turnstile/);
@@ -58,32 +82,32 @@ test('login without Turnstile requires the image captcha', async () => {
     assert.match(await wrong.text(), /驗證碼錯誤/);
 
     const freshId = captchaIdFrom(await loginPage(env));
-    const ok = await postLogin(env, { username: 'admin', password: 'adminpass', captcha_id: freshId, captcha: await env.DRONE_DB.get(`captcha:${freshId}`) });
+    const ok = await postLogin(env, { username: 'admin', password: 'adminpass', captcha_id: freshId, captcha: env.SITE_STORE.captchaCode(freshId) });
     assert.equal(ok.status, 302);
 });
 
 test('login is limited per IP even when usernames rotate', async () => {
-    const env = { DRONE_DB: createMockKV(), ADMIN_INITIAL_PASSWORD: 'adminpass' };
+    const env = withSiteStore({ DRONE_DB: createMockKV(), ADMIN_INITIAL_PASSWORD: 'adminpass' });
     for (let i = 0; i < 20; i++) {
         const id = captchaIdFrom(await loginPage(env));
-        const res = await postLogin(env, { username: `user${i}`, password: 'nope', captcha_id: id, captcha: await env.DRONE_DB.get(`captcha:${id}`) });
+        const res = await postLogin(env, { username: `user${i}`, password: 'nope', captcha_id: id, captcha: env.SITE_STORE.captchaCode(id) });
         assert.equal(res.status, 200);
     }
     const id = captchaIdFrom(await loginPage(env));
-    const limited = await postLogin(env, { username: 'admin', password: 'adminpass', captcha_id: id, captcha: await env.DRONE_DB.get(`captcha:${id}`) });
+    const limited = await postLogin(env, { username: 'admin', password: 'adminpass', captcha_id: id, captcha: env.SITE_STORE.captchaCode(id) });
     assert.equal(limited.status, 429);
     const otherIp = captchaIdFrom(await loginPage(env));
-    const allowed = await postLogin(env, { username: 'admin', password: 'adminpass', captcha_id: otherIp, captcha: await env.DRONE_DB.get(`captcha:${otherIp}`) }, '198.51.100.1');
+    const allowed = await postLogin(env, { username: 'admin', password: 'adminpass', captcha_id: otherIp, captcha: env.SITE_STORE.captchaCode(otherIp) }, '198.51.100.1');
     assert.equal(allowed.status, 302);
 });
 
 test('captcha refresh endpoint issues a new challenge', async () => {
-    const env = { DRONE_DB: createMockKV() };
+    const env = withSiteStore({ DRONE_DB: createMockKV() });
     const res = await worker.fetch(new Request('https://example.com/api/captcha', { method: 'POST' }), env);
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.match(body.svg, /^<svg/);
-    assert.ok(await env.DRONE_DB.get(`captcha:${body.id}`));
+    assert.ok(env.SITE_STORE.captchaCode(body.id));
     const turnstile = await worker.fetch(new Request('https://example.com/api/captcha', { method: 'POST' }), { ...env, TURNSTILE_SECRET_KEY: 's' });
     assert.equal(turnstile.status, 404);
 });
