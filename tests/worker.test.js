@@ -34,6 +34,19 @@ function createMockKV(initialData = {}) {
     };
 }
 
+// Fetch the login page, read the issued CAPTCHA answer from mock KV and submit
+// the login form with it, like a person who solved the image would.
+async function solvedCaptcha(env) {
+    const page = await (await worker.fetch(new Request('https://example.com/admin'), env)).text();
+    const id = /name="captcha_id"[^>]*value="([^"]+)"/.exec(page)[1];
+    return { captcha_id: id, captcha: (await env.DRONE_DB.get(`captcha:${id}`)).toLowerCase() };
+}
+async function loginRequest(env, fields, headers = {}) {
+    return worker.fetch(new Request('https://example.com/api/login', {
+        method: 'POST', headers, body: new URLSearchParams({ ...(await solvedCaptcha(env)), ...fields })
+    }), env);
+}
+
 test('Worker test suite - Cloudflare Worker Routes & CMS APIs', async (t) => {
     const mockEnv = {
         DRONE_DB: createMockKV({
@@ -136,9 +149,7 @@ test('Worker test suite - Cloudflare Worker Routes & CMS APIs', async (t) => {
 
 test('individual accounts enforce roles and password rotation', async () => {
     const env = { DRONE_DB: createMockKV(), ADMIN_INITIAL_PASSWORD: 'initial-admin-secret' };
-    const login = async (username, password) => worker.fetch(new Request('https://example.com/api/login', {
-        method: 'POST', body: new URLSearchParams({ username, password })
-    }), env);
+    const login = async (username, password) => loginRequest(env, { username, password });
     const adminLogin = await login('admin', 'initial-admin-secret');
     assert.equal(adminLogin.status, 302);
     const adminCookie = adminLogin.headers.get('set-cookie').split(';')[0];
@@ -176,14 +187,10 @@ test('login requires configured CAPTCHA and limits repeated bad passwords', asyn
     assert.equal(missingCaptcha.status, 400);
     delete env.TURNSTILE_SECRET_KEY;
     for (let i = 0; i < 5; i++) {
-        const response = await worker.fetch(new Request('https://example.com/api/login', {
-            method: 'POST', body: new URLSearchParams({ username: 'admin', password: 'wrongpass' })
-        }), env);
+        const response = await loginRequest(env, { username: 'admin', password: 'wrongpass' });
         assert.equal(response.status, 200);
     }
-    const limited = await worker.fetch(new Request('https://example.com/api/login', {
-        method: 'POST', body: new URLSearchParams({ username: 'admin', password: 'adminpass' })
-    }), env);
+    const limited = await loginRequest(env, { username: 'admin', password: 'adminpass' });
     assert.equal(limited.status, 429);
 });
 
@@ -191,9 +198,7 @@ test('legacy shared password migrates to admin account without losing content', 
     const legacy = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('oldpassword' + 'ntut_drone_salt_123'));
     const hash = [...new Uint8Array(legacy)].map(byte => byte.toString(16).padStart(2, '0')).join('');
     const env = { DRONE_DB: createMockKV({ admin_password_hash: hash, posts_list: '[{"title":"保留文章"}]', 'session:legacy': 'admin' }) };
-    const response = await worker.fetch(new Request('https://example.com/api/login', {
-        method: 'POST', body: new URLSearchParams({ username: 'admin', password: 'oldpassword' })
-    }), env);
+    const response = await loginRequest(env, { username: 'admin', password: 'oldpassword' });
     assert.equal(response.status, 302);
     assert.equal(await env.DRONE_DB.get('admin_password_hash'), null);
     assert.ok(await env.DRONE_DB.get('user:admin'));
@@ -205,17 +210,13 @@ test('legacy shared password migrates to admin account without losing content', 
 test('unsupported existing account hash gives a recovery message without overwriting credentials', async () => {
     const user = JSON.stringify({ username: 'imported', role: 'member', active: true, version: 'v1', passwordHash: `pbkdf2:old-salt:${'a'.repeat(64)}` });
     const env = { DRONE_DB: createMockKV({ 'user:imported': user }), ADMIN_INITIAL_PASSWORD: 'bootstrap-password' };
-    const response = await worker.fetch(new Request('https://example.com/api/login', {
-        method: 'POST', body: new URLSearchParams({ username: 'imported', password: 'some-password' })
-    }), env);
+    const response = await loginRequest(env, { username: 'imported', password: 'some-password' });
     assert.equal(response.status, 409);
     assert.match(await response.text(), /重設密碼/);
     assert.equal(response.headers.get('set-cookie'), null);
     assert.equal(await env.DRONE_DB.get('user:imported'), user);
 
-    const adminLogin = await worker.fetch(new Request('https://example.com/api/login', {
-        method: 'POST', body: new URLSearchParams({ username: 'admin', password: 'bootstrap-password' })
-    }), env);
+    const adminLogin = await loginRequest(env, { username: 'admin', password: 'bootstrap-password' });
     assert.equal(adminLogin.status, 302);
     const reset = await worker.fetch(new Request('https://example.com/api/users', {
         method: 'PATCH', headers: { Cookie: adminLogin.headers.get('set-cookie').split(';')[0], 'Content-Type': 'application/json' },
@@ -223,8 +224,6 @@ test('unsupported existing account hash gives a recovery message without overwri
     }), env);
     assert.equal(reset.status, 200);
     assert.match(JSON.parse(await env.DRONE_DB.get('user:imported')).passwordHash, /^pbkdf2:100000:/);
-    const loginAfterReset = await worker.fetch(new Request('https://example.com/api/login', {
-        method: 'POST', body: new URLSearchParams({ username: 'imported', password: 'reset-password' })
-    }), env);
+    const loginAfterReset = await loginRequest(env, { username: 'imported', password: 'reset-password' });
     assert.equal(loginAfterReset.status, 302);
 });

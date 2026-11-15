@@ -10,6 +10,7 @@ import {
     renderLogin,
     renderAdminDashboard
 } from './templates.js';
+import { createCaptcha, verifyCaptcha } from './captcha.js';
 
 // Configuration Defaults
 const DEFAULT_PASS = 'admin123';
@@ -21,6 +22,25 @@ async function hashPassword(password) {
     const data = encoder.encode(password + SALT);
     const hash = await crypto.subtle.digest('SHA-256', data);
     return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+const LOGIN_MAX_ATTEMPTS_PER_ACCOUNT = 5;
+const LOGIN_MAX_ATTEMPTS_PER_IP = 20;
+const LOGIN_LOCKOUT_SECONDS = 900;
+const CAPTCHA_MAX_PER_IP = 60;
+
+// Helper: Render the login page. When Cloudflare Turnstile is not configured,
+// a self-hosted image CAPTCHA is attached so every login attempt needs one.
+async function loginPageResponse(env, message = '', status = 200) {
+    const captcha = env.TURNSTILE_SECRET_KEY ? null : await createCaptcha(env.DRONE_DB);
+    return new Response(renderLogin(message, env.TURNSTILE_SITE_KEY, captcha), {
+        status,
+        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }
+    });
+}
+
+async function bumpCounter(kv, key, current) {
+    await kv.put(key, String(current + 1), { expirationTtl: LOGIN_LOCKOUT_SECONDS });
 }
 
 // Helper: Parse Cookies
@@ -352,9 +372,7 @@ async function handleRequest(request, env, ctx) {
                 if (authed) {
                     return Response.redirect(`${url.origin}/admin/dashboard`, 302);
                 }
-                return new Response(renderLogin('', env.TURNSTILE_SITE_KEY), {
-                    headers: { 'Content-Type': 'text/html; charset=utf-8' }
-                });
+                return loginPageResponse(env);
             }
 
             if (path === '/admin/dashboard' && method === 'GET') {
@@ -391,20 +409,40 @@ async function handleRequest(request, env, ctx) {
             }
 
             // ==================== API: Login Action ====================
+            if (path === '/api/captcha' && method === 'POST') {
+                if (env.TURNSTILE_SECRET_KEY) return Response.json({ error: '未啟用' }, { status: 404 });
+                const genKey = `captcha-gen:${request.headers.get('CF-Connecting-IP') || 'unknown'}`;
+                const generated = Number(await env.DRONE_DB.get(genKey) || 0);
+                if (generated >= CAPTCHA_MAX_PER_IP) return Response.json({ error: '請求過於頻繁，請稍後再試' }, { status: 429 });
+                await bumpCounter(env.DRONE_DB, genKey, generated);
+                return Response.json(await createCaptcha(env.DRONE_DB), { headers: { 'Cache-Control': 'no-store' } });
+            }
+
             if (path === '/api/login' && method === 'POST') {
                 const formData = await request.formData();
                 const username = String(formData.get('username') || '').trim().toLowerCase();
                 const password = String(formData.get('password') || '');
-                const attemptsKey = `login-attempts:${username}:${request.headers.get('CF-Connecting-IP') || 'unknown'}`;
+                const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+                const attemptsKey = `login-attempts:${username}:${clientIp}`;
+                const ipAttemptsKey = `login-attempts-ip:${clientIp}`;
                 const attempts = Number(await env.DRONE_DB.get(attemptsKey) || 0);
-                if (attempts >= 5) return new Response(renderLogin('登入嘗試過多，請 15 分鐘後再試。', env.TURNSTILE_SITE_KEY), { status: 429, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+                const ipAttempts = Number(await env.DRONE_DB.get(ipAttemptsKey) || 0);
+                if (attempts >= LOGIN_MAX_ATTEMPTS_PER_ACCOUNT || ipAttempts >= LOGIN_MAX_ATTEMPTS_PER_IP) {
+                    return loginPageResponse(env, '登入嘗試過多，請 15 分鐘後再試。', 429);
+                }
                 if (env.TURNSTILE_SECRET_KEY) {
                     const token = String(formData.get('cf-turnstile-response') || '');
-                    if (!token) return new Response(renderLogin('請完成驗證碼。', env.TURNSTILE_SITE_KEY), { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+                    if (!token) return loginPageResponse(env, '請完成驗證碼。', 400);
                     const verification = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-                        method: 'POST', body: new URLSearchParams({ secret: env.TURNSTILE_SECRET_KEY, response: token, remoteip: request.headers.get('CF-Connecting-IP') || '' })
+                        method: 'POST', body: new URLSearchParams({ secret: env.TURNSTILE_SECRET_KEY, response: token, remoteip: clientIp === 'unknown' ? '' : clientIp })
                     });
-                    if (!verification.ok || !(await verification.json()).success) return new Response(renderLogin('驗證碼無效，請重試。', env.TURNSTILE_SITE_KEY), { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+                    if (!verification.ok || !(await verification.json()).success) {
+                        await bumpCounter(env.DRONE_DB, ipAttemptsKey, ipAttempts);
+                        return loginPageResponse(env, '驗證碼無效，請重試。', 400);
+                    }
+                } else if (!(await verifyCaptcha(env.DRONE_DB, String(formData.get('captcha_id') || ''), formData.get('captcha')))) {
+                    await bumpCounter(env.DRONE_DB, ipAttemptsKey, ipAttempts);
+                    return loginPageResponse(env, '驗證碼錯誤或已過期，請重新輸入。', 400);
                 }
                 let userJson = await env.DRONE_DB.get(`user:${username}`);
                 let user = userJson ? JSON.parse(userJson) : null;
@@ -430,10 +468,9 @@ async function handleRequest(request, env, ctx) {
                         }
                     });
                 } else {
-                    await env.DRONE_DB.put(attemptsKey, String(attempts + 1), { expirationTtl: 900 });
-                    return new Response(renderLogin('帳號或密碼不正確，請重新輸入！', env.TURNSTILE_SITE_KEY), {
-                        headers: { 'Content-Type': 'text/html; charset=utf-8' }
-                    });
+                    await bumpCounter(env.DRONE_DB, attemptsKey, attempts);
+                    await bumpCounter(env.DRONE_DB, ipAttemptsKey, ipAttempts);
+                    return loginPageResponse(env, '帳號或密碼不正確，請重新輸入！');
                 }
             }
 
@@ -1091,9 +1128,7 @@ async function handleRequest(request, env, ctx) {
             if (e instanceof FinanceValidationError) return Response.json({ error: e.message }, { status: 400 });
             if (e instanceof PasswordResetRequiredError) {
                 if (path === '/api/login') {
-                    return new Response(renderLogin(e.message, env.TURNSTILE_SITE_KEY), {
-                        status: 409, headers: { 'Content-Type': 'text/html; charset=utf-8' }
-                    });
+                    return loginPageResponse(env, e.message, 409);
                 }
                 return Response.json({ error: e.message }, { status: 409 });
             }
