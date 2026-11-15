@@ -82,7 +82,7 @@
 * 社長可在「帳號與權限」新增帳號、設定角色、停用帳號及重設密碼。角色為社長、財務、一般幹部、社員。社長與一般幹部可編輯 CMS；財務可查看 CMS；社員可登入並修改自己的密碼，後續社員資料功能將整合於此帳號。
 * 帳號密碼至少 8 位。修改或重設密碼會使舊 session 失效。登入密碼連續錯誤 5 次會暫停 15 分鐘（依帳號與來源 IP 計）。
 * 密碼使用 PBKDF2-SHA256、隨機 salt 與 100,000 次迭代，格式中記錄迭代次數，以符合正式 Cloudflare Workers 上限。舊站 `admin_password_hash` 仍可自動轉換；若曾在其他執行環境建立 120,000 次的 `pbkdf2:salt:hash` 帳號，需由可登入的社長重設該帳號密碼，不會自動覆寫既有憑證。若唯一管理員也使用該格式，需由部署管理者進行帳號復原。
-* 若要啟用登入驗證碼，請在 Cloudflare Turnstile 建立對應網站網域的 widget，將公開 site key 設為 Worker 變數 `TURNSTILE_SITE_KEY`，secret key 設為 Worker 加密變數 `TURNSTILE_SECRET_KEY`。兩者設定後，登入表單會顯示驗證碼，伺服器會透過 Siteverify 驗證每次登入。未設定時仍有登入失敗限制，但不會顯示驗證碼。
+* 若要啟用登入驗證碼，請在 Cloudflare Turnstile 建立對應網站網域的 widget，將公開 site key 設為 Worker 變數 `TURNSTILE_SITE_KEY`，secret key 設為 Worker 加密變數 `TURNSTILE_SECRET_KEY`。兩者設定後，登入表單會顯示驗證碼，伺服器會透過 Siteverify 驗證每次登入。未設定 Turnstile 時，登入頁會自動改用內建的圖形驗證碼（5 個字元、不分大小寫、5 分鐘內有效且只能使用一次，可按「換一張」更新），不需額外設定。另外同一帳號＋IP 連續失敗 5 次、或同一 IP 失敗 20 次（含驗證碼錯誤）都會鎖定 15 分鐘，防止暴力破解。
 
 #### 舊網站轉換步驟
 1. 舊網站只有共用管理密碼，沒有個別使用者資料，因此不會自動產生每位管理者的帳號。部署新版後，原管理者在 `/admin` 輸入帳號 `admin` 與原本的共用密碼；若啟用了 Turnstile，先完成驗證碼。
