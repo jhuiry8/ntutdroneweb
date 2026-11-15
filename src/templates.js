@@ -1236,7 +1236,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             .forms-buttons { display:flex; gap:10px; flex-wrap:wrap; }
             .forms-actions { white-space:nowrap; }
             #panel-forms [hidden] { display:none !important; }
-            .forms-items .btn { white-space:nowrap; }
+            .forms-items .btn, .forms-field .btn { white-space:nowrap; }
             @media (max-width: 768px) { .forms-grid { grid-template-columns:minmax(0, 1fr); } .forms-actions { white-space:normal; } }
             .finance-summary { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin:20px 0; }
             .finance-card { padding:16px; border:1px solid var(--border-glass); border-radius:12px; background:rgba(255,255,255,.03); display:grid; gap:6px; }
@@ -2129,7 +2129,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 <div id="notes-list" style="display:grid; gap:14px;"><p style="color:var(--text-muted);">載入社課紀錄中…</p></div>
             </div>` : ''}
             <div id="panel-forms" class="panel" data-username="${escapeHtml(user?.username || '')}" data-role="${escapeHtml(user?.role || 'member')}">
-                <div class="content-header"><div><h1>表單申請</h1><p style="color:var(--text-muted); margin-top:6px;">線上填寫並自動帶入資料，列印成紙本後交由財務長、社長及學校單位簽核；審核以紙本為準。</p></div></div>
+                <div class="content-header"><div><h1>表單申請</h1><p style="color:var(--text-muted); margin-top:6px;">線上填寫並自動帶入資料，列印成紙本後交由財務長、社長及學校單位簽核；審核以紙本為準。</p><p id="forms-ai-status" class="forms-muted"></p></div></div>
                 <div class="forms-tabs" role="tablist" aria-label="表單類型">
                     <button type="button" class="forms-type-tab active" data-type="expense-request">社費事前申請</button>
                     <button type="button" class="forms-type-tab" data-type="expense-report">社費事後報銷</button>

@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import worker from '../src/worker.js';
 import { renderAdminDashboard } from '../src/templates.js';
-import { chineseAmount, nextFormNumber, normalizeFormData, renderFormPrint, parseLetterDraft, inclusiveDays, FormValidationError } from '../src/forms.js';
+import { chineseAmount, nextFormNumber, normalizeFormData, renderFormPrint, parseLetterDraft, inclusiveDays, FormValidationError, sanitizeFormFill, formFillPrompt } from '../src/forms.js';
 
 function fixture(extraEnv = {}) {
     const store = new Map();
@@ -148,7 +148,7 @@ test('blank forms print for any signed-in user; settings are president-only', as
     assert.match(html, /財產管理人（陳器材）/);
 });
 
-test('AI letter route is officer-only, needs a key and is rate limited', async (t) => {
+test('AI letter falls back to Gemini, is officer-only, needs a key and is rate limited', async (t) => {
     let captured;
     t.mock.method(globalThis, 'fetch', async (url, init) => {
         captured = { url: String(url), init };
@@ -156,6 +156,7 @@ test('AI letter route is officer-only, needs a key and is rate limited', async (
     });
     const withoutKey = fixture();
     assert.equal((await withoutKey.request('/api/forms/ai-letter', 'cadre', 'POST', { text: '想辦成果展' })).status, 503);
+    assert.equal(withoutKey.store.size, 10, 'a missing key must not use up the daily quota');
 
     const { request, store } = fixture({ GEMINI_API_KEY: 'test-key' });
     assert.equal((await request('/api/forms/ai-letter', 'member', 'POST', { text: '想辦成果展' })).status, 403);
@@ -180,4 +181,63 @@ test('forms panel is available to every role and its script parses', () => {
     }
     const script = readFileSync(new URL('../public/admin-forms.js', import.meta.url), 'utf8');
     assert.doesNotThrow(() => new vm.Script(script));
+});
+
+test('Groq is preferred and receives an OpenAI-style JSON request', async (t) => {
+    let captured;
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+        captured = { url: String(url), init, body: JSON.parse(init.body) };
+        return Response.json({ choices: [{ message: { content: '{"subject":"主旨：借用操場辦理成果展，敬請 核示。","descriptions":["一、時間為12月19日。"]}' } }] });
+    });
+    const { request } = fixture({ GROQ_API_KEY: 'gsk_test', GEMINI_API_KEY: 'unused' });
+    const response = await request('/api/forms/ai-letter', 'president', 'POST', { text: '想借操場辦成果展' });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { subject: '借用操場辦理成果展，敬請 核示。', descriptions: ['時間為12月19日。'] });
+    assert.equal(captured.url, 'https://api.groq.com/openai/v1/chat/completions');
+    assert.equal(captured.init.headers.Authorization, 'Bearer gsk_test');
+    assert.equal(captured.body.model, 'openai/gpt-oss-120b');
+    assert.equal(captured.body.reasoning_effort, 'low');
+    assert.deepEqual(captured.body.response_format, { type: 'json_object' });
+    assert.equal(captured.body.messages[0].role, 'system');
+    const settings = await (await request('/api/forms/settings', 'member', 'GET')).json();
+    assert.deepEqual(settings.ai, { provider: 'groq', model: 'openai/gpt-oss-120b' });
+});
+
+test('AI form fill keeps only valid known fields', () => {
+    const { fields, notes } = sanitizeFormFill('equipment-loan', {
+        fields: {
+            borrower: '  張同學 ', startDate: '2026-11-20', endDate: '2026-13-01', startHour: 9, endHour: 30, phone: 912345678,
+            items: [{ name: 'Mini 4 Pro', quantity: '1', accessories: '電池x3', bogus: 'x' }, { quantity: 2 }],
+            password: 'should be dropped', purpose: ''
+        },
+        notes: '缺少學號'
+    });
+    assert.deepEqual(fields, { borrower: '張同學', phone: '912345678', startDate: '2026-11-20', startHour: 9, items: [{ name: 'Mini 4 Pro', quantity: 1, accessories: '電池x3' }] });
+    assert.equal(notes, '缺少學號');
+    const activity = sanitizeFormFill('activity-application', { fields: { semester: 3, virtues: ['團隊合作', '不存在'], sdg: '優質教育', locationType: 'mars', startTime: '9:05', budgetTotal: '5,000元' } });
+    assert.deepEqual(activity.fields, { startTime: '09:05', virtues: ['團隊合作'], sdg: '優質教育', budgetTotal: 5000 });
+    const prompt = formFillPrompt('expense-request', new Date('2026-11-15T03:00:00Z'));
+    assert.match(prompt, /今天是 2026-11-15（星期日，民國 115 年/);
+    assert.match(prompt, /unitPrice（整數）/);
+});
+
+test('AI form fill route returns sanitized fields for any signed-in user', async (t) => {
+    let captured;
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+        captured = JSON.parse(init.body);
+        return Response.json({ choices: [{ message: { content: JSON.stringify({ fields: { applicant: '林小明', category: 'consumable', items: [{ name: '6S 電池', quantity: 4, unitPrice: 1250 }], studentId: 'B11234567' }, notes: '請補上申請日期' }) } }] });
+    });
+    const { request, store } = fixture({ GROQ_API_KEY: 'gsk_test' });
+    assert.equal((await request('/api/forms/ai-fill', null, 'POST', { type: 'expense-request', text: '買電池' })).status, 401);
+    assert.equal((await request('/api/forms/ai-fill', 'member', 'POST', { type: 'nope', text: '買電池' })).status, 400);
+    assert.equal((await request('/api/forms/ai-fill', 'member', 'POST', { type: 'official-letter', text: '寫公文' })).status, 403);
+    const response = await request('/api/forms/ai-fill', 'member', 'POST', { type: 'expense-request', text: '我是林小明，想買 4 顆電池每顆 1250' });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { fields: { applicant: '林小明', studentId: 'B11234567', category: 'consumable', items: [{ name: '6S 電池', quantity: 4, unitPrice: 1250 }] }, notes: '請補上申請日期' });
+    assert.match(captured.messages[0].content, /社費支出事前申請單/);
+    assert.match(captured.messages[1].content, /林小明/);
+    store.set(`forms:ai-usage:member:${new Date().toISOString().slice(0, 10)}`, '30');
+    assert.equal((await request('/api/forms/ai-fill', 'member', 'POST', { type: 'expense-request', text: '買電池' })).status, 429);
+    const noKey = fixture();
+    assert.equal((await noKey.request('/api/forms/ai-fill', 'member', 'POST', { type: 'expense-request', text: '買電池' })).status, 503);
 });

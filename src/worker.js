@@ -22,7 +22,9 @@ import {
     nextFormNumber,
     formTitle,
     renderFormPrint,
-    draftOfficialLetter
+    draftOfficialLetter,
+    fillFormWithAi,
+    aiProvider
 } from './forms.js';
 
 // Configuration Defaults
@@ -68,12 +70,21 @@ const EQUIPMENT_KEY = 'equipment:assets';
 const EQUIPMENT_MIGRATION_KEY = 'equipment:durable-object-migrated';
 const FORM_RECORDS_KEY = 'forms:records';
 const FORM_SETTINGS_KEY = 'forms:settings';
-const AI_LETTER_DAILY_LIMIT = 30;
+const AI_DAILY_LIMIT = 30;
 
 // Every signed-in account can fill in forms. Officers see everyone's forms;
 // members see only their own. Only the author or the president may change one.
 function canSeeForm(user, record) { return canViewCms(user) || record.createdBy === user.username; }
 function canChangeForm(user, record) { return canManageUsers(user) || record.createdBy === user.username; }
+
+// One shared daily AI quota per account; returns a 429 response once it is used up.
+async function consumeAiQuota(env, user) {
+    const usageKey = `forms:ai-usage:${user.username}:${new Date().toISOString().slice(0, 10)}`;
+    const used = Number(await env.DRONE_DB.get(usageKey) || 0);
+    if (used >= AI_DAILY_LIMIT) return Response.json({ error: `今日 AI 使用已達 ${AI_DAILY_LIMIT} 次上限，請明天再試` }, { status: 429 });
+    await env.DRONE_DB.put(usageKey, String(used + 1), { expirationTtl: 172800 });
+    return null;
+}
 
 async function readFormSettings(env) {
     const stored = await env.DRONE_DB.get(FORM_SETTINGS_KEY);
@@ -1017,7 +1028,10 @@ async function handleRequest(request, env, ctx) {
             if (path === '/api/forms/settings' && ['GET', 'PUT'].includes(method)) {
                 const user = await sessionUser(request, env);
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-                if (method === 'GET') return Response.json(await readFormSettings(env));
+                if (method === 'GET') {
+                    const provider = aiProvider(env);
+                    return Response.json({ ...(await readFormSettings(env)), ai: provider ? { provider: provider.name, model: provider.model } : null });
+                }
                 if (!canManageUsers(user)) return Response.json({ error: '只有社長可以修改表單設定' }, { status: 403 });
                 const settings = normalizeFormSettings(await readJsonLimited(request, 16 * 1024));
                 await env.DRONE_DB.put(FORM_SETTINGS_KEY, JSON.stringify(settings));
@@ -1032,11 +1046,26 @@ async function handleRequest(request, env, ctx) {
                 const plainText = String(body?.text ?? '').trim();
                 if (!plainText || plainText.length > 4000) return Response.json({ error: '請輸入 1 至 4000 字的白話內容' }, { status: 400 });
                 const docType = LETTER_TYPES.includes(body?.docType) ? body.docType : '函';
-                const usageKey = `forms:ai-usage:${user.username}:${new Date().toISOString().slice(0, 10)}`;
-                const used = Number(await env.DRONE_DB.get(usageKey) || 0);
-                if (used >= AI_LETTER_DAILY_LIMIT) return Response.json({ error: `今日 AI 公文產生已達 ${AI_LETTER_DAILY_LIMIT} 次上限，請明天再試` }, { status: 429 });
-                await env.DRONE_DB.put(usageKey, String(used + 1), { expirationTtl: 172800 });
+                if (!aiProvider(env)) return Response.json({ error: '尚未設定 GROQ_API_KEY，無法使用 AI 公文產生' }, { status: 503 });
+                const limited = await consumeAiQuota(env, user);
+                if (limited) return limited;
                 return Response.json(await draftOfficialLetter(env, plainText, docType));
+            }
+
+            // AI turns a free-text description into form fields; the user reviews them before saving.
+            if (path === '/api/forms/ai-fill' && method === 'POST') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                const body = await readJsonLimited(request, 32 * 1024);
+                const type = String(body?.type || '');
+                if (!Object.hasOwn(FORM_TYPES, type)) return Response.json({ error: '表單類型無效' }, { status: 400 });
+                if (type === 'official-letter' && !canViewCms(user)) return Response.json({ error: '只有幹部可以使用 AI 公文產生' }, { status: 403 });
+                const description = String(body?.text ?? '').trim();
+                if (!description || description.length > 4000) return Response.json({ error: '請輸入 1 至 4000 字的描述' }, { status: 400 });
+                if (!aiProvider(env)) return Response.json({ error: '尚未設定 GROQ_API_KEY，無法使用 AI 協助填寫' }, { status: 503 });
+                const limited = await consumeAiQuota(env, user);
+                if (limited) return limited;
+                return Response.json(await fillFormWithAi(env, type, description));
             }
 
             if (path === '/api/forms' && ['GET', 'POST'].includes(method)) {

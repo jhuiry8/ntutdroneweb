@@ -57,7 +57,7 @@
 
     var SCHEMAS = {
         'expense-request': {
-            label: '社費事前申請', hint: '購買前填寫，經財務長及社長簽核後才可採購。',
+            fillExample: '例如：我是器材長林小明，想下週三買 4 顆 6S 1300mAh 電池，每顆 1250 元，社課練習用，另外買 10 支 5 吋槳，每支 85 元。', label: '社費事前申請', hint: '購買前填寫，經財務長及社長簽核後才可採購。',
             fields: applicantFields('申請人').concat([
                 { key: 'applyDate', label: '申請日期', type: 'date', required: true, today: true },
                 { key: 'category', label: '支出類別', type: 'select', options: CATEGORY_OPTIONS, required: true },
@@ -66,7 +66,7 @@
             ])
         },
         'expense-report': {
-            label: '社費事後報銷', hint: '採購完成後填寫，可從事前申請單帶入品項，再改成實際金額；列印後黏貼發票或收據正本。',
+            fillExample: '例如：11/21 在模型店實際買了 4 顆電池每顆 1190、槳 10 支每支 80，耗材支出，報銷人林小明器材長。', label: '社費事後報銷', hint: '採購完成後填寫，可從事前申請單帶入品項，再改成實際金額；列印後黏貼發票或收據正本。',
             source: { type: 'expense-request', label: '從事前申請單帶入' },
             fields: [
                 { key: 'applicant', label: '報銷人', type: 'text', max: 50, required: true },
@@ -80,7 +80,7 @@
             ]
         },
         'equipment-loan': {
-            label: '設備借據', hint: '一張 A4 印出兩聯（社團存查、借用人收執），沿虛線裁開。',
+            fillExample: '例如：電機二張同學 B11200001 電話 0912345678，下週五早上 9 點到週日晚上 6 點借 Mini 4 Pro 一台加 3 顆電池，成果展空拍用。', label: '設備借據', hint: '一張 A4 印出兩聯（社團存查、借用人收執），沿虛線裁開。',
             equipmentPicker: true,
             fields: [
                 { key: 'borrower', label: '借用人姓名', type: 'text', max: 50, required: true },
@@ -103,7 +103,7 @@
             ]
         },
         'activity-application': {
-            label: '學生活動申請表', hint: '學校課指組格式（113.1.16 版）。校內活動一星期前、校外活動兩星期前提出，並附活動企劃書。',
+            fillExample: '例如：12/19 週六下午 1 點到 5 點在操場辦期末飛行成果展，本校 40 人、他校 10 人，流程是報到、安全講習、穿越賽、頒獎，預算 5000（學校補助 3000、自籌 2000），強調團隊合作，永續目標選優質教育。', label: '學生活動申請表', hint: '學校課指組格式（113.1.16 版）。校內活動一星期前、校外活動兩星期前提出，並附活動企劃書。',
             fields: activityCommon.concat([
                 { key: 'venueBooked', label: '已完成場地申請（校內）', type: 'checkbox' },
                 { key: 'insured', label: '已辦保險（校外）', type: 'checkbox' },
@@ -123,7 +123,7 @@
             ])
         },
         'activity-report': {
-            label: '學生活動報告表', hint: '活動結束後填寫，可從活動申請表帶入；需連同心得、照片、會議紀錄、單據一併繳交。',
+            fillExample: '例如：成果展共 48 人，本校男 30 女 9、他校男 7 女 2，總經費 4800（學校 3000、自籌 1800），活動順利，場地配合良好，以往缺失有改進。', label: '學生活動報告表', hint: '活動結束後填寫，可從活動申請表帶入；需連同心得、照片、會議紀錄、單據一併繳交。',
             source: { type: 'activity-application', label: '從活動申請表帶入' },
             fields: activityCommon.concat([
                 { key: 'applicationNumber', label: '活動申請表編號', type: 'text', max: 30 },
@@ -162,7 +162,7 @@
     // Form field that receives a member's name when picked from the directory.
     var MEMBER_NAME_FIELD = { 'expense-request': 'applicant', 'expense-report': 'applicant', 'equipment-loan': 'borrower', 'activity-application': 'contactName' };
 
-    var state = { type: 'expense-request', editingId: '', records: [], members: null, equipment: null };
+    var state = { type: 'expense-request', editingId: '', records: [], members: null, equipment: null, ai: null };
 
     function esc(value) {
         return String(value === null || value === undefined ? '' : value).replace(/[&<>"']/g, function (char) {
@@ -291,11 +291,12 @@
         if (schema.source) tools.push('<label class="forms-field"><span>' + esc(schema.source.label) + '</span><select class="form-control" id="forms-source"><option value="">選擇已儲存的表單…</option></select></label>');
         if (MEMBER_NAME_FIELD[state.type]) tools.push('<label class="forms-field" id="forms-member-wrap" hidden><span>從社員名冊帶入填表人</span><select class="form-control" id="forms-member"><option value="">選擇社員…</option></select></label>');
         if (schema.equipmentPicker) tools.push('<div class="forms-field" id="forms-equipment-wrap" hidden><span>從設備清單加入</span><div style="display:flex; gap:8px;"><select class="form-control" id="forms-equipment"><option value="">選擇設備…</option></select><button type="button" class="btn btn-secondary" id="forms-equipment-add">加入</button></div></div>');
-        var ai = schema.ai ? '<div class="forms-ai forms-span"><label class="forms-field"><span>白話內容（AI 會改寫成公文的主旨與說明，產生後請自行確認）</span><textarea class="form-control" id="forms-ai-text" rows="4" maxlength="4000" placeholder="例如：我們想在 12/19 下午借操場辦期末飛行成果展，想請課指組協助，附上活動計畫書。"></textarea></label><button type="button" class="btn btn-secondary" id="forms-ai-run">AI 產生主旨與說明</button></div>' : '';
+        var fill = state.ai && !schema.ai ? '<div class="forms-ai forms-span"><label class="forms-field"><span>AI 協助填寫：用一段話描述需求，AI 會幫你填入下方欄位（請檢查後再儲存）</span><textarea class="form-control" id="forms-fill-text" rows="3" maxlength="4000" placeholder="' + esc(schema.fillExample || '') + '"></textarea></label><div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;"><button type="button" class="btn btn-secondary" id="forms-fill-run">AI 幫我填</button><span class="forms-muted" id="forms-fill-notes"></span></div></div>' : '';
+        var ai = schema.ai && state.ai ? '<div class="forms-ai forms-span"><label class="forms-field"><span>白話內容（AI 會改寫成公文的主旨與說明，產生後請自行確認）</span><textarea class="form-control" id="forms-ai-text" rows="4" maxlength="4000" placeholder="例如：我們想在 12/19 下午借操場辦期末飛行成果展，想請課指組協助，附上活動計畫書。"></textarea></label><button type="button" class="btn btn-secondary" id="forms-ai-run">AI 產生主旨與說明</button></div>' : '';
         document.getElementById('forms-editor-title').textContent = (state.editingId ? '編輯：' : '新增：') + schema.label;
         document.getElementById('forms-hint').textContent = schema.hint;
         document.getElementById('forms-tools').innerHTML = tools.join('');
-        document.getElementById('forms-fields').innerHTML = ai + schema.fields.map(function (field) { return fieldHtml(field, data); }).join('');
+        document.getElementById('forms-fields').innerHTML = fill + ai + schema.fields.map(function (field) { return fieldHtml(field, data); }).join('');
         schema.fields.forEach(function (field) {
             if (field.type !== 'items') return;
             var items = Array.isArray(data[field.key]) && data[field.key].length ? data[field.key] : [{}];
@@ -417,6 +418,63 @@
         } finally {
             button.disabled = false;
             button.textContent = 'AI 產生主旨與說明';
+        }
+    }
+
+    function matchEquipment(name) {
+        var target = String(name || '').toLowerCase();
+        if (!target || !state.equipment) return null;
+        return state.equipment.filter(function (asset) {
+            var assetName = String(asset.assetName || '').toLowerCase();
+            return asset.status !== 'retired' && assetName && (assetName.indexOf(target) !== -1 || target.indexOf(assetName) !== -1);
+        })[0] || null;
+    }
+
+    function applyFill(fields) {
+        var filled = 0;
+        SCHEMAS[state.type].fields.forEach(function (field) {
+            var value = fields[field.key];
+            if (value === undefined) return;
+            filled++;
+            if (field.type === 'items') {
+                if (state.type === 'equipment-loan') {
+                    value = value.map(function (item) {
+                        var asset = item.assetNo ? null : matchEquipment(item.name);
+                        return asset ? Object.assign({}, item, { name: asset.assetName, assetNo: asset.assetNo, condition: item.condition || CONDITION_LABELS[asset.condition] || '' }) : item;
+                    });
+                }
+                replaceItems(field.key, value);
+            } else if (field.type === 'checks') setOptions(field.key, value);
+            else if (field.type === 'radios') setOptions(field.key, [value]);
+            else if (field.type === 'lines') setField(field.key, value.join('\n'));
+            else setField(field.key, typeof value === 'number' ? String(value) : value);
+        });
+        return filled;
+    }
+
+    async function runFill() {
+        var textArea = document.getElementById('forms-fill-text');
+        var button = document.getElementById('forms-fill-run');
+        var notes = document.getElementById('forms-fill-notes');
+        if (!textArea.value.trim()) return toast('請先描述要填寫的內容', true);
+        button.disabled = true;
+        button.textContent = 'AI 填寫中…';
+        notes.textContent = '';
+        try {
+            if (state.type === 'equipment-loan' && IS_OFFICER && state.equipment === null) {
+                try { state.equipment = await getJson('/api/equipment'); } catch (error) { state.equipment = []; }
+            }
+            var response = await fetch('/api/forms/ai-fill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: state.type, text: textArea.value }) });
+            var data = await response.json().catch(function () { return {}; });
+            if (!response.ok) throw new Error(data.error || 'AI 填寫失敗');
+            var count = applyFill(data.fields || {});
+            notes.textContent = data.notes || '';
+            toast(count ? 'AI 已填入 ' + count + ' 個欄位，請檢查後再儲存' : 'AI 沒有找到可填入的資料', !count);
+        } catch (error) {
+            toast(error.message, true);
+        } finally {
+            button.disabled = false;
+            button.textContent = 'AI 幫我填';
         }
     }
 
@@ -545,12 +603,16 @@
     // ───────────── settings (president) ─────────────
 
     async function loadSettings() {
+        var settings;
+        try { settings = await getJson('/api/forms/settings'); } catch (error) { return; }
+        var hadAi = Boolean(state.ai);
+        state.ai = settings.ai || null;
+        var status = document.getElementById('forms-ai-status');
+        if (status) status.textContent = state.ai ? 'AI 已啟用：' + (state.ai.provider === 'groq' ? 'Groq' : 'Gemini') + '（' + state.ai.model + '）' : 'AI 未啟用：請在 Cloudflare Worker 設定 GROQ_API_KEY';
+        if (hadAi !== Boolean(state.ai) && !state.editingId) renderEditor(Object.assign(defaults(state.type), collect()));
         var form = document.getElementById('forms-settings');
         if (!form) return;
-        try {
-            var settings = await getJson('/api/forms/settings');
-            Object.keys(settings).forEach(function (key) { var input = form.querySelector('[name="' + key + '"]'); if (input) input.value = settings[key]; });
-        } catch (error) { /* keep defaults */ }
+        Object.keys(settings).forEach(function (key) { var input = form.querySelector('[name="' + key + '"]'); if (input && typeof settings[key] === 'string') input.value = settings[key]; });
     }
 
     async function saveSettings(event) {
@@ -579,6 +641,7 @@
             updateTotal();
         } else if (target.id === 'forms-equipment-add') addEquipment();
         else if (target.id === 'forms-ai-run') runAi();
+        else if (target.id === 'forms-fill-run') runFill();
         else if (target.id === 'forms-save-print') save(true);
         else if (target.id === 'forms-save') save(false);
         else if (target.id === 'forms-reset' || target.id === 'forms-cancel-edit') { state.editingId = ''; renderEditor(defaults(state.type)); }
@@ -597,6 +660,7 @@
     if (settingsForm) settingsForm.addEventListener('submit', saveSettings);
 
     renderEditor(defaults(state.type));
+    loadSettings();
     // Opening the tab refreshes the member and equipment lists used for auto-fill.
     window.loadForms = function () { state.members = null; state.equipment = null; loadRecords(); loadSettings(); };
 })();
