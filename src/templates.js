@@ -76,6 +76,7 @@ function getFooter(lang = 'zh') {
                         <h4>快速導覽</h4>
                         <a href="/?lang=${lang}">回到首頁</a>
                         <a href="/blog?lang=${lang}">${t.navBlog}</a>
+                        <a href="/forms/equipment-loan">設備借用申請</a>
                         <a href="https://lin.ee/s5YJgGI" target="_blank">LINE 社群</a>
                     </div>
                 </div>
@@ -88,6 +89,91 @@ function getFooter(lang = 'zh') {
     </body>
     </html>
     `;
+}
+
+// Public equipment loan slip: anyone can fill it in without logging in (no AI), then prints it for signatures.
+export function renderPublicLoanForm(turnstileSiteKey = '') {
+    const row = `<tr><td><input class="pl-input" data-col="name" maxlength="100" aria-label="設備名稱／型號" placeholder="例如：DJI Mini 4 Pro"></td><td><input class="pl-input" data-col="quantity" type="number" min="1" max="1000" step="1" value="1" aria-label="數量"></td><td><input class="pl-input" data-col="accessories" maxlength="100" aria-label="配件" placeholder="例如：電池 x3、遙控器"></td><td><button type="button" class="pl-remove" aria-label="刪除此列">✕</button></td></tr>`;
+    return `${getHeader('設備借用申請', 'zh')}
+    ${turnstileSiteKey ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}
+    <style>
+        .pl-main { max-width: 860px; margin: 0 auto; padding: 120px 16px 72px; color: var(--text-primary); }
+        .pl-main h1 { font-size: clamp(1.7rem, 4vw, 2.3rem); font-weight: 800; margin: 0 0 10px; }
+        .pl-lead { color: var(--text-secondary); line-height: 1.75; margin: 0 0 22px; }
+        .pl-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0 0 24px; padding: 0; list-style: none; counter-reset: step; }
+        .pl-steps li { counter-increment: step; padding: 14px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-card); color: var(--text-secondary); font-size: .92rem; line-height: 1.6; }
+        .pl-steps li::before { content: counter(step); display: inline-grid; place-items: center; width: 24px; height: 24px; margin-right: 8px; border-radius: 50%; background: var(--color-primary); color: #fff; font-weight: 700; font-size: .85rem; }
+        .pl-card { padding: 22px; border: 1px solid var(--border-color); border-radius: 16px; background: var(--bg-card); margin-bottom: 18px; }
+        .pl-card h2 { font-size: 1.1rem; margin: 0 0 14px; }
+        .pl-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+        .pl-field { display: grid; gap: 6px; font-size: .9rem; color: var(--text-secondary); }
+        .pl-field.wide { grid-column: 1 / -1; }
+        .pl-field b { color: var(--color-danger); font-weight: 600; }
+        .pl-input { width: 100%; box-sizing: border-box; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--border-color); background: var(--bg-page); color: var(--text-primary); font: inherit; font-size: 16px; }
+        .pl-input:focus { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+        .pl-period { display: grid; grid-template-columns: 1fr 110px; gap: 8px; }
+        .pl-table-wrap { overflow-x: auto; }
+        .pl-table { width: 100%; border-collapse: collapse; min-width: 520px; }
+        .pl-table th { text-align: left; font-size: .85rem; color: var(--text-secondary); font-weight: 600; padding: 0 6px 8px; }
+        .pl-table td { padding: 4px 6px 4px 0; }
+        .pl-table td:nth-child(2) { width: 90px; }
+        .pl-table td:last-child { width: 44px; }
+        .pl-remove { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--border-color); background: transparent; color: var(--text-secondary); cursor: pointer; }
+        .pl-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
+        .pl-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid var(--border-color); background: transparent; color: var(--text-primary); font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; }
+        .pl-btn.primary { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+        .pl-btn:disabled { opacity: .6; cursor: wait; }
+        .pl-rules { color: var(--text-secondary); font-size: .9rem; line-height: 1.75; padding-left: 20px; margin: 0; }
+        .pl-agree { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; font-size: .95rem; }
+        .pl-agree input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
+        .pl-error { color: var(--color-danger); min-height: 1.4em; margin: 10px 0 0; }
+        .pl-done { border-color: var(--color-success); }
+        .pl-done strong { font-size: 1.6rem; color: var(--color-success); letter-spacing: .04em; }
+        @media (max-width: 680px) { .pl-steps, .pl-grid { grid-template-columns: minmax(0, 1fr); } .pl-main { padding-top: 96px; } }
+    </style>
+    <main class="pl-main">
+        <h1>設備借用申請</h1>
+        <p class="pl-lead">不需登入。填好送出後會拿到借據編號，請列印借據並親筆簽名，交給財產管理人與社長簽核後才能領取設備。</p>
+        <ol class="pl-steps"><li>線上填寫借用人與設備資料</li><li>送出後列印借據（一張 A4 兩聯）</li><li>簽名後交給幹部，簽核完成再領取</li></ol>
+        <form id="public-loan-form" novalidate>
+            <section class="pl-card"><h2>借用人資料</h2><div class="pl-grid">
+                <label class="pl-field"><span>姓名 <b>*</b></span><input class="pl-input" id="pl-borrower" maxlength="50" autocomplete="name" required></label>
+                <label class="pl-field"><span>學號 <b>*</b></span><input class="pl-input" id="pl-studentId" maxlength="15" style="text-transform:uppercase" autocomplete="off" required pattern="[A-Za-z0-9]{5,15}" placeholder="請自行填寫學號"></label>
+                <label class="pl-field"><span>系級</span><input class="pl-input" id="pl-department" maxlength="50" placeholder="例如：機械三"></label>
+                <label class="pl-field"><span>聯絡電話 <b>*</b></span><input class="pl-input" id="pl-phone" maxlength="20" type="tel" autocomplete="tel" required></label>
+                <label class="pl-field wide"><span>借用用途 <b>*</b></span><input class="pl-input" id="pl-purpose" maxlength="200" required placeholder="例如：期末成果展空拍"></label>
+            </div></section>
+            <section class="pl-card"><h2>借用期間</h2><div class="pl-grid">
+                <label class="pl-field"><span>借用日期與時 <b>*</b></span><span class="pl-period"><input class="pl-input" id="pl-startDate" type="date" required><select class="pl-input" id="pl-startHour" aria-label="借用時"></select></span></label>
+                <label class="pl-field"><span>歸還日期與時 <b>*</b></span><span class="pl-period"><input class="pl-input" id="pl-endDate" type="date" required><select class="pl-input" id="pl-endHour" aria-label="歸還時"></select></span></label>
+            </div></section>
+            <section class="pl-card"><h2>借用設備（最多 6 項）</h2>
+                <p class="pl-lead" style="margin-bottom:12px; font-size:.9rem;">財產編號由幹部在簽核時填寫，不清楚型號可寫大概名稱。</p>
+                <div class="pl-table-wrap"><table class="pl-table"><thead><tr><th>設備名稱／型號 *</th><th>數量</th><th>配件</th><th></th></tr></thead><tbody id="pl-items">${row}</tbody></table></div>
+                <div class="pl-actions"><button type="button" class="pl-btn" id="pl-add">新增一項設備</button></div>
+                <template id="pl-row-template">${row}</template>
+            </section>
+            <section class="pl-card"><h2>借用規定</h2>
+                <ol class="pl-rules">
+                    <li>設備僅限申請用途使用，不得轉借他人或挪作私用；飛行須遵守民航法規及本社飛安規範，於合法安全場地進行。</li>
+                    <li>借用期間如有遺失、損壞，借用人應照價賠償或負責維修至原狀。鋰電池應依規定充放電及儲存，不得過充、過放或置於高溫處。</li>
+                    <li>須於期限內歸還；如需延長，應於到期前向財產管理人申請並重新簽核。逾期或違規者，本社得停止其借用權利。</li>
+                </ol>
+                <label class="pl-agree"><input type="checkbox" id="pl-agree" required> 我已閱讀並同意遵守以上借用規定。</label>
+                ${turnstileSiteKey ? `<div class="cf-turnstile" data-sitekey="${escapeHtml(turnstileSiteKey)}" style="margin-top:14px;"></div>` : ''}
+                <p class="pl-error" id="pl-error" role="alert"></p>
+                <div class="pl-actions"><button type="submit" class="pl-btn primary" id="pl-submit">送出並取得借據</button></div>
+            </section>
+        </form>
+        <section class="pl-card pl-done" id="pl-done" hidden aria-live="polite">
+            <h2>已送出，借據編號</h2>
+            <strong id="pl-number"></strong>
+            <p class="pl-lead" style="margin-top:12px;">請立即列印借據並簽名，交給財產管理人與社長簽核。列印連結 <span id="pl-days">3</span> 天內有效，只有你拿得到，請勿分享。</p>
+            <div class="pl-actions"><a class="pl-btn primary" id="pl-print" href="#" target="_blank" rel="noopener">列印借據</a><button type="button" class="pl-btn" id="pl-again">再填一張</button></div>
+        </section>
+    </main>
+    <script src="/public-loan.js" defer></script>
+    ${getFooter('zh')}`;
 }
 
 // 1. Render Landing Page with Dynamic Blog Posts
@@ -1042,10 +1128,10 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 toastText.innerText = text;
                 if (isError) {
                     toast.style.borderColor = '#ef4444';
-                    toast.innerHTML = '<i data-lucide="alert-circle" style="color:#ef4444; width:20px; height:20px;"></i> <span></span>';
+                    toast.innerHTML = '<i data-lucide="alert-circle" style="color:#ef4444; width:20px; height:20px;"></i> <span id="toast-text"></span>';
                 } else {
                     toast.style.borderColor = 'var(--color-cyan)';
-                    toast.innerHTML = '<i data-lucide="check-circle" style="color:var(--color-cyan); width:20px; height:20px;"></i> <span></span>';
+                    toast.innerHTML = '<i data-lucide="check-circle" style="color:var(--color-cyan); width:20px; height:20px;"></i> <span id="toast-text"></span>';
                 }
                 if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
                 toast.querySelector('span').textContent = text;
@@ -1242,6 +1328,33 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 font-size: 1.85rem;
                 font-weight: 800;
             }
+            .forms-tabs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
+            .forms-type-tab { padding:9px 14px; border-radius:999px; border:1px solid var(--border-glass); background:transparent; color:var(--text-secondary); font:inherit; cursor:pointer; }
+            .forms-type-tab.active { background:var(--color-cyan); border-color:var(--color-cyan); color:#fff; font-weight:600; }
+            .forms-card { padding:18px; border:1px solid var(--border-glass); border-radius:12px; background:rgba(255,255,255,.02); }
+            .forms-editor-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+            .forms-muted { color:var(--text-muted); font-size:.88rem; margin-top:4px; }
+            .forms-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; margin-bottom:12px; }
+            .forms-grid:empty { display:none; }
+            .forms-field { display:flex; flex-direction:column; gap:6px; font-size:.88rem; color:var(--text-secondary); }
+            .forms-span { grid-column:1 / -1; }
+            .forms-check { display:inline-flex; align-items:center; gap:6px; font-size:.9rem; color:var(--text-primary); min-height:40px; }
+            .forms-options { border:1px solid var(--border-glass); border-radius:10px; padding:10px 14px; display:flex; flex-wrap:wrap; gap:4px 16px; }
+            .forms-options legend { padding:0 6px; font-size:.88rem; color:var(--text-secondary); }
+            .forms-items-head { display:flex; gap:10px; align-items:baseline; margin-bottom:8px; }
+            .forms-items td { padding:6px; }
+            .forms-items .form-control { min-width:70px; }
+            .forms-subtotal { text-align:right; font-variant-numeric:tabular-nums; }
+            .forms-items-actions { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:8px; flex-wrap:wrap; }
+            .forms-total b { color:var(--color-cyan); font-size:1.1rem; }
+            .forms-ai { display:grid; gap:8px; justify-items:start; padding:12px; border:1px dashed var(--border-glass); border-radius:10px; }
+            .forms-ai .forms-field { width:100%; }
+            .forms-buttons { display:flex; gap:10px; flex-wrap:wrap; }
+            .forms-actions { white-space:nowrap; }
+            .forms-badge { display:inline-block; padding:2px 8px; border-radius:999px; background:rgba(250,204,21,.15); color:#facc15; font-size:.78rem; font-weight:600; }
+            #panel-forms [hidden] { display:none !important; }
+            .forms-items .btn, .forms-field .btn { white-space:nowrap; }
+            @media (max-width: 768px) { .forms-grid { grid-template-columns:minmax(0, 1fr); } .forms-actions { white-space:normal; } }
             .finance-summary { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin:20px 0; }
             .finance-card { padding:16px; border:1px solid var(--border-glass); border-radius:12px; background:rgba(255,255,255,.03); display:grid; gap:6px; }
             .finance-card span { color:var(--text-muted); font-size:.85rem; }
@@ -1559,12 +1672,13 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                         <button class="nav-item" onclick="showPanel('media')"><i data-lucide="image"></i> 媒體庫上傳</button>
                         <button class="nav-item" onclick="showPanel('homepage')"><i data-lucide="home"></i> 首頁設定</button>
                     </div>` : ''}
-                    ${(manageFinance || manageMembers || manageEquipment || viewCms) ? `<div class="nav-group"><p class="nav-group-label">社務管理</p>
+                    <div class="nav-group"><p class="nav-group-label">社務管理</p>
+                        <button class="nav-item" onclick="showPanel('forms'); loadForms()"><i data-lucide="file-pen-line"></i> 表單申請</button>
                         ${manageMembers ? `<button class="nav-item" onclick="showPanel('members'); loadMembers()"><i data-lucide="contact-round"></i> 社員管理</button>` : ''}
                         ${manageFinance ? `<button class="nav-item" onclick="showPanel('finance'); loadFinance()"><i data-lucide="wallet-cards"></i> 財務管理</button>` : ''}
                         ${manageEquipment ? `<button class="nav-item" onclick="showPanel('equipment'); loadEquipment()"><i data-lucide="package-check"></i> 設備管理</button>` : ''}
                         ${viewCms ? `<button class="nav-item" onclick="showPanel('notes'); loadNotes()"><i data-lucide="sticky-note"></i> 社課備忘錄</button>` : ''}
-                    </div>` : ''}
+                    </div>
                     <div class="nav-group"><p class="nav-group-label">系統管理</p>
                         <button class="nav-item" onclick="showPanel('settings')"><i data-lucide="settings"></i> 系統設定</button>
                         ${user?.role === 'president' ? `<button class="nav-item" onclick="showPanel('users'); loadUsers()"><i data-lucide="users"></i> 帳號與權限</button>` : ''}
@@ -2131,6 +2245,34 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 </form>` : ''}
                 <div id="notes-list" style="display:grid; gap:14px;"><p style="color:var(--text-muted);">載入社課紀錄中…</p></div>
             </div>` : ''}
+            <div id="panel-forms" class="panel" data-username="${escapeHtml(user?.username || '')}" data-role="${escapeHtml(user?.role || 'member')}">
+                <div class="content-header"><div><h1>表單申請</h1><p style="color:var(--text-muted); margin-top:6px;">線上填寫並自動帶入資料，列印成紙本後交由財務長、社長及學校單位簽核；審核以紙本為準。</p><p id="forms-ai-status" class="forms-muted"></p><p class="forms-muted">非社團帳號也能用公開頁面填寫設備借據（不需登入、不提供 AI）：<a href="/forms/equipment-loan" target="_blank" rel="noopener" style="color:var(--color-cyan);">/forms/equipment-loan</a>；送出的借據會出現在下方紀錄並標示「外部填寫」。</p></div></div>
+                <div class="forms-tabs" role="tablist" aria-label="表單類型">
+                    <button type="button" class="forms-type-tab active" data-type="expense-request">社費事前申請</button>
+                    <button type="button" class="forms-type-tab" data-type="expense-report">社費事後報銷</button>
+                    <button type="button" class="forms-type-tab" data-type="equipment-loan">設備借據</button>
+                    <button type="button" class="forms-type-tab" data-type="activity-application">學生活動申請表</button>
+                    <button type="button" class="forms-type-tab" data-type="activity-report">學生活動報告表</button>
+                    <button type="button" class="forms-type-tab" data-type="official-letter">公文${viewCms ? '（AI）' : ''}</button>
+                </div>
+                <form id="forms-editor" class="forms-card" novalidate>
+                    <div class="forms-editor-head"><div><h2 id="forms-editor-title" style="font-size:1.15rem;">新增表單</h2><p id="forms-hint" class="forms-muted"></p></div><a id="forms-blank-link" class="btn btn-secondary" href="/admin/forms/blank/expense-request" target="_blank" rel="noopener">列印空白表單</a></div>
+                    <div id="forms-tools" class="forms-grid"></div>
+                    <div id="forms-fields" class="forms-grid"></div>
+                    <div class="forms-buttons"><button id="forms-save-print" type="button" class="btn btn-primary">儲存並列印</button><button id="forms-save" type="button" class="btn btn-secondary">只儲存</button><button id="forms-reset" type="button" class="btn btn-secondary">清空重填</button><button id="forms-cancel-edit" type="button" class="btn btn-secondary" hidden>取消編輯</button></div>
+                    <p class="forms-muted" style="margin-top:10px;">填表人、學號、系級、職稱與電話會記在這台裝置，下次自動帶入。列印時請選 A4、縮放 100%，並取消「頁首及頁尾」。</p>
+                </form>
+                <div class="forms-editor-head" style="margin-top:28px;"><h2 style="font-size:1.15rem;">${viewCms ? '表單紀錄' : '我的表單'}</h2><select id="forms-filter" class="form-control" style="max-width:220px;" aria-label="依表單類型篩選"><option value="">全部類型</option><option value="expense-request">社費事前申請</option><option value="expense-report">社費事後報銷</option><option value="equipment-loan">設備借據</option><option value="activity-application">學生活動申請表</option><option value="activity-report">學生活動報告表</option><option value="official-letter">公文</option></select></div>
+                <div class="table-container"><table><thead><tr><th>編號</th><th>表單</th><th>內容</th><th>填表人</th><th>更新日期</th><th>操作</th></tr></thead><tbody id="forms-records"><tr><td colspan="6" style="text-align:center; color:var(--text-muted)">載入中…</td></tr></tbody></table></div>
+                ${user?.role === 'president' ? `<details class="forms-card" style="margin-top:24px;"><summary style="cursor:pointer; font-weight:600;">表單設定（列印抬頭與簽核人姓名）</summary><form id="forms-settings" class="forms-grid" style="margin-top:14px;">
+                    <label class="forms-field"><span>表單抬頭</span><input class="form-control" name="clubName" maxlength="50" placeholder="國立臺北科技大學 無人機社"></label>
+                    <label class="forms-field"><span>社團簡稱（學校表單用）</span><input class="form-control" name="clubShortName" maxlength="50" placeholder="無人機社"></label>
+                    <label class="forms-field"><span>社長姓名（借據、公文署名）</span><input class="form-control" name="presidentName" maxlength="50"></label>
+                    <label class="forms-field"><span>財產管理人姓名</span><input class="form-control" name="propertyManager" maxlength="50"></label>
+                    <label class="forms-field"><span>指導老師</span><input class="form-control" name="advisorName" maxlength="50"></label>
+                    <div class="forms-field" style="justify-content:flex-end;"><button class="btn btn-primary" type="submit">儲存設定</button></div>
+                </form></details>` : ''}
+            </div>
             <!-- Settings Panel -->
             <div id="panel-settings" class="panel ${!viewCms ? 'active' : ''}">
                 <div class="content-header">
@@ -2179,15 +2321,12 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
 
             function showToast(text, isError = false) {
                 const toast = document.getElementById('toast');
-                const toastText = document.getElementById('toast-text');
-                toastText.innerText = text;
-                
                 if (isError) {
                     toast.style.borderColor = '#ef4444';
-                    toast.innerHTML = '<i data-lucide="alert-circle" style="color:#ef4444; width:20px; height:20px;"></i> <span></span>';
+                    toast.innerHTML = '<i data-lucide="alert-circle" style="color:#ef4444; width:20px; height:20px;"></i> <span id="toast-text"></span>';
                 } else {
                     toast.style.borderColor = 'var(--color-cyan)';
-                    toast.innerHTML = '<i data-lucide="check-circle" style="color:var(--color-cyan); width:20px; height:20px;"></i> <span></span>';
+                    toast.innerHTML = '<i data-lucide="check-circle" style="color:var(--color-cyan); width:20px; height:20px;"></i> <span id="toast-text"></span>';
                 }
                 if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
                 
@@ -2881,6 +3020,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 location.href = '/admin';
             }
         </script>
+        <script src="/admin-forms.js" defer></script>
     </body>
     </html>
     `;

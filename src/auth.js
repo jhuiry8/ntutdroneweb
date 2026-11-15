@@ -25,8 +25,12 @@ export async function verifyPassword(password, stored) {
     const match = /^pbkdf2:100000:([^:]+):([a-f0-9]{64})$/.exec(stored);
     if (!match) return false;
     const salt = match[1];
-    const actual = await passwordHash(password, salt);
-    const a = encoder.encode(actual), b = encoder.encode(stored);
+    return constantTimeEqual(await passwordHash(password, salt), stored);
+}
+
+// Compares two secrets without leaking where they first differ.
+export function constantTimeEqual(left, right) {
+    const a = encoder.encode(String(left)), b = encoder.encode(String(right));
     if (a.length !== b.length) return false;
     let difference = 0;
     for (let i = 0; i < a.length; i++) difference |= a[i] ^ b[i];
