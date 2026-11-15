@@ -1,9 +1,11 @@
 // Regulation texts shipped as the default 法規查詢 content.
 // Club rules: 規章彙編 revised 中華民國115年9月1日. School rules: 學生社團組織及活動實施辦法.
-// Officers may edit them in the admin panel; edits are stored in KV and replace these defaults.
+// They change only through the amendment procedure in regulation-rules.js; adopted
+// amendments are stored in KV and replace these defaults.
 export const DEFAULT_REGULATIONS = [
     {
         "id": "charter",
+        "kind": "charter",
         "title": "國立臺北科技大學無人機社組織章程",
         "category": "本社規章",
         "version": "115.09.01 修訂",
@@ -11,6 +13,7 @@ export const DEFAULT_REGULATIONS = [
     },
     {
         "id": "membership-levels",
+        "kind": "bylaw",
         "title": "社員與幹部四級分級細則",
         "category": "本社規章",
         "version": "115.09.01 修訂",
@@ -18,6 +21,7 @@ export const DEFAULT_REGULATIONS = [
     },
     {
         "id": "membership-fees",
+        "kind": "bylaw",
         "title": "無人機社社費細則",
         "category": "本社規章",
         "version": "115.09.01 修訂",
@@ -25,6 +29,7 @@ export const DEFAULT_REGULATIONS = [
     },
     {
         "id": "class-rules",
+        "kind": "bylaw",
         "title": "無人機社詳細上課規定（社課守則）",
         "category": "本社規章",
         "version": "115.09.01 修訂",
@@ -32,6 +37,7 @@ export const DEFAULT_REGULATIONS = [
     },
     {
         "id": "school-club-rules",
+        "kind": "school",
         "title": "國立臺北科技大學學生社團組織及活動實施辦法",
         "category": "學校法規",
         "version": "106.06.27 學務會議討論",

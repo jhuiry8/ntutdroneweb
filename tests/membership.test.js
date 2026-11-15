@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import worker from '../src/worker.js';
 import { semesterOf, membershipStatus, receiptFeeType, parseMemberLevel, parseFeeStatus } from '../src/membership.js';
 import { DEFAULT_REGULATIONS } from '../src/regulations.js';
+import { assemblyThresholds, checkAssembly, checkProposalSource } from '../src/regulation-rules.js';
 
 function fixture() {
     const store = new Map();
@@ -139,23 +140,76 @@ test('the president binds accounts to members and members see their own record',
     assert.equal(unbind.status, 200);
 });
 
-test('every account can look up regulations; only the president edits them', async () => {
+test('assembly thresholds follow the charter', () => {
+    assert.deepEqual(assemblyThresholds(30, 20, true), { attendance: 20, agree: 14 });
+    assert.deepEqual(assemblyThresholds(30, 10, false), { attendance: 10, agree: 5 });
+    assert.equal(checkAssembly({ total: 30, attendance: 20, agree: 14 }, true).agree, 14);
+    assert.throws(() => checkAssembly({ total: 30, attendance: 19, agree: 19 }, true), /出席人數未達門檻：需 20 人/);
+    assert.throws(() => checkAssembly({ total: 30, attendance: 20, agree: 13 }, true), /同意人數未達門檻：需 14 人/);
+    assert.throws(() => checkAssembly({ total: 30, attendance: 31, agree: 1 }, false), /不可超過社員總額/);
+    assert.throws(() => checkProposalSource('charter', 'petition', 4), /5 人以上/);
+    assert.throws(() => checkProposalSource('charter', '', 0), /章程第十三條/);
+    assert.deepEqual(checkProposalSource('bylaw', '', 0), {});
+});
+
+test('regulations change only through amendments that meet the required procedure', async () => {
     const { request } = fixture();
     const list = await (await request('/api/regulations', 'member')).json();
     assert.equal(list.length, DEFAULT_REGULATIONS.length);
     assert.ok(list.some(item => item.title === '無人機社社費細則' && item.content.includes('學期會籍制：每學期繳納新臺幣500元')));
-    assert.ok(list.some(item => item.title === '國立臺北科技大學學生社團組織及活動實施辦法'));
     assert.equal((await request('/api/regulations', null)).status, 401);
-    assert.equal((await request('/api/regulations', 'cadre', 'POST', { title: 'x', content: 'y' })).status, 403);
-    const added = await request('/api/regulations', 'president', 'POST', { title: '器材借用辦法', content: '第一條 目的\n一、測試。' });
-    assert.equal(added.status, 201);
-    const regulation = await added.json();
-    const edited = await request(`/api/regulations/${regulation.id}`, 'president', 'PATCH', { version: '115.10.01' });
-    assert.equal((await edited.json()).version, '115.10.01');
-    assert.equal((await request(`/api/regulations/${regulation.id}`, 'president', 'PATCH', { content: '' })).status, 400);
-    assert.equal((await request('/api/regulations/charter', 'president', 'DELETE')).status, 200);
-    const after = await (await request('/api/regulations', 'member')).json();
-    assert.equal(after.length, DEFAULT_REGULATIONS.length);
-    assert.ok(!after.some(item => item.id === 'charter'));
-    assert.ok(after.some(item => item.title === '器材借用辦法'));
+    assert.equal((await request('/api/regulations/charter', 'president', 'PATCH', { content: 'x' })).status, 404, 'no direct edits');
+    assert.equal((await request('/api/regulations/charter', 'president', 'DELETE')).status, 404, 'no direct deletes');
+
+    const charter = list.find(item => item.id === 'charter');
+    const amended = charter.content.replace('社長任期為一學年', '社長任期為一學年（測試修正）');
+    assert.equal((await request('/api/regulation-amendments', 'member', 'POST', { regulationId: 'charter', content: amended, reason: 'x', source: 'committee' })).status, 403);
+    assert.equal((await request('/api/regulation-amendments', 'cadre', 'POST', { regulationId: 'charter', content: amended, reason: '修正任期文字', source: 'petition', signers: 3 })).status, 400);
+    assert.equal((await request('/api/regulation-amendments', 'cadre', 'POST', { regulationId: 'charter', content: charter.content, reason: '沒改', source: 'committee' })).status, 400);
+    const proposed = await request('/api/regulation-amendments', 'cadre', 'POST', { regulationId: 'charter', content: amended, reason: '修正任期文字', source: 'petition', signers: 6 });
+    assert.equal(proposed.status, 201);
+    const amendment = await proposed.json();
+    assert.equal(amendment.status, 'proposed');
+    assert.equal((await (await request('/api/regulations', 'member')).json()).find(item => item.id === 'charter').content, charter.content, 'a proposal does not change the text');
+    assert.equal((await (await request('/api/regulation-amendments', 'member')).json()).length, 1, 'members can see proposals');
+
+    const adopt = body => request(`/api/regulation-amendments/${amendment.id}/adopt`, 'president', 'POST', body);
+    assert.equal((await request(`/api/regulation-amendments/${amendment.id}/adopt`, 'cadre', 'POST', {})).status, 403);
+    const short = await adopt({ assembly: { date: '2026-11-20', total: 30, attendance: 19, agree: 19 } });
+    assert.equal(short.status, 400);
+    assert.match((await short.json()).error, /需 20 人/);
+    const passed = await adopt({ assembly: { date: '2026-11-20', total: 30, attendance: 21, agree: 15 } });
+    assert.equal(passed.status, 200);
+    assert.equal((await passed.json()).status, 'awaiting_school', 'charter changes wait for school acknowledgement');
+    assert.equal((await (await request('/api/regulations', 'member')).json()).find(item => item.id === 'charter').content, charter.content);
+    const approved = await request(`/api/regulation-amendments/${amendment.id}/school-approval`, 'president', 'POST', { schoolApprovedAt: '2026-12-01' });
+    assert.equal((await approved.json()).status, 'effective');
+    const effective = (await (await request('/api/regulations', 'member')).json()).find(item => item.id === 'charter');
+    assert.equal(effective.content, amended);
+    assert.equal(effective.version, '115.12.01 修正');
+    assert.equal(effective.history.length, 1);
+    assert.equal(effective.history[0].content, charter.content);
+
+    // A bylaw needs an officers' meeting and the president's approval, plus an assembly when flagged.
+    const fees = list.find(item => item.id === 'membership-fees');
+    const feeDraft = await (await request('/api/regulation-amendments', 'finance', 'POST', { regulationId: 'membership-fees', content: fees.content.replace('新臺幣500元', '新臺幣600元'), reason: '調整社費', needsAssembly: true })).json();
+    const stale = await (await request('/api/regulation-amendments', 'finance', 'POST', { regulationId: 'membership-fees', content: fees.content + '\n附記', reason: '另一案' })).json();
+    assert.equal((await request(`/api/regulation-amendments/${feeDraft.id}/adopt`, 'president', 'POST', { officersMeetingDate: '2026-11-10', presidentApprovedAt: '2026-11-11' })).status, 400, 'assembly required');
+    const feeAdopted = await request(`/api/regulation-amendments/${feeDraft.id}/adopt`, 'president', 'POST', { officersMeetingDate: '2026-11-10', presidentApprovedAt: '2026-11-21', assembly: { date: '2026-11-20', total: 30, attendance: 10, agree: 5 } });
+    assert.equal((await feeAdopted.json()).status, 'effective');
+    assert.equal((await request(`/api/regulation-amendments/${stale.id}/adopt`, 'president', 'POST', { officersMeetingDate: '2026-11-10', presidentApprovedAt: '2026-11-11' })).status, 409, 'outdated proposals are refused');
+    assert.equal((await request(`/api/regulation-amendments/${stale.id}/close`, 'member', 'POST', { outcome: 'withdrawn' })).status, 403);
+    assert.equal((await (await request(`/api/regulation-amendments/${stale.id}/close`, 'finance', 'POST', { outcome: 'withdrawn' })).json()).status, 'withdrawn');
+
+    // School rules are only replaced with the school's announced text; the charter cannot be repealed.
+    assert.equal((await request('/api/regulation-amendments', 'cadre', 'POST', { action: 'repeal', regulationId: 'charter', reason: '測試' })).status, 400);
+    const school = list.find(item => item.id === 'school-club-rules');
+    const schoolDraft = await (await request('/api/regulation-amendments', 'cadre', 'POST', { regulationId: 'school-club-rules', content: school.content + '\n新條文', reason: '學校公告新版' })).json();
+    assert.equal((await request(`/api/regulation-amendments/${schoolDraft.id}/adopt`, 'president', 'POST', { schoolAnnouncedAt: '2026-11-01' })).status, 400, 'source required');
+    assert.equal((await (await request(`/api/regulation-amendments/${schoolDraft.id}/adopt`, 'president', 'POST', { schoolAnnouncedAt: '2026-11-01', source: '115學年度第1學期學務會議' })).json()).status, 'effective');
+
+    const rejected = await (await request('/api/regulation-amendments', 'cadre', 'POST', { action: 'repeal', regulationId: 'class-rules', reason: '測試廢止' })).json();
+    assert.equal((await request(`/api/regulation-amendments/${rejected.id}/close`, 'president', 'POST', { outcome: 'rejected' })).status, 400, 'a reason is required');
+    assert.equal((await (await request(`/api/regulation-amendments/${rejected.id}/close`, 'president', 'POST', { outcome: 'rejected', note: '幹部會議未通過' })).json()).status, 'rejected');
+    assert.equal((await request(`/api/regulation-amendments/${rejected.id}/adopt`, 'president', 'POST', {})).status, 409);
 });
