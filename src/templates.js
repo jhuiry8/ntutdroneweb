@@ -1678,9 +1678,10 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                         ${manageFinance ? `<button class="nav-item" onclick="showPanel('finance'); loadFinance()"><i data-lucide="wallet-cards"></i> 財務管理</button>` : ''}
                         ${manageEquipment ? `<button class="nav-item" onclick="showPanel('equipment'); loadEquipment()"><i data-lucide="package-check"></i> 設備管理</button>` : ''}
                         ${viewCms ? `<button class="nav-item" onclick="showPanel('notes'); loadNotes()"><i data-lucide="sticky-note"></i> 社課備忘錄</button>` : ''}
+                        <button class="nav-item" onclick="showPanel('regulations'); loadRegulations()"><i data-lucide="scale"></i> 法規查詢</button>
                     </div>
                     <div class="nav-group"><p class="nav-group-label">系統管理</p>
-                        <button class="nav-item" onclick="showPanel('settings')"><i data-lucide="settings"></i> 系統設定</button>
+                        <button class="nav-item" onclick="showPanel('settings'); loadMyMember()"><i data-lucide="settings"></i> 系統設定</button>
                         ${user?.role === 'president' ? `<button class="nav-item" onclick="showPanel('users'); loadUsers()"><i data-lucide="users"></i> 帳號與權限</button>` : ''}
                     </div>
                 </div>
@@ -2216,15 +2217,16 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 <h2 style="font-size:1.1rem; margin-bottom:12px;">帳目與審核</h2><div class="table-container"><table><thead><tr><th>日期</th><th>事由</th><th>收入</th><th>支出</th><th>現金變動</th><th>郵局變動</th><th>狀態</th><th>操作</th></tr></thead><tbody id="finance-transactions"></tbody></table></div>
             </div>` : ''}
             ${manageMembers ? `<div id="panel-members" class="panel">
-                <div class="content-header"><div><h1>社員管理</h1><p style="color:var(--text-muted); margin-top:6px;">快速匯入、搜尋與維護社員名冊。僅社長與財務可存取。</p></div></div>
+                <div class="content-header"><div><h1>社員管理</h1><p style="color:var(--text-muted); margin-top:6px;">快速匯入、搜尋與維護社員名冊。僅社長與財務可存取。身分與社費依《社員與幹部四級分級細則》及《社費細則》（115.09.01 修訂）判定。</p></div></div>
+                <div id="member-summary" class="finance-summary" style="margin-bottom:18px;"></div>
                 <div style="margin-bottom:18px; padding:18px; border:1px solid var(--border-glass); border-radius:12px;"><h2 style="font-size:1.05rem; margin-bottom:6px;">大量新增</h2><p style="color:var(--text-muted); font-size:.88rem; margin-bottom:12px;">可匯入社員名冊 CSV／TSV，也能直接貼上社費帳本；系統會辨識欄位、從「事宜」擷取社費繳費者，並提供逐筆修改。重複學號會自動跳過；無學號資料以姓名比對。單次最多 500 筆。</p><div class="responsive-form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><input id="member-import-file" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values" class="form-control" onchange="invalidateMemberImport()"><textarea id="member-import-text" class="form-control" rows="4" oninput="invalidateMemberImport()" placeholder="貼上 CSV／TSV，或選擇社費帳本檔案"></textarea></div><div style="display:flex; gap:10px; margin-top:12px;"><button type="button" class="btn btn-secondary" onclick="previewMemberImport()">自動辨識並預覽</button><button id="member-import-submit" type="button" class="btn btn-primary" onclick="submitMemberImport()" disabled>確認新增</button></div><div id="member-import-preview" aria-live="polite" style="margin-top:12px;"></div></div>
-                <details style="margin-bottom:18px; padding:16px; border:1px solid var(--border-glass); border-radius:12px;"><summary style="cursor:pointer; font-weight:600;">單筆新增／編輯社員</summary><form id="member-form" onsubmit="saveMember(event)" class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px;"><input id="member-edit-id" type="hidden"><input id="member-name" class="form-control" placeholder="姓名（姓名或學號至少填一項）" maxlength="50"><input id="member-student-id" class="form-control" placeholder="學號" maxlength="30"><input id="member-position" class="form-control" placeholder="幹部職務（選填）" maxlength="60"><input id="member-email" class="form-control" type="email" placeholder="Email（選填）" maxlength="100"><input id="member-phone" class="form-control" placeholder="電話（選填）" maxlength="30"><input id="member-joined-at" class="form-control" type="date"><textarea id="member-note" class="form-control" rows="2" maxlength="1000" placeholder="備註（選填）"></textarea><button class="btn btn-primary" type="submit">儲存社員資料</button><button class="btn btn-secondary" type="button" onclick="resetMemberForm()">清除表單</button></form></details>
-                <div style="display:flex; gap:12px; margin-bottom:14px;"><input id="member-search" class="form-control" placeholder="依姓名、學號、Email 或電話搜尋" oninput="loadMembers()"><button type="button" class="btn btn-secondary" onclick="loadMembers()">查詢</button></div>
-                <div class="table-container"><table><thead><tr><th>姓名／學號</th><th>幹部職務</th><th>Email／電話</th><th>備註</th><th>加入日期</th><th>操作</th></tr></thead><tbody id="members-list"></tbody></table></div>
+                <details style="margin-bottom:18px; padding:16px; border:1px solid var(--border-glass); border-radius:12px;"><summary style="cursor:pointer; font-weight:600;">單筆新增／編輯社員（預設為未繳費的正式社員）</summary><p style="color:var(--text-muted); font-size:.85rem; margin-top:10px;">先登記、之後再繳費的社員，選「未繳費」即可；記錄社費簽收時會自動更新為已繳費。學期會籍只在繳費學期有效（例如 115-1），在學會籍持續有效。正式幹部在任期間具表決權；未繳費的籌備幹部不具表決權。</p><form id="member-form" onsubmit="saveMember(event)" class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px;"><input id="member-edit-id" type="hidden"><input id="member-name" class="form-control" placeholder="姓名（姓名或學號至少填一項）" maxlength="50"><input id="member-student-id" class="form-control" placeholder="學號" maxlength="30"><label style="display:grid; gap:4px; font-size:.85rem; color:var(--text-muted);">社員身分<select id="member-level" class="form-control" onchange="syncMemberForm()"><option value="trial">非正式社員（體驗學員）</option><option value="member" selected>正式社員</option><option value="prep">籌備幹部</option><option value="officer">正式幹部</option></select></label><label style="display:grid; gap:4px; font-size:.85rem; color:var(--text-muted);">社費狀態<select id="member-fee-status" class="form-control" onchange="syncMemberForm()"><option value="unpaid" selected>未繳費</option><option value="semester">學期會籍（500 元）</option><option value="lifetime">在學會籍（1,000 元）</option></select></label><label id="member-fee-semester-wrap" style="display:none; gap:4px; font-size:.85rem; color:var(--text-muted);">會籍學期<input id="member-fee-semester" class="form-control" placeholder="例如 115-1" maxlength="6" pattern="\\d{2,3}-[12]"></label><label id="member-trial-wrap" style="display:none; gap:4px; font-size:.85rem; color:var(--text-muted);">已使用免費體驗社課（本學年，上限 2 次）<input id="member-trial-uses" class="form-control" type="number" min="0" max="99" step="1" value="0"></label><input id="member-position" class="form-control" placeholder="幹部職務（選填，例如 教學技術組-器材）" maxlength="60" list="member-position-options"><datalist id="member-position-options"><option value="社長"><option value="副社長"><option value="活動公關組-活動"><option value="活動公關組-公關"><option value="活動公關組-宣傳"><option value="教學技術組-教學"><option value="教學技術組-器材"><option value="行政庶務組-執秘"><option value="行政庶務組-總務"><option value="行政庶務組-場地"><option value="法規監察委員"></datalist><input id="member-email" class="form-control" type="email" placeholder="Email（選填）" maxlength="100"><input id="member-phone" class="form-control" placeholder="電話（選填）" maxlength="30"><input id="member-joined-at" class="form-control" type="date"><textarea id="member-note" class="form-control" rows="2" maxlength="1000" placeholder="備註（選填）"></textarea><button class="btn btn-primary" type="submit">儲存社員資料</button><button class="btn btn-secondary" type="button" onclick="resetMemberForm()">清除表單</button></form></details>
+                <div class="responsive-form-grid" style="display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto; gap:12px; margin-bottom:14px;"><input id="member-search" class="form-control" placeholder="依姓名、學號、Email、電話或綁定帳號搜尋" oninput="loadMembers()"><select id="member-filter" class="form-control" onchange="loadMembers()" aria-label="篩選社員"><option value="">全部社員</option><option value="unpaid">未繳費社員</option><option value="paid">已繳費</option><option value="voting">具表決權（社員總額）</option><option value="trial">非正式社員</option><option value="member">正式社員</option><option value="prep">籌備幹部</option><option value="officer">正式幹部</option><option value="unbound">未綁定帳號</option></select><button type="button" class="btn btn-secondary" onclick="loadMembers()">查詢</button></div>
+                <div class="table-container"><table><thead><tr><th>姓名／學號</th><th>身分</th><th>社費</th><th>表決權</th><th>綁定帳號</th><th>幹部職務</th><th>Email／電話</th><th>備註</th><th>加入日期</th><th>操作</th></tr></thead><tbody id="members-list"></tbody></table></div>
                 <div style="margin-top:32px; padding:18px; border:1px solid var(--border-glass); border-radius:12px;">
-                    <h2 style="font-size:1.15rem;">社費簽收</h2><p style="color:var(--text-muted); margin:6px 0 16px;">記錄繳費者、收款人與收據線索；此簽收紀錄獨立保存，不會自動登成已核准財務帳目。</p>
-                    <form onsubmit="createFeeReceipt(event)" class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:20px;"><select id="fee-member" class="form-control" onchange="fillFeePayer()"><option value="">選社員或手動填寫</option></select><input id="fee-payer-name" class="form-control" placeholder="繳費者姓名（或只填學號）" maxlength="50"><input id="fee-student-id" class="form-control" placeholder="繳費者學號" maxlength="30"><input id="fee-amount" class="form-control" type="number" min="1" step="1" placeholder="收取金額（元）" required><input id="fee-date" class="form-control" type="date" required><input id="fee-receiver" class="form-control" placeholder="收款人姓名（必填）" maxlength="50" required><input id="fee-receipt-number" class="form-control" placeholder="收據編號／收據線索（選填）" maxlength="80"><input id="fee-note" class="form-control" placeholder="備註（選填）" maxlength="500"><button class="btn btn-primary" type="submit">記錄社費簽收</button></form>
-                    <div class="table-container"><table><thead><tr><th>日期</th><th>繳費者</th><th>金額</th><th>收款人</th><th>收據資訊</th><th>紀錄人</th><th>操作</th></tr></thead><tbody id="fee-receipts-list"></tbody></table></div>
+                    <h2 style="font-size:1.15rem;">社費簽收</h2><p style="color:var(--text-muted); margin:6px 0 16px;">記錄繳費者、收款人與收據線索；此簽收紀錄獨立保存，不會自動登成已核准財務帳目。選擇已造冊社員（或填寫名冊中的學號）時，會依繳費方案把該社員更新為已繳費，非正式社員同時轉為正式社員。刪除簽收紀錄不會改回社費狀態，請到社員資料手動調整。</p>
+                    <form onsubmit="createFeeReceipt(event)" class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:20px;"><select id="fee-member" class="form-control" onchange="fillFeePayer()"><option value="">選社員或手動填寫</option></select><input id="fee-payer-name" class="form-control" placeholder="繳費者姓名（或只填學號）" maxlength="50"><input id="fee-student-id" class="form-control" placeholder="繳費者學號" maxlength="30"><input id="fee-amount" class="form-control" type="number" min="1" step="1" placeholder="收取金額（元）" required><select id="fee-type" class="form-control" aria-label="繳費方案"><option value="">繳費方案：依金額判斷（500 學期／1,000 在學）</option><option value="semester">學期會籍（500 元）</option><option value="lifetime">在學會籍（1,000 元）</option><option value="other">其他（不更新社費狀態）</option></select><input id="fee-date" class="form-control" type="date" required><input id="fee-receiver" class="form-control" placeholder="收款人姓名（必填）" maxlength="50" required><input id="fee-receipt-number" class="form-control" placeholder="收據編號／收據線索（選填）" maxlength="80"><input id="fee-note" class="form-control" placeholder="備註（選填）" maxlength="500"><button class="btn btn-primary" type="submit">記錄社費簽收</button></form>
+                    <div class="table-container"><table><thead><tr><th>日期</th><th>繳費者</th><th>金額／方案</th><th>收款人</th><th>收據資訊</th><th>紀錄人</th><th>操作</th></tr></thead><tbody id="fee-receipts-list"></tbody></table></div>
                 </div>
             </div>` : ''}
             ${manageEquipment ? `<div id="panel-equipment" class="panel">
@@ -2278,6 +2280,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 <div class="content-header">
                     <h1>系統帳號設定</h1>
                 </div>
+                <div class="forms-card" style="max-width:640px; margin-bottom:24px; padding:18px; border:1px solid var(--border-glass); border-radius:12px;"><h2 style="font-size:1.05rem; margin-bottom:10px;">我的社員資料</h2><div id="my-member" aria-live="polite" style="color:var(--text-muted);">載入中…</div></div>
                 
                 <form onsubmit="changePassword(event)" style="max-width: 450px;">
                     <div class="form-group">
@@ -2295,15 +2298,23 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     <button type="submit" class="btn btn-primary" style="margin-top: 10px;">儲存新密碼</button>
                 </form>
             </div>
+            <div id="panel-regulations" class="panel">
+                <div class="content-header"><div><h1>法規查詢</h1><p style="color:var(--text-muted); margin-top:6px;">本社組織章程、三項施行細則（115.09.01 修訂）及學校《學生社團組織及活動實施辦法》。輸入關鍵字可找出相關條文，例如「表決權」、「社費」、「退費」、「事故」。</p></div>${user?.role === 'president' ? '<button type="button" class="btn btn-primary" onclick="editRegulation()">新增法規</button>' : ''}</div>
+                <div class="responsive-form-grid" style="display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:12px; margin-bottom:16px;"><input id="regulation-search" class="form-control" type="search" placeholder="搜尋條文關鍵字" oninput="renderRegulations()"><select id="regulation-doc" class="form-control" onchange="renderRegulations()" aria-label="選擇法規"><option value="">全部法規</option></select></div>
+                ${user?.role === 'president' ? `<form id="regulation-form" onsubmit="saveRegulation(event)" style="display:none; gap:12px; margin-bottom:20px; padding:16px; border:1px solid var(--border-glass); border-radius:12px;"><input id="regulation-id" type="hidden"><input id="regulation-title" class="form-control" placeholder="法規名稱" maxlength="120" required><div class="responsive-form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><input id="regulation-category" class="form-control" placeholder="分類（例如 本社規章、學校法規）" maxlength="40"><input id="regulation-version" class="form-control" placeholder="版本（例如 115.09.01 修訂）" maxlength="60"></div><textarea id="regulation-content" class="form-control" rows="16" maxlength="50000" placeholder="條文內容。每條以「第一條」或「壹、」開頭另起一行，搜尋時會以條為單位顯示。" required></textarea><div style="display:flex; gap:10px; flex-wrap:wrap;"><button class="btn btn-primary" type="submit">儲存法規</button><button class="btn btn-secondary" type="button" onclick="closeRegulationForm()">取消</button></div></form>` : ''}
+                <div id="regulation-results" aria-live="polite"></div>
+            </div>
             ${user?.role === 'president' ? `<div id="panel-users" class="panel">
                 <div class="content-header"><h1>帳號與權限</h1></div>
                 <form onsubmit="createUser(event)" style="display:grid; gap:12px; max-width:520px; margin-bottom:24px;">
                     <input id="account-username" class="form-control" placeholder="帳號（英數字，至少 3 位）" required>
                     <input id="account-password" type="password" class="form-control" placeholder="初始密碼（至少 8 位）" minlength="8" required>
                     <select id="account-role" class="form-control"><option value="president">社長</option><option value="finance">財務</option><option value="cadre">一般幹部</option><option value="member">社員</option></select>
+                    <select id="account-member" class="form-control" aria-label="綁定社員"><option value="">不綁定社員（之後可再綁定）</option></select>
                     <button class="btn btn-primary" type="submit">新增帳號</button>
                 </form>
-                <div class="table-container"><table><thead><tr><th>帳號</th><th>角色</th><th>狀態</th><th>操作</th></tr></thead><tbody id="users-list"></tbody></table></div>
+                <p style="color:var(--text-muted); font-size:.88rem; margin-bottom:12px;">每個帳號可綁定一位社員名冊資料，綁定後該帳號可在「系統設定」查看自己的身分、社費與表決權狀態。一位社員只能綁定一個帳號；刪除社員會自動解除綁定。變更綁定不會讓對方登出。</p>
+                <div class="table-container"><table><thead><tr><th>帳號</th><th>角色</th><th>狀態</th><th>綁定社員</th><th>操作</th></tr></thead><tbody id="users-list"></tbody></table></div>
             </div>` : ''}
         </div>
 
@@ -2705,17 +2716,35 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             }
 
             async function loadUsers() {
-                const res = await fetch('/api/users');
+                const [res, membersRes] = await Promise.all([fetch('/api/users'), fetch('/api/members')]);
                 if (!res.ok) return showToast('無法載入帳號', true);
                 const users = await res.json();
+                const members = membersRes.ok ? await membersRes.json() : [];
+                const memberLabel = item => (item.name || '姓名待查') + '（' + (item.studentId || '無學號') + '）';
+                const memberOptions = (select, current, owner) => {
+                    select.add(new Option(owner ? '不綁定' : '不綁定社員（之後可再綁定）', ''));
+                    for (const item of members) {
+                        if (item.account && item.account !== owner) continue;
+                        select.add(new Option(memberLabel(item) + '・' + item.status.levelLabel, item.id));
+                    }
+                    select.value = current || '';
+                };
+                const createSelect = document.getElementById('account-member');
+                if (createSelect) { createSelect.replaceChildren(); memberOptions(createSelect, '', ''); }
                 const tbody = document.getElementById('users-list');
                 tbody.replaceChildren();
                 for (const user of users) {
                     const tr = document.createElement('tr');
-                    for (const value of [user.username, {president:'社長',finance:'財務',cadre:'一般幹部',member:'社員'}[user.role], user.active ? '啟用' : '停用']) {
+                    const bound = user.member ? memberLabel(user.member) + '・' + user.member.status.levelLabel + '・' + user.member.status.feeLabel : '未綁定';
+                    for (const value of [user.username, {president:'社長',finance:'財務',cadre:'一般幹部',member:'社員'}[user.role], user.active ? '啟用' : '停用', bound]) {
                         const td = document.createElement('td'); td.textContent = value; tr.appendChild(td);
                     }
                     const td = document.createElement('td');
+                    const binding = document.createElement('select'); binding.className = 'form-control'; binding.setAttribute('aria-label', user.username + ' 綁定社員');
+                    memberOptions(binding, user.memberId, user.username);
+                    const bind = document.createElement('button'); bind.className = 'btn btn-secondary'; bind.textContent = '儲存綁定';
+                    bind.onclick = () => updateUser(user.username, { memberId: binding.value });
+                    td.append(binding, bind);
                     const role = document.createElement('select'); role.className = 'form-control';
                     for (const [value, label] of Object.entries({president:'社長',finance:'財務',cadre:'一般幹部',member:'社員'})) {
                         const option = new Option(label, value); role.add(option);
@@ -2737,7 +2766,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             }
             async function createUser(event) {
                 event.preventDefault();
-                const body = { username: document.getElementById('account-username').value, password: document.getElementById('account-password').value, role: document.getElementById('account-role').value };
+                const body = { username: document.getElementById('account-username').value, password: document.getElementById('account-password').value, role: document.getElementById('account-role').value, memberId: document.getElementById('account-member')?.value || '' };
                 const res = await fetch('/api/users', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
                 const data = await res.json(); showToast(res.ok ? '帳號已新增' : data.error, !res.ok);
                 if (res.ok) { event.target.reset(); loadUsers(); }
@@ -2877,7 +2906,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             let memberCache = [];
             let memberImportRows = [];
             function invalidateMemberImport() { memberImportRows=[]; const button=document.getElementById('member-import-submit'); if(button)button.disabled=true; const preview=document.getElementById('member-import-preview'); if(preview)preview.innerHTML=''; }
-            const importFields = {name:'姓名',studentId:'學號',email:'Email',phone:'電話',position:'職務',joinedAt:'加入日期',note:'備註'};
+            const importFields = {name:'姓名',studentId:'學號',level:'身分',feeStatus:'社費狀態',email:'Email',phone:'電話',position:'職務',joinedAt:'加入日期',note:'備註'};
             function renderMemberImportPreview() {
                 const seenIds=new Set(), seenNames=new Set(), seenNamesWithoutId=new Set(); let duplicates=0;
                 const rows=memberImportRows.map((item,index)=>{
@@ -2885,7 +2914,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     const duplicate=id?(seenIds.has(id)||seenNamesWithoutId.has(name)):seenNames.has(name);
                     if(id)seenIds.add(id); if(name){seenNames.add(name);if(!id)seenNamesWithoutId.add(name);}
                     if(duplicate)duplicates++;
-                    const cells=Object.keys(importFields).map(key=>'<td><input class="form-control" data-key="'+key+'" aria-label="'+importFields[key]+'，第 '+(index+1)+' 筆" value="'+escapeText(item[key]||'')+'" maxlength="'+({name:50,studentId:30,email:100,phone:30,position:60,joinedAt:10,note:1000}[key])+'" onchange="updateMemberImport('+index+',this.dataset.key,this.value)" '+(key==='joinedAt'?'type="date"':'')+'></td>').join('');
+                    const cells=Object.keys(importFields).map(key=>'<td><input class="form-control" data-key="'+key+'" aria-label="'+importFields[key]+'，第 '+(index+1)+' 筆" value="'+escapeText(item[key]||'')+'" maxlength="'+({name:50,studentId:30,level:20,feeStatus:20,email:100,phone:30,position:60,joinedAt:10,note:1000}[key])+'" onchange="updateMemberImport('+index+',this.dataset.key,this.value)" '+(key==='joinedAt'?'type="date"':'')+'></td>').join('');
                     return '<tr>'+cells+'<td>'+ (duplicate?'<span style="color:#fbbf24">重複，將跳過</span>':'<span style="color:#34d399">待新增</span>')+'</td><td><button type="button" class="btn btn-danger" onclick="removeMemberImportRow('+index+')">移除</button></td></tr>';
                 }).join('');
                 document.getElementById('member-import-preview').innerHTML='<p style="margin-bottom:8px;">辨識 '+memberImportRows.length+' 筆；目前 '+duplicates+' 筆重複資料將略過。可直接修改欄位或移除列。</p><div class="table-container"><table style="min-width:1100px"><thead><tr>'+Object.values(importFields).map(label=>'<th>'+label+'</th>').join('')+'<th>狀態</th><th>操作</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
@@ -2900,7 +2929,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     if (!text) { memberImportRows = []; document.getElementById('member-import-submit').disabled = true; return showToast('請選擇 CSV／TSV 檔案或貼上資料', true); }
                     const rows = parseSheet(text); if (!rows.length) return showToast('沒有可匯入的資料', true);
                     const headers = rows.shift().map(value => value.replace(/^\uFEFF/, '').trim().toLowerCase());
-                    const aliases = {name:['姓名','name'],studentId:['學號','studentid','student id'],email:['email','電子郵件'],phone:['電話','手機','phone'],position:['職務','幹部職務','position'],joinedAt:['加入日期','入社日期','joinedat','joined at'],note:['備註','note']};
+                    const aliases = {name:['姓名','name'],studentId:['學號','studentid','student id'],level:['身分','社員身分','社團身分','level','membership_status'],feeStatus:['社費狀態','社費繳交狀態','繳費狀態','feestatus','fee_status'],email:['email','電子郵件'],phone:['電話','手機','phone'],position:['職務','幹部職務','position'],joinedAt:['加入日期','入社日期','joinedat','joined at'],note:['備註','note']};
                     const columns = Object.fromEntries(Object.entries(aliases).map(([key, names]) => [key, headers.findIndex(value => names.includes(value))]));
                     let data;
                     const dateColumn=headers.indexOf('日期'), itemColumn=headers.indexOf('事宜'), incomeColumn=headers.indexOf('收入');
@@ -2910,7 +2939,10 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                             const studentId=/^(?:\\d{9}|\\d{4}[a-z]\\d{4})$/i.test(raw)?raw.toUpperCase():'';
                             const rawDate=String(row[dateColumn]||'').trim(); const dateMatch=/^(\\d{4})[/-](\\d{1,2})[/-](\\d{1,2})$/.exec(rawDate);
                             const feeDate=dateMatch?dateMatch[1]+'-'+dateMatch[2].padStart(2,'0')+'-'+dateMatch[3].padStart(2,'0'):'';
-                            return {name:studentId?'':raw,studentId,email:'',phone:'',position:'',joinedAt:'',note:feeDate?'社費紀錄日期：'+feeDate:''};
+                            const paidAmount=Number(String(row[incomeColumn]||'').replace(/[,$\\s]/g,''));
+                            const semester=dateMatch?(Number(dateMatch[2])>=8?(Number(dateMatch[1])-1911)+'-1':(Number(dateMatch[1])-1912)+'-'+(Number(dateMatch[2])===1?1:2)):'';
+                            const feeStatus=paidAmount>=1000?'在學會籍':paidAmount>=500?'學期會籍':'未繳費';
+                            return {name:studentId?'':raw,studentId,level:'正式社員',feeStatus,feeSemester:feeStatus==='學期會籍'?semester:'',email:'',phone:'',position:'',joinedAt:'',note:feeDate?'社費紀錄日期：'+feeDate:''};
                         }).filter(item=>item.name||item.studentId);
                     } else {
                         if (columns.name < 0 && columns.studentId < 0) { memberImportRows=[]; return showToast('找不到可辨識的社員欄位；請提供姓名／學號欄，或社費帳本的日期、事宜、收入欄', true); }
@@ -2927,16 +2959,110 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 try { const res=await fetch('/api/members/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:memberImportRows})}); const data=await res.json(); showToast(res.ok?'已新增 '+data.imported+' 位，略過重複 '+data.skipped+' 位':data.error,!res.ok); if(res.ok){memberImportRows=[];document.getElementById('member-import-text').value='';document.getElementById('member-import-file').value='';document.getElementById('member-import-preview').innerHTML='';loadMembers();} }
                 catch { showToast('匯入失敗，請稍後重試',true); } finally { button.disabled=!memberImportRows.length; }
             }
-            async function loadMembers() { const query = document.getElementById('member-search')?.value || ''; const res = await fetch('/api/members?q=' + encodeURIComponent(query)); if (!res.ok) return showToast('無法載入社員資料', true); const members = await res.json(); memberCache = members; const body = document.getElementById('members-list'); body.innerHTML = members.map(item => '<tr><td>' + escapeText(item.name || '（姓名待查）') + '<br><small>' + escapeText(item.studentId || '無學號') + '</small></td><td>' + escapeText(item.position || '—') + '</td><td>' + escapeText([item.email,item.phone].filter(Boolean).join('／') || '—') + '</td><td style="white-space:pre-wrap">' + escapeText(item.note || '—') + '</td><td>' + escapeText(item.joinedAt || '—') + '</td><td><button class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="editMember(this.dataset.id)">編輯</button> <button class="btn btn-danger" data-id="' + escapeText(item.id) + '" onclick="deleteMember(this.dataset.id)">刪除</button></td></tr>').join('') || '<tr><td colspan="6" style="text-align:center; color:var(--text-muted)">查無社員資料。</td></tr>'; const select=document.getElementById('fee-member'); if(select){const current=select.value;select.innerHTML='<option value="">選社員或手動填寫</option>'+members.map(item=>'<option value="'+escapeText(item.id)+'">'+escapeText(item.name||'姓名待查')+'（'+escapeText(item.studentId||'無學號')+'）</option>').join('');select.value=current;} }
-            function resetMemberForm() { const form=document.getElementById('member-form'); if(form)form.reset(); document.getElementById('member-edit-id').value=''; }
-            function editMember(id) { const item=memberCache.find(member=>member.id===id); if(!item)return; document.getElementById('member-edit-id').value=item.id; document.getElementById('member-name').value=item.name||''; document.getElementById('member-student-id').value=item.studentId||''; document.getElementById('member-position').value=item.position||''; document.getElementById('member-email').value=item.email||''; document.getElementById('member-phone').value=item.phone||''; document.getElementById('member-note').value=item.note||''; document.getElementById('member-joined-at').value=item.joinedAt||''; document.getElementById('member-form').closest('details').open=true; document.getElementById('member-form').scrollIntoView({behavior:'smooth',block:'center'}); }
-            async function saveMember(event) { event.preventDefault(); const id=document.getElementById('member-edit-id').value; const body={name:document.getElementById('member-name').value,studentId:document.getElementById('member-student-id').value,position:document.getElementById('member-position').value,email:document.getElementById('member-email').value,phone:document.getElementById('member-phone').value,note:document.getElementById('member-note').value,joinedAt:document.getElementById('member-joined-at').value}; const res=await fetch(id?'/api/members/'+encodeURIComponent(id):'/api/members',{method:id?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const data=await res.json(); showToast(res.ok?(id?'社員資料已更新':'社員已新增'):data.error,!res.ok); if(res.ok){resetMemberForm();loadMembers();} }
+            const memberLevelLabels={trial:'非正式社員',member:'正式社員',prep:'籌備幹部',officer:'正式幹部'};
+            const feeTypeLabels={semester:'學期會籍',lifetime:'在學會籍',other:'其他'};
+            function memberBadge(text,color) { return '<span style="display:inline-block; padding:2px 8px; border-radius:999px; font-size:.8rem; border:1px solid '+color+'; color:'+color+'; white-space:nowrap;">'+escapeText(text)+'</span>'; }
+            function memberFeeCell(status) { return status.paid?memberBadge(status.feeLabel,'#34d399'):status.exempt?memberBadge(status.feeLabel,'#60a5fa'):memberBadge(status.feeLabel,'#fbbf24'); }
+            function syncMemberForm() { const fee=document.getElementById('member-fee-status').value, level=document.getElementById('member-level').value; document.getElementById('member-fee-semester-wrap').style.display=fee==='semester'?'grid':'none'; document.getElementById('member-trial-wrap').style.display=level==='trial'?'grid':'none'; }
+            async function loadMembers() {
+                const query = document.getElementById('member-search')?.value || ''; const filter = document.getElementById('member-filter')?.value || '';
+                const [res, allRes] = await Promise.all([fetch('/api/members?q=' + encodeURIComponent(query) + '&filter=' + encodeURIComponent(filter)), fetch('/api/members')]);
+                if (!res.ok || !allRes.ok) return showToast('無法載入社員資料', true);
+                const members = await res.json(); const all = await allRes.json(); memberCache = all;
+                const count = test => all.filter(test).length;
+                const summary = document.getElementById('member-summary');
+                if (summary) summary.innerHTML = [['名冊人數', all.length], ['社員總額（具表決權）', count(item => item.status.voting)], ['未繳費社員', count(item => item.status.unpaid)], ['非正式社員', count(item => item.status.level === 'trial')]].map(([label, value]) => '<div class="finance-card"><span>' + label + '</span><strong>' + value + '</strong></div>').join('') + '<p style="grid-column:1/-1; margin:0; color:var(--text-muted); font-size:.82rem;">目前學期：' + escapeText(all[0]?.status.semester || '') + '。社員總額依組織章程第四條，計入具表決權之正式社員與幹部。</p>';
+                const body = document.getElementById('members-list');
+                body.innerHTML = members.map(item => {
+                    const status = item.status; const trial = status.level === 'trial' ? '<br><small>免費體驗剩 ' + status.trialRemaining + ' 次</small>' : '';
+                    return '<tr><td>' + escapeText(item.name || '（姓名待查）') + '<br><small>' + escapeText(item.studentId || '無學號') + '</small></td><td>' + escapeText(status.levelLabel) + trial + '</td><td>' + memberFeeCell(status) + '</td><td>' + (status.voting ? '有' : '無') + '</td><td>' + escapeText(item.account || '—') + '</td><td>' + escapeText(item.position || '—') + '</td><td>' + escapeText([item.email,item.phone].filter(Boolean).join('／') || '—') + '</td><td style="white-space:pre-wrap">' + escapeText(item.note || '—') + '</td><td>' + escapeText(item.joinedAt || '—') + '</td><td><button class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="editMember(this.dataset.id)">編輯</button> <button class="btn btn-danger" data-id="' + escapeText(item.id) + '" onclick="deleteMember(this.dataset.id)">刪除</button></td></tr>';
+                }).join('') || '<tr><td colspan="10" style="text-align:center; color:var(--text-muted)">查無社員資料。</td></tr>';
+                const select=document.getElementById('fee-member'); if(select){const current=select.value;select.innerHTML='<option value="">選社員或手動填寫</option>'+all.map(item=>'<option value="'+escapeText(item.id)+'">'+escapeText(item.name||'姓名待查')+'（'+escapeText(item.studentId||'無學號')+'）'+(item.status.unpaid?'・未繳費':'')+'</option>').join('');select.value=current;}
+            }
+            function resetMemberForm() { const form=document.getElementById('member-form'); if(form)form.reset(); document.getElementById('member-edit-id').value=''; syncMemberForm(); }
+            function editMember(id) { const item=memberCache.find(member=>member.id===id); if(!item)return; document.getElementById('member-edit-id').value=item.id; document.getElementById('member-name').value=item.name||''; document.getElementById('member-student-id').value=item.studentId||''; document.getElementById('member-position').value=item.position||''; document.getElementById('member-email').value=item.email||''; document.getElementById('member-phone').value=item.phone||''; document.getElementById('member-note').value=item.note||''; document.getElementById('member-joined-at').value=item.joinedAt||''; document.getElementById('member-level').value=item.status.level; document.getElementById('member-fee-status').value=item.status.feeStatus; document.getElementById('member-fee-semester').value=item.feeSemester||''; document.getElementById('member-trial-uses').value=item.trialUses||0; syncMemberForm(); document.getElementById('member-form').closest('details').open=true; document.getElementById('member-form').scrollIntoView({behavior:'smooth',block:'center'}); }
+            async function saveMember(event) { event.preventDefault(); const id=document.getElementById('member-edit-id').value; const body={name:document.getElementById('member-name').value,studentId:document.getElementById('member-student-id').value,position:document.getElementById('member-position').value,email:document.getElementById('member-email').value,phone:document.getElementById('member-phone').value,note:document.getElementById('member-note').value,joinedAt:document.getElementById('member-joined-at').value,level:document.getElementById('member-level').value,feeStatus:document.getElementById('member-fee-status').value,feeSemester:document.getElementById('member-fee-semester').value,trialUses:Number(document.getElementById('member-trial-uses').value||0)}; const res=await fetch(id?'/api/members/'+encodeURIComponent(id):'/api/members',{method:id?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const data=await res.json(); showToast(res.ok?(id?'社員資料已更新':'社員已新增（'+data.status.levelLabel+'・'+data.status.feeLabel+'）'):data.error,!res.ok); if(res.ok){resetMemberForm();loadMembers();} }
             async function deleteMember(id) { if (!confirm('確定刪除此社員？此操作無法復原。')) return; const res=await fetch('/api/members/'+encodeURIComponent(id),{method:'DELETE'}); const data=await res.json(); showToast(res.ok?'社員已刪除':data.error,!res.ok); if(res.ok)loadMembers(); }
             function fillFeePayer() { const item=memberCache.find(member=>member.id===document.getElementById('fee-member').value); if(!item)return; document.getElementById('fee-payer-name').value=item.name||''; document.getElementById('fee-student-id').value=item.studentId||''; }
-            async function loadFeeReceipts() { const body=document.getElementById('fee-receipts-list'); if(!body)return; const res=await fetch('/api/member-fee-receipts'); const data=await res.json(); if(!res.ok){body.innerHTML='<tr><td colspan="7">'+escapeText(data.error||'無法載入簽收紀錄')+'</td></tr>';return;} body.innerHTML=data.map(item=>'<tr><td>'+escapeText(item.date)+'</td><td>'+escapeText(item.payerName||'姓名待查')+'<br><small>'+escapeText(item.studentId||'無學號')+'</small></td><td>NT$ '+new Intl.NumberFormat('zh-TW').format(item.amount)+'</td><td>'+escapeText(item.receiver)+'</td><td>'+escapeText(item.receiptNumber||'—')+(item.note?'<br><small>'+escapeText(item.note)+'</small>':'')+'</td><td>'+escapeText(item.recordedBy)+'</td><td><button class="btn btn-danger" data-id="'+escapeText(item.id)+'" onclick="deleteFeeReceipt(this.dataset.id)">刪除</button></td></tr>').join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">尚無社費簽收紀錄。</td></tr>'; const date=document.getElementById('fee-date'); if(date&&!date.value)date.value=new Date().toISOString().slice(0,10); }
-            async function createFeeReceipt(event) { event.preventDefault(); const memberId=document.getElementById('fee-member').value; const body={memberId,payerName:document.getElementById('fee-payer-name').value,studentId:document.getElementById('fee-student-id').value,amount:Number(document.getElementById('fee-amount').value),date:document.getElementById('fee-date').value,receiver:document.getElementById('fee-receiver').value,receiptNumber:document.getElementById('fee-receipt-number').value,note:document.getElementById('fee-note').value}; const res=await fetch('/api/member-fee-receipts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const data=await res.json(); showToast(res.ok?'社費簽收已記錄':data.error,!res.ok); if(res.ok){event.target.reset();loadFeeReceipts();} }
+            async function loadFeeReceipts() { const body=document.getElementById('fee-receipts-list'); if(!body)return; const res=await fetch('/api/member-fee-receipts'); const data=await res.json(); if(!res.ok){body.innerHTML='<tr><td colspan="7">'+escapeText(data.error||'無法載入簽收紀錄')+'</td></tr>';return;} body.innerHTML=data.map(item=>'<tr><td>'+escapeText(item.date)+'</td><td>'+escapeText(item.payerName||'姓名待查')+'<br><small>'+escapeText(item.studentId||'無學號')+'</small></td><td>NT$ '+new Intl.NumberFormat('zh-TW').format(item.amount)+(item.feeType?'<br><small>'+escapeText(feeTypeLabels[item.feeType]||'')+(item.feeType==='semester'&&item.semester?' '+escapeText(item.semester):'')+'</small>':'')+'</td><td>'+escapeText(item.receiver)+'</td><td>'+escapeText(item.receiptNumber||'—')+(item.note?'<br><small>'+escapeText(item.note)+'</small>':'')+'</td><td>'+escapeText(item.recordedBy)+'</td><td><button class="btn btn-danger" data-id="'+escapeText(item.id)+'" onclick="deleteFeeReceipt(this.dataset.id)">刪除</button></td></tr>').join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">尚無社費簽收紀錄。</td></tr>'; const date=document.getElementById('fee-date'); if(date&&!date.value)date.value=new Date().toISOString().slice(0,10); }
+            async function createFeeReceipt(event) { event.preventDefault(); const memberId=document.getElementById('fee-member').value; const body={memberId,payerName:document.getElementById('fee-payer-name').value,studentId:document.getElementById('fee-student-id').value,amount:Number(document.getElementById('fee-amount').value),feeType:document.getElementById('fee-type').value,date:document.getElementById('fee-date').value,receiver:document.getElementById('fee-receiver').value,receiptNumber:document.getElementById('fee-receipt-number').value,note:document.getElementById('fee-note').value}; const res=await fetch('/api/member-fee-receipts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const data=await res.json(); showToast(res.ok?(data.memberStatus?'社費簽收已記錄，社員狀態更新為：'+data.memberStatus.levelLabel+'・'+data.memberStatus.feeLabel:'社費簽收已記錄'):data.error,!res.ok); if(res.ok){event.target.reset();loadFeeReceipts();loadMembers();} }
             async function deleteFeeReceipt(id) { if(!confirm('確定刪除此簽收紀錄？'))return; const res=await fetch('/api/member-fee-receipts/'+encodeURIComponent(id),{method:'DELETE'}); const data=await res.json(); showToast(res.ok?'簽收紀錄已刪除':data.error,!res.ok); if(res.ok)loadFeeReceipts(); }
             ${manageMembers ? 'loadFeeReceipts();' : ''}
+            async function loadMyMember() {
+                const box = document.getElementById('my-member'); if (!box) return;
+                try {
+                    const res = await fetch('/api/me'); const data = await res.json();
+                    if (!res.ok) { box.textContent = data.error || '無法載入'; return; }
+                    if (!data.member) { box.innerHTML = '此帳號（' + escapeText(data.username) + '）尚未綁定社員資料。請聯絡社長在「帳號與權限」完成綁定。'; return; }
+                    const m = data.member, status = m.status;
+                    const rows = [['姓名', m.name || '—'], ['學號', m.studentId || '—'], ['身分', status.levelLabel + (status.level === 'trial' ? '（免費體驗社課剩 ' + status.trialRemaining + ' 次）' : '')], ['社費', status.feeLabel], ['表決權', status.voting ? '有（列入社員總額）' : '無'], ['幹部職務', m.position || '—'], ['加入日期', m.joinedAt || '—']];
+                    let html = '<dl style="display:grid; grid-template-columns:max-content 1fr; gap:6px 16px; margin:0; color:var(--text-main);">' + rows.map(([k, v]) => '<dt style="color:var(--text-muted);">' + k + '</dt><dd style="margin:0;">' + escapeText(v) + '</dd>').join('') + '</dl>';
+                    if (status.unpaid) html += '<p style="margin-top:12px; color:#fbbf24;">目前為未繳費狀態。依《社費細則》，學期會籍每學期 500 元、在學會籍一次 1,000 元；繳費後請向總務簽收。</p>';
+                    if (data.feeReceipts.length) html += '<p style="margin-top:12px;">繳費紀錄：' + data.feeReceipts.map(item => escapeText(item.date + ' NT$ ' + item.amount + (feeTypeLabels[item.feeType] ? '（' + feeTypeLabels[item.feeType] + '）' : ''))).join('、') + '</p>';
+                    box.innerHTML = html;
+                } catch { box.textContent = '無法載入社員資料'; }
+            }
+            if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('load', loadMyMember);
+
+            let regulationCache = [];
+            const regulationHeading = /^(第[一二三四五六七八九十百零〇]+條|[壹貳參肆伍陸柒捌玖拾]+、)/;
+            function regulationSections(content) {
+                const sections = []; let current = { heading: '', lines: [] };
+                for (const line of String(content || '').split('\\n')) {
+                    if (regulationHeading.test(line.trim())) { if (current.heading || current.lines.some(Boolean)) sections.push(current); current = { heading: line.trim(), lines: [] }; }
+                    else current.lines.push(line);
+                }
+                if (current.heading || current.lines.some(Boolean)) sections.push(current);
+                return sections;
+            }
+            function highlightText(text, keyword) {
+                const safe = escapeText(text); if (!keyword) return safe;
+                const needle = escapeText(keyword); return safe.split(needle).join('<mark>' + needle + '</mark>');
+            }
+            async function loadRegulations() {
+                const res = await fetch('/api/regulations'); const data = await res.json();
+                if (!res.ok) return showToast(data.error || '無法載入法規', true);
+                regulationCache = data;
+                const select = document.getElementById('regulation-doc'); const current = select.value;
+                select.innerHTML = '<option value="">全部法規</option>' + data.map(item => '<option value="' + escapeText(item.id) + '">' + escapeText(item.title) + '</option>').join('');
+                select.value = data.some(item => item.id === current) ? current : '';
+                renderRegulations();
+            }
+            function renderRegulations() {
+                const keyword = document.getElementById('regulation-search').value.trim();
+                const docId = document.getElementById('regulation-doc').value;
+                const canEdit = ${user?.role === 'president'};
+                let hits = 0;
+                const html = regulationCache.filter(item => !docId || item.id === docId).map(item => {
+                    let sections = regulationSections(item.content);
+                    if (keyword) sections = sections.filter(section => (section.heading + '\\n' + section.lines.join('\\n')).includes(keyword) || item.title.includes(keyword));
+                    if (keyword && !sections.length) return '';
+                    hits += sections.length;
+                    const body = sections.map(section => (section.heading ? '<h3 style="font-size:1rem; margin:14px 0 6px; color:var(--color-cyan);">' + highlightText(section.heading, keyword) + '</h3>' : '') + section.lines.filter(line => line.trim()).map(line => '<p style="margin:4px 0; line-height:1.7;">' + highlightText(line, keyword) + '</p>').join('')).join('');
+                    const actions = canEdit ? '<div style="display:flex; gap:8px;"><button type="button" class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="editRegulation(this.dataset.id)">編輯</button><button type="button" class="btn btn-danger" data-id="' + escapeText(item.id) + '" onclick="deleteRegulation(this.dataset.id)">刪除</button></div>' : '';
+                    return '<details class="forms-card" ' + (keyword || docId ? 'open' : '') + ' style="margin-bottom:14px; padding:16px; border:1px solid var(--border-glass); border-radius:12px;"><summary style="cursor:pointer; font-weight:600;">' + escapeText(item.title) + ' <small style="color:var(--text-muted); font-weight:400;">' + escapeText([item.category, item.version].filter(Boolean).join('・')) + (keyword ? '・符合 ' + sections.length + ' 條' : '') + '</small></summary><div style="display:flex; justify-content:flex-end; margin-top:8px;">' + actions + '</div>' + body + '</details>';
+                }).join('');
+                document.getElementById('regulation-results').innerHTML = html || '<p style="color:var(--text-muted);">' + (keyword ? '找不到包含「' + escapeText(keyword) + '」的條文。' : '尚無法規資料。') + '</p>';
+            }
+            function editRegulation(id) {
+                const form = document.getElementById('regulation-form'); if (!form) return;
+                const item = regulationCache.find(entry => entry.id === id) || { id: '', title: '', category: '本社規章', version: '', content: '' };
+                document.getElementById('regulation-id').value = item.id; document.getElementById('regulation-title').value = item.title; document.getElementById('regulation-category').value = item.category || ''; document.getElementById('regulation-version').value = item.version || ''; document.getElementById('regulation-content').value = item.content;
+                form.style.display = 'grid'; form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            function closeRegulationForm() { const form = document.getElementById('regulation-form'); if (form) { form.reset(); form.style.display = 'none'; } }
+            async function saveRegulation(event) {
+                event.preventDefault(); const id = document.getElementById('regulation-id').value;
+                const body = { title: document.getElementById('regulation-title').value, category: document.getElementById('regulation-category').value, version: document.getElementById('regulation-version').value, content: document.getElementById('regulation-content').value };
+                const res = await fetch(id ? '/api/regulations/' + encodeURIComponent(id) : '/api/regulations', { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const data = await res.json(); showToast(res.ok ? '法規已儲存' : data.error, !res.ok);
+                if (res.ok) { closeRegulationForm(); loadRegulations(); }
+            }
+            async function deleteRegulation(id) {
+                if (!confirm('確定刪除此法規？')) return;
+                const res = await fetch('/api/regulations/' + encodeURIComponent(id), { method: 'DELETE' }); const data = await res.json();
+                showToast(res.ok ? '法規已刪除' : data.error, !res.ok); if (res.ok) loadRegulations();
+            }
 
             function setNoteDate() { const date = document.getElementById('note-date'); if (date && !date.value) date.value = new Date().toISOString().slice(0, 10); }
             function addNoteLink() { const container = document.getElementById('note-links'); if (!container || container.children.length >= 20) return showToast('每則備忘最多 20 個網址', true); container.insertAdjacentHTML('beforeend', '<div class="note-link-row responsive-form-grid" style="display:grid; grid-template-columns:1fr 2fr auto; gap:8px;"><input class="form-control note-link-label" placeholder="網址說明，例如：課程投影片" maxlength="100"><input class="form-control note-link-url" type="url" placeholder="https://..." maxlength="2048"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()" aria-label="移除此網址">移除</button></div>'); }
