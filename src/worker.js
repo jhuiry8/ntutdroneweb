@@ -8,7 +8,8 @@ import {
     renderBlogPost,
     renderCustomPage,
     renderLogin,
-    renderAdminDashboard
+    renderAdminDashboard,
+    renderPublicLoanForm
 } from './templates.js';
 import {
     FORM_TYPES,
@@ -18,6 +19,7 @@ import {
     FormValidationError,
     FormServiceError,
     normalizeFormData,
+    normalizePublicLoan,
     normalizeFormSettings,
     nextFormNumber,
     formTitle,
@@ -74,8 +76,39 @@ const AI_DAILY_LIMIT = 30;
 
 // Every signed-in account can fill in forms. Officers see everyone's forms;
 // members see only their own. Only the author or the president may change one.
-function canSeeForm(user, record) { return canViewCms(user) || record.createdBy === user.username; }
-function canChangeForm(user, record) { return canManageUsers(user) || record.createdBy === user.username; }
+// Public loan slips (source 'public') have no author account; equipment managers may correct them.
+function canSeeForm(user, record) { return canViewCms(user) || (Boolean(record.createdBy) && record.createdBy === user.username); }
+function canChangeForm(user, record) {
+    if (canManageUsers(user)) return true;
+    if (record.source === 'public') return canManageEquipment(user);
+    return Boolean(record.createdBy) && record.createdBy === user.username;
+}
+// The print token of a public slip never leaves the server except to its submitter.
+function formRecordView(record) {
+    const { accessToken, ...rest } = record;
+    return rest;
+}
+
+const PUBLIC_LOAN_IP_DAILY_LIMIT = 5;
+const PUBLIC_LOAN_DAILY_LIMIT = 200;
+const PUBLIC_LOAN_PRINT_DAYS = 30;
+
+async function verifyTurnstile(env, token, ip) {
+    if (!env.TURNSTILE_SECRET_KEY) return true;
+    if (!token) return false;
+    const verification = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST', body: new URLSearchParams({ secret: env.TURNSTILE_SECRET_KEY, response: token, remoteip: ip || '' })
+    });
+    return verification.ok && (await verification.json()).success === true;
+}
+
+function sameSecret(a, b) {
+    const left = new TextEncoder().encode(String(a)), right = new TextEncoder().encode(String(b));
+    if (left.length !== right.length) return false;
+    let difference = 0;
+    for (let i = 0; i < left.length; i++) difference |= left[i] ^ right[i];
+    return difference === 0;
+}
 
 // One shared daily AI quota per account; returns a 429 response once it is used up.
 async function consumeAiQuota(env, user) {
@@ -1024,6 +1057,49 @@ async function handleRequest(request, env, ctx) {
                 return Response.json({ success: true });
             }
 
+            // ==================== Public equipment loan slip (no login, no AI) ====================
+            if (path === '/forms/equipment-loan' && method === 'GET') {
+                return new Response(renderPublicLoanForm(env.TURNSTILE_SITE_KEY), {
+                    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }
+                });
+            }
+
+            if (path === '/api/public/equipment-loan' && method === 'POST') {
+                const body = await readJsonLimited(request, 32 * 1024);
+                const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+                if (!(await verifyTurnstile(env, String(body?.turnstileToken || ''), ip))) return Response.json({ error: '請先完成驗證碼' }, { status: 400 });
+                const data = normalizePublicLoan(body?.data);
+                const day = new Date().toISOString().slice(0, 10);
+                const ipKey = `forms:public-loan:${ip}:${day}`, totalKey = `forms:public-loan:all:${day}`;
+                const [ipCount, totalCount] = (await Promise.all([env.DRONE_DB.get(ipKey), env.DRONE_DB.get(totalKey)])).map(value => Number(value || 0));
+                if (ipCount >= PUBLIC_LOAN_IP_DAILY_LIMIT || totalCount >= PUBLIC_LOAN_DAILY_LIMIT) return Response.json({ error: '今日送出的借據已達上限，請明天再試或直接聯絡幹部' }, { status: 429 });
+                const records = parseFinanceList(await env.DRONE_DB.get(FORM_RECORDS_KEY));
+                if (records.length >= MAX_FORM_RECORDS) return Response.json({ error: '系統表單紀錄已滿，請聯絡幹部' }, { status: 409 });
+                const now = new Date().toISOString();
+                const accessToken = Array.from(crypto.getRandomValues(new Uint8Array(24)), value => value.toString(16).padStart(2, '0')).join('');
+                const record = { id: crypto.randomUUID(), type: 'equipment-loan', source: 'public', number: nextFormNumber('equipment-loan', records, now), title: formTitle('equipment-loan', data), data, createdBy: '', createdAt: now, updatedBy: '', updatedAt: now, accessToken };
+                records.push(record);
+                await env.DRONE_DB.put(FORM_RECORDS_KEY, JSON.stringify(records));
+                await Promise.all([
+                    env.DRONE_DB.put(ipKey, String(ipCount + 1), { expirationTtl: 172800 }),
+                    env.DRONE_DB.put(totalKey, String(totalCount + 1), { expirationTtl: 172800 })
+                ]);
+                return Response.json({ number: record.number, printUrl: `/forms/print/${record.id}?token=${accessToken}`, printDays: PUBLIC_LOAN_PRINT_DAYS }, { status: 201 });
+            }
+
+            const publicPrint = /^\/forms\/print\/([\w-]{1,80})$/.exec(path);
+            if (publicPrint && method === 'GET') {
+                const record = parseFinanceList(await env.DRONE_DB.get(FORM_RECORDS_KEY)).find(item => item.id === publicPrint[1]);
+                const token = url.searchParams.get('token') || '';
+                const fresh = record && Date.now() - Date.parse(record.createdAt) < PUBLIC_LOAN_PRINT_DAYS * 86400000;
+                if (!record || record.source !== 'public' || !record.accessToken || !fresh || !sameSecret(token, record.accessToken)) {
+                    return new Response('借據不存在或列印連結已失效，請聯絡幹部。', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+                }
+                return new Response(renderFormPrint(record, await readFormSettings(env)), {
+                    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer' }
+                });
+            }
+
             // ==================== Paper forms (fill in online, review on paper) ====================
             if (path === '/api/forms/settings' && ['GET', 'PUT'].includes(method)) {
                 const user = await sessionUser(request, env);
@@ -1075,7 +1151,7 @@ async function handleRequest(request, env, ctx) {
                 if (method === 'GET') {
                     const type = url.searchParams.get('type');
                     const visible = records.filter(record => canSeeForm(user, record) && (!type || record.type === type));
-                    return Response.json(visible.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+                    return Response.json(visible.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(formRecordView));
                 }
                 const body = await readJsonLimited(request, 64 * 1024);
                 const type = String(body?.type || '');
@@ -1096,7 +1172,7 @@ async function handleRequest(request, env, ctx) {
                 const records = parseFinanceList(await env.DRONE_DB.get(FORM_RECORDS_KEY));
                 const record = records.find(item => item.id === id);
                 if (!record || !canSeeForm(user, record)) return Response.json({ error: '表單不存在' }, { status: 404 });
-                if (method === 'GET') return Response.json(record);
+                if (method === 'GET') return Response.json(formRecordView(record));
                 if (!canChangeForm(user, record)) return Response.json({ error: '只有填表人或社長可以修改或刪除此表單' }, { status: 403 });
                 if (method === 'DELETE') {
                     await env.DRONE_DB.put(FORM_RECORDS_KEY, JSON.stringify(records.filter(item => item.id !== id)));
@@ -1106,7 +1182,7 @@ async function handleRequest(request, env, ctx) {
                 const data = normalizeFormData(record.type, body?.data);
                 Object.assign(record, { data, title: formTitle(record.type, data), updatedBy: user.username, updatedAt: new Date().toISOString() });
                 await env.DRONE_DB.put(FORM_RECORDS_KEY, JSON.stringify(records));
-                return Response.json(record);
+                return Response.json(formRecordView(record));
             }
 
             if (path.startsWith('/admin/forms/') && method === 'GET') {

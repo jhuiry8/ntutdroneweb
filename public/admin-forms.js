@@ -568,8 +568,10 @@
         var filter = document.getElementById('forms-filter').value;
         var rows = state.records.filter(function (record) { return !filter || record.type === filter; });
         document.getElementById('forms-records').innerHTML = rows.map(function (record) {
-            var mine = record.createdBy === USERNAME || ROLE === 'president';
-            return '<tr><td><b>' + esc(record.number) + '</b></td><td>' + esc(SCHEMAS[record.type] ? SCHEMAS[record.type].label : record.type) + '</td><td>' + esc(record.title) + '</td><td>' + esc(record.createdBy) + '</td><td>' + esc(String(record.updatedAt || record.createdAt).slice(0, 10)) + '</td><td class="forms-actions">' +
+            var external = record.source === 'public';
+            var mine = ROLE === 'president' || (external ? IS_OFFICER : record.createdBy === USERNAME);
+            var author = external ? '<span class="forms-badge">外部填寫</span><br><small>' + esc(record.data.borrower) + '（' + esc(record.data.studentId) + '）</small>' : esc(record.createdBy);
+            return '<tr><td><b>' + esc(record.number) + '</b></td><td>' + esc(SCHEMAS[record.type] ? SCHEMAS[record.type].label : record.type) + '</td><td>' + esc(record.title) + '</td><td>' + author + '</td><td>' + esc(String(record.updatedAt || record.createdAt).slice(0, 10)) + '</td><td class="forms-actions">' +
                 '<a class="btn btn-primary" href="/admin/forms/print/' + encodeURIComponent(record.id) + '" target="_blank" rel="noopener">列印</a> ' +
                 '<button type="button" class="btn btn-secondary" data-copy="' + esc(record.id) + '">複製</button> ' +
                 (mine ? '<button type="button" class="btn btn-secondary" data-edit="' + esc(record.id) + '">編輯</button> <button type="button" class="btn btn-danger" data-delete="' + esc(record.id) + '">刪除</button>' : '') +

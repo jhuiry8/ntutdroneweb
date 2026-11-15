@@ -241,3 +241,56 @@ test('AI form fill route returns sanitized fields for any signed-in user', async
     const noKey = fixture();
     assert.equal((await noKey.request('/api/forms/ai-fill', 'member', 'POST', { type: 'expense-request', text: '買電池' })).status, 503);
 });
+
+const publicLoan = { ...loan, studentId: 'b11200001', phone: '0912-345-678' };
+
+test('public equipment loan page needs no login and offers no AI', async () => {
+    const { request } = fixture({ GROQ_API_KEY: 'gsk_test' });
+    const page = await request('/forms/equipment-loan', null, 'GET');
+    assert.equal(page.status, 200);
+    const html = await page.text();
+    assert.match(html, /設備借用申請/);
+    assert.match(html, /<script src="\/public-loan\.js" defer><\/script>/);
+    assert.doesNotMatch(html, /AI/);
+    assert.equal((await request('/api/forms/ai-fill', null, 'POST', { type: 'equipment-loan', text: '借空拍機' })).status, 401);
+    assert.doesNotThrow(() => new vm.Script(readFileSync(new URL('../public/public-loan.js', import.meta.url), 'utf8')));
+});
+
+test('public loan requires student ID and phone, and prints only with its token', async () => {
+    const { request } = fixture();
+    assert.equal((await request('/api/public/equipment-loan', null, 'POST', { data: { ...publicLoan, studentId: '' } })).status, 400);
+    assert.equal((await request('/api/public/equipment-loan', null, 'POST', { data: { ...publicLoan, phone: '' } })).status, 400);
+    const created = await request('/api/public/equipment-loan', null, 'POST', { data: publicLoan });
+    assert.equal(created.status, 201);
+    const result = await created.json();
+    assert.match(result.number, /^借\d{3}-001$/);
+    assert.deepEqual(Object.keys(result).sort(), ['number', 'printDays', 'printUrl']);
+    const print = await request(result.printUrl, null, 'GET');
+    assert.equal(print.status, 200);
+    assert.match(await print.text(), /B11200001/);
+    const [, id] = /\/forms\/print\/([\w-]+)/.exec(result.printUrl);
+    assert.equal((await request(`/forms/print/${id}`, null, 'GET')).status, 404);
+    assert.equal((await request(`/forms/print/${id}?token=${'0'.repeat(48)}`, null, 'GET')).status, 404);
+
+    const list = await (await request('/api/forms', 'cadre', 'GET')).json();
+    assert.equal(list.length, 1);
+    assert.equal(list[0].source, 'public');
+    assert.equal(list[0].createdBy, '');
+    assert.equal(list[0].accessToken, undefined, 'the print token must not be exposed to officers');
+    assert.equal((await (await request('/api/forms', 'member', 'GET')).json()).length, 0, 'members never see external slips');
+    assert.equal((await request(`/api/forms/${id}`, 'cadre', 'PUT', { data: { ...publicLoan, items: [{ ...publicLoan.items[0], assetNo: 'NTUT-DR-2026-X' }] } })).status, 200);
+    assert.equal((await request(`/api/forms/${id}`, 'member', 'DELETE')).status, 404);
+});
+
+test('public loans are rate limited per IP and verify Turnstile when configured', async (t) => {
+    const { request } = fixture();
+    for (let i = 0; i < 5; i++) assert.equal((await request('/api/public/equipment-loan', null, 'POST', { data: publicLoan })).status, 201);
+    assert.equal((await request('/api/public/equipment-loan', null, 'POST', { data: publicLoan })).status, 429);
+
+    t.mock.method(globalThis, 'fetch', async (url, init) => Response.json({ success: init.body.get('response') === 'good-token' }));
+    const guarded = fixture({ TURNSTILE_SECRET_KEY: 'secret', TURNSTILE_SITE_KEY: 'site' });
+    assert.match(await (await guarded.request('/forms/equipment-loan', null, 'GET')).text(), /cf-turnstile/);
+    assert.equal((await guarded.request('/api/public/equipment-loan', null, 'POST', { data: publicLoan })).status, 400);
+    assert.equal((await guarded.request('/api/public/equipment-loan', null, 'POST', { data: publicLoan, turnstileToken: 'bad' })).status, 400);
+    assert.equal((await guarded.request('/api/public/equipment-loan', null, 'POST', { data: publicLoan, turnstileToken: 'good-token' })).status, 201);
+});

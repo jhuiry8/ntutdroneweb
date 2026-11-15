@@ -242,6 +242,14 @@ export function normalizeFormData(type, data) {
     }
 }
 
+// Public (not signed in) equipment loans: same fields, but student ID and phone are required.
+export function normalizePublicLoan(data) {
+    const result = normalizeFormData('equipment-loan', data);
+    if (!/^[A-Z0-9]{5,15}$/.test(result.studentId)) throw new FormValidationError('請填寫正確的學號（5–15 位英數字）');
+    if (!/^[0-9+\-()#\s]{8,20}$/.test(result.phone)) throw new FormValidationError('請填寫可聯絡的電話號碼');
+    return result;
+}
+
 export function normalizeFormSettings(body) {
     const result = {};
     for (const key of Object.keys(DEFAULT_FORM_SETTINGS)) result[key] = text(body?.[key], '表單設定欄位', 50);
