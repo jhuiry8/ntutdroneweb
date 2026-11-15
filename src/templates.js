@@ -873,7 +873,7 @@ export function renderCustomPage(page, parsedContentHtml, lang = 'zh') {
 }
 
 // 5. Render Admin Login Page
-export function renderLogin(errorMessage = '', turnstileSiteKey = '') {
+export function renderLogin(errorMessage = '', turnstileSiteKey = '', captcha = null) {
     return `
     <!DOCTYPE html>
     <html lang="zh-TW">
@@ -955,6 +955,16 @@ export function renderLogin(errorMessage = '', turnstileSiteKey = '') {
                     <input type="password" name="password" id="password" class="form-control" autocomplete="current-password" required>
                 </div>
                 ${turnstileSiteKey ? `<div class="cf-turnstile" data-sitekey="${escapeHtml(turnstileSiteKey)}" data-size="compact"></div>` : ''}
+                ${captcha ? `
+                <div class="form-group">
+                    <label for="captcha">驗證碼</label>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
+                        <div id="captcha-image" style="border: 1px solid #b1b4b6; border-radius: 4px; line-height: 0; overflow: hidden;">${captcha.svg}</div>
+                        <button type="button" id="captcha-refresh" class="btn" style="padding: 8px 12px; font-size: 0.85rem;" aria-label="換一張驗證碼"><i data-lucide="refresh-cw" style="width: 14px; height: 14px; display: inline; vertical-align: middle;"></i> 換一張</button>
+                    </div>
+                    <input type="hidden" name="captcha_id" id="captcha-id" value="${escapeHtml(captcha.id)}">
+                    <input type="text" name="captcha" id="captcha" class="form-control" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="5" placeholder="請輸入圖片中的 5 個字元（不分大小寫）" required>
+                </div>` : ''}
                 <button type="submit" class="btn btn-primary" style="width: 100%; border-radius: 12px; padding: 14px; margin-top: 10px;">安全登入</button>
             </form>
             <div class="text-center" style="margin-top: 24px;">
@@ -963,6 +973,26 @@ export function renderLogin(errorMessage = '', turnstileSiteKey = '') {
         </div>
         <script>
             if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
+            const captchaRefresh = document.getElementById('captcha-refresh');
+            if (captchaRefresh) {
+                captchaRefresh.addEventListener('click', async () => {
+                    captchaRefresh.disabled = true;
+                    try {
+                        const res = await fetch('/api/captcha', { method: 'POST', cache: 'no-store' });
+                        if (!res.ok) throw new Error('captcha refresh failed');
+                        const data = await res.json();
+                        document.getElementById('captcha-image').innerHTML = data.svg;
+                        document.getElementById('captcha-id').value = data.id;
+                        const input = document.getElementById('captcha');
+                        input.value = '';
+                        input.focus();
+                    } catch (e) {
+                        window.location.reload();
+                    } finally {
+                        captchaRefresh.disabled = false;
+                    }
+                });
+            }
             // Background grid telemetry drawing
             const canvas = document.getElementById('telemetry-bg');
             if (canvas) {
