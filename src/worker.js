@@ -1,6 +1,9 @@
 // NTUT Drone Club - Cloudflare Worker Entry Point (with i18n support)
 import { marked } from 'marked';
 import { sanitizeContent } from './html.js';
+import { MEMBER_LEVELS, semesterOf, parseMemberLevel, parseFeeStatus, validSemester, membershipStatus, receiptFeeType, applyFeeReceipt } from './membership.js';
+import { DEFAULT_REGULATIONS } from './regulations.js';
+import { REGULATION_KINDS, AMENDMENT_ACTIONS, RegulationRuleError, checkAssembly, checkProposalSource, requirementsFor } from './regulation-rules.js';
 import { passwordHash, verifyPassword, constantTimeEqual, PasswordResetRequiredError, validRole, canManageUsers, canEditCms, canViewCms, canManageFinance, canManageMembers, canManageEquipment, publicUser } from './auth.js';
 import {
     renderLandingPage,
@@ -119,6 +122,8 @@ const FINANCE_BUDGETS_KEY = 'finance:budgets';
 const FINANCE_TRANSACTIONS_KEY = 'finance:transactions';
 const MEMBERS_KEY = 'members:list';
 const MEMBERSHIP_RECEIPTS_KEY = 'members:fee-receipts';
+const REGULATIONS_KEY = 'club:regulations';
+const REGULATION_AMENDMENTS_KEY = 'club:regulation-amendments';
 const NOTES_KEY = 'club:class-notes';
 const EQUIPMENT_KEY = 'equipment:assets';
 const EQUIPMENT_MIGRATION_KEY = 'equipment:durable-object-migrated';
@@ -266,7 +271,120 @@ function normalizeMemberInput(body, index = null, defaultJoinedAt = true) {
     if (email.length > 100 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new FinanceValidationError(`${prefix}Email 格式無效或超過 100 字`);
     if (phone.length > 30 || position.length > 60 || note.length > 1000) throw new FinanceValidationError(`${prefix}電話、職務或備註超過允許長度`);
     const joinedAt = String(body?.joinedAt ?? '').trim();
-    return { name, studentId, email, phone, position, note, joinedAt: joinedAt ? importedDate(joinedAt) : (defaultJoinedAt ? new Date().toISOString().slice(0, 10) : '') };
+    const level = body?.level ? parseMemberLevel(body.level) : 'member';
+    if (!level) throw new FinanceValidationError(`${prefix}社員身分無效（可填 非正式社員、正式社員、籌備幹部、正式幹部）`);
+    const feeStatus = body?.feeStatus ? parseFeeStatus(body.feeStatus) : 'unpaid';
+    if (!feeStatus) throw new FinanceValidationError(`${prefix}社費狀態無效（可填 未繳費、學期會籍、在學會籍）`);
+    let feeSemester = String(body?.feeSemester ?? '').trim();
+    if (feeStatus === 'semester' && !feeSemester) feeSemester = semesterOf();
+    if (feeStatus !== 'semester') feeSemester = '';
+    if (feeSemester && !validSemester(feeSemester)) throw new FinanceValidationError(`${prefix}會籍學期格式須為「115-1」`);
+    const trialUses = body?.trialUses === undefined || body?.trialUses === '' || body?.trialUses === null ? 0 : Number(body.trialUses);
+    if (!Number.isInteger(trialUses) || trialUses < 0 || trialUses > 99) throw new FinanceValidationError(`${prefix}體驗社課次數需為 0 至 99 的整數`);
+    return { name, studentId, email, phone, position, note, joinedAt: joinedAt ? importedDate(joinedAt) : (defaultJoinedAt ? new Date().toISOString().slice(0, 10) : ''), level, feeStatus, feeSemester, trialUses };
+}
+
+// Roster entry as shown to officers: stored fields, derived status and the bound login account.
+function memberView(member, accountsByMember) {
+    return { ...member, status: membershipStatus(member), account: accountsByMember?.get(member.id) || '' };
+}
+
+async function listUsers(env) {
+    const keys = await env.DRONE_DB.list({ prefix: 'user:' });
+    const users = await Promise.all(keys.keys.map(async key => {
+        try { return JSON.parse(await env.DRONE_DB.get(key.name)); } catch { return null; }
+    }));
+    return users.filter(user => user && typeof user.username === 'string');
+}
+
+async function accountsByMemberId(env) {
+    return new Map((await listUsers(env)).filter(user => user.memberId).map(user => [user.memberId, user.username]));
+}
+
+function parseRegulations(json) {
+    if (!json) return structuredClone(DEFAULT_REGULATIONS);
+    const list = JSON.parse(json);
+    if (!Array.isArray(list)) throw new Error('法規資料格式錯誤');
+    return list;
+}
+
+function regulationKind(regulation) { return REGULATION_KINDS[regulation?.kind] ? regulation.kind : 'bylaw'; }
+
+function rocDate(date) {
+    const [year, month, day] = date.slice(0, 10).split('-');
+    return `${Number(year) - 1911}.${month}.${day}`;
+}
+
+// A proposal to amend, create or repeal a regulation. Nothing changes until it is adopted.
+function normalizeAmendmentInput(body, regulations) {
+    const action = String(body?.action || 'amend');
+    if (!AMENDMENT_ACTIONS[action]) throw new FinanceValidationError('修正案類型無效');
+    const reason = String(body?.reason ?? '').trim();
+    if (!reason || reason.length > 2000) throw new FinanceValidationError('請填寫修正理由（2,000 字以內）');
+    let regulation = null, kind;
+    if (action === 'create') {
+        kind = String(body?.kind || 'bylaw');
+        if (!['bylaw', 'school'].includes(kind)) throw new FinanceValidationError('只能制定新的施行細則，或登錄學校法規');
+        if (regulations.length >= 50) throw new FinanceValidationError('法規最多 50 份');
+    } else {
+        regulation = regulations.find(item => item.id === body?.regulationId);
+        if (!regulation) throw new FinanceValidationError('找不到要修正的法規');
+        if (regulation.repealed) throw new FinanceValidationError('此法規已廢止');
+        kind = regulationKind(regulation);
+        if (action === 'repeal' && kind === 'charter') throw new FinanceValidationError('組織章程不可廢止；解散社團依章程第十條第四款另行決議');
+    }
+    const fields = { action, kind, reason, regulationId: regulation?.id || '', baseRevision: regulation ? (regulation.revision || 0) : null, ...checkProposalSource(kind, body?.source, body?.signers) };
+    if (kind === 'bylaw') fields.needsAssembly = body?.needsAssembly === true;
+    if (action === 'repeal') return { ...fields, title: regulation.title };
+    const title = financeText(body?.title ?? regulation?.title, '法規名稱', 120);
+    const category = String(body?.category ?? regulation?.category ?? '').trim() || (kind === 'school' ? '學校法規' : '本社規章');
+    const content = String(body?.content ?? '').replace(/\r\n?/g, '\n').trim();
+    if (category.length > 40) throw new FinanceValidationError('分類超過允許長度');
+    if (!content || content.length > 50000) throw new FinanceValidationError('法規內容不可空白，且不可超過 50,000 字');
+    if (regulation && content === regulation.content && title === regulation.title) throw new FinanceValidationError('條文沒有任何變更');
+    return { ...fields, title, category, content, baseContent: regulation?.content || '' };
+}
+
+// The record of how an amendment was passed. Throws when a threshold is not met.
+function resolutionFor(amendment, body) {
+    const needs = requirementsFor(amendment.kind, amendment.needsAssembly);
+    const resolution = {};
+    try {
+        if (needs.assembly) resolution.assembly = { date: financeDate(body?.assembly?.date), ...checkAssembly(body?.assembly, needs.assembly === 'major') };
+        if (needs.officersMeeting) resolution.officersMeetingDate = financeDate(body?.officersMeetingDate);
+        if (needs.presidentApproval) resolution.presidentApprovedAt = financeDate(body?.presidentApprovedAt);
+        if (needs.schoolAnnouncement) {
+            resolution.schoolAnnouncedAt = financeDate(body?.schoolAnnouncedAt);
+            resolution.source = financeText(body?.source, '學校公告來源', 200);
+        }
+        if (needs.school && body?.schoolApprovedAt) resolution.schoolApprovedAt = financeDate(body.schoolApprovedAt);
+    } catch (error) {
+        if (error instanceof RegulationRuleError) throw new FinanceValidationError(error.message);
+        throw error;
+    }
+    if (resolution.assembly && resolution.officersMeetingDate && resolution.assembly.date < resolution.officersMeetingDate) throw new FinanceValidationError('社員大會日期不可早於幹部會議日期');
+    if (resolution.presidentApprovedAt && [resolution.officersMeetingDate, resolution.assembly?.date].some(date => date && resolution.presidentApprovedAt < date)) throw new FinanceValidationError('社長核定日期不可早於幹部會議或社員大會日期');
+    if (resolution.schoolApprovedAt && resolution.assembly && resolution.schoolApprovedAt < resolution.assembly.date) throw new FinanceValidationError('學校核備日期不可早於社員大會日期');
+    return resolution;
+}
+
+function applyAmendment(regulations, amendment, now) {
+    const date = amendment.resolution.schoolApprovedAt || amendment.resolution.presidentApprovedAt || amendment.resolution.schoolAnnouncedAt || amendment.resolution.assembly?.date || now.slice(0, 10);
+    const version = amendment.versionLabel || `${rocDate(date)} ${AMENDMENT_ACTIONS[amendment.action]}`;
+    if (amendment.action === 'create') {
+        regulations.push({ id: crypto.randomUUID(), kind: amendment.kind, title: amendment.title, category: amendment.category, version, content: amendment.content, revision: 1, history: [], lastAmendmentId: amendment.id, updatedAt: now });
+        return;
+    }
+    const regulation = regulations.find(item => item.id === amendment.regulationId);
+    const history = Array.isArray(regulation.history) ? regulation.history : [];
+    history.push({ revision: regulation.revision || 0, version: regulation.version, title: regulation.title, content: regulation.content, replacedAt: now, replacedBy: amendment.id });
+    if (history.length > 20) history.splice(0, history.length - 20);
+    regulation.history = history;
+    regulation.revision = (regulation.revision || 0) + 1;
+    regulation.lastAmendmentId = amendment.id;
+    regulation.updatedAt = now;
+    if (amendment.action === 'repeal') { regulation.repealed = { date, amendmentId: amendment.id }; regulation.version = version; return; }
+    Object.assign(regulation, { title: amendment.title, category: amendment.category, content: amendment.content, version });
 }
 
 function normalizeEquipmentInput(body) {
@@ -813,23 +931,46 @@ async function handleRequest(request, env, ctx) {
                 if (!actor) return Response.json({ error: '未授權' }, { status: 401 });
                 if (!canManageUsers(actor)) return Response.json({ error: '權限不足' }, { status: 403 });
                 if (method === 'GET') {
-                    const keys = await env.DRONE_DB.list({ prefix: 'user:' });
-                    const users = await Promise.all(keys.keys.map(async key => JSON.parse(await env.DRONE_DB.get(key.name))));
-                    return Response.json(users.map(publicUser));
+                    const users = await listUsers(env);
+                    const members = new Map(parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY)).map(member => [member.id, member]));
+                    return Response.json(users.map(item => {
+                        const member = item.memberId ? members.get(item.memberId) : null;
+                        return { ...publicUser(item), member: member ? { id: member.id, name: member.name, studentId: member.studentId, status: membershipStatus(member) } : null };
+                    }));
                 }
                 const body = await readJsonObject(request);
                 const username = String(body.username || '').trim().toLowerCase();
                 if (!/^[a-z0-9._-]{3,40}$/.test(username)) return Response.json({ error: '帳號須為 3–40 位英數字、點、底線或連字號' }, { status: 400 });
+                // Binding an account to a roster entry (帳號與社員綁定). One roster entry per account.
+                let memberId;
+                if (body.memberId !== undefined) {
+                    memberId = typeof body.memberId === 'string' ? body.memberId : '';
+                    if (memberId) {
+                        const members = parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY));
+                        if (!members.some(member => member.id === memberId)) return Response.json({ error: '社員不存在' }, { status: 404 });
+                        const owner = (await listUsers(env)).find(item => item.memberId === memberId && item.username !== username);
+                        if (owner) return Response.json({ error: `此社員已綁定帳號 ${owner.username}` }, { status: 409 });
+                    }
+                }
                 if (method === 'POST') {
                     if (!validRole(body.role) || typeof body.password !== 'string' || body.password.length < 8) return Response.json({ error: '角色無效或密碼少於 8 字元' }, { status: 400 });
                     if (await env.DRONE_DB.get(`user:${username}`)) return Response.json({ error: '帳號已存在' }, { status: 409 });
-                    const user = { username, role: body.role, active: true, passwordHash: await passwordHash(body.password), version: crypto.randomUUID(), createdAt: new Date().toISOString() };
+                    const user = { username, role: body.role, active: true, passwordHash: await passwordHash(body.password), version: crypto.randomUUID(), createdAt: new Date().toISOString(), ...(memberId ? { memberId } : {}) };
                     await env.DRONE_DB.put(`user:${username}`, JSON.stringify(user));
                     return Response.json(publicUser(user), { status: 201 });
                 }
                 const existing = await env.DRONE_DB.get(`user:${username}`);
                 if (!existing) return Response.json({ error: '帳號不存在' }, { status: 404 });
                 const user = JSON.parse(existing);
+                // Changing only the binding does not sign the person out.
+                const onlyBinding = memberId !== undefined && body.role === undefined && body.active === undefined && body.password === undefined;
+                if (memberId !== undefined) {
+                    if (memberId) user.memberId = memberId; else delete user.memberId;
+                }
+                if (onlyBinding) {
+                    await env.DRONE_DB.put(`user:${username}`, JSON.stringify(user));
+                    return Response.json(publicUser(user));
+                }
                 if (body.role !== undefined) {
                     if (!validRole(body.role)) return Response.json({ error: '角色無效' }, { status: 400 });
                     user.role = body.role;
@@ -1071,7 +1212,16 @@ async function handleRequest(request, env, ctx) {
                 const members = parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY));
                 if (method === 'GET') {
                     const query = String(url.searchParams.get('q') || '').trim().toLowerCase();
-                    return Response.json(query ? members.filter(member => [member.name, member.studentId, member.email, member.phone, member.note, member.position].some(value => String(value || '').toLowerCase().includes(query))) : members);
+                    const filter = String(url.searchParams.get('filter') || '');
+                    const accounts = await accountsByMemberId(env);
+                    let list = members.map(member => memberView(member, accounts));
+                    if (query) list = list.filter(member => [member.name, member.studentId, member.email, member.phone, member.note, member.position, member.account].some(value => String(value || '').toLowerCase().includes(query)));
+                    if (filter === 'unpaid') list = list.filter(member => member.status.unpaid);
+                    else if (filter === 'paid') list = list.filter(member => member.status.paid);
+                    else if (filter === 'voting') list = list.filter(member => member.status.voting);
+                    else if (filter === 'unbound') list = list.filter(member => !member.account);
+                    else if (MEMBER_LEVELS[filter]) list = list.filter(member => member.status.level === filter);
+                    return Response.json(list);
                 }
                 const body = await readJsonObject(request);
                 const fields = normalizeMemberInput(body);
@@ -1080,7 +1230,7 @@ async function handleRequest(request, env, ctx) {
                 const member = { id: crypto.randomUUID(), ...fields, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
                 members.push(member);
                 await env.DRONE_DB.put(MEMBERS_KEY, JSON.stringify(members));
-                return Response.json(member, { status: 201 });
+                return Response.json(memberView(member), { status: 201 });
             }
 
             if (path.startsWith('/api/members/') && method === 'PATCH') {
@@ -1097,7 +1247,7 @@ async function handleRequest(request, env, ctx) {
                 if (studentId && members.some(item => item.id !== id && String(item.studentId || '').trim().toUpperCase() === studentId)) return Response.json({ error: '學號已存在' }, { status: 409 });
                 Object.assign(member, fields, { updatedAt: new Date().toISOString() });
                 await env.DRONE_DB.put(MEMBERS_KEY, JSON.stringify(members));
-                return Response.json(member);
+                return Response.json(memberView(member, await accountsByMemberId(env)));
             }
 
             if (path === '/api/member-fee-receipts' && ['GET', 'POST'].includes(method)) {
@@ -1107,8 +1257,12 @@ async function handleRequest(request, env, ctx) {
                 const receipts = parseFinanceList(await env.DRONE_DB.get(MEMBERSHIP_RECEIPTS_KEY));
                 if (method === 'GET') return Response.json(receipts.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)));
                 const body = await readJsonObject(request);
-                const payerName = String(body.payerName || '').trim();
-                const studentId = String(body.studentId || '').trim();
+                let memberId = typeof body.memberId === 'string' ? body.memberId : '';
+                const members = parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY));
+                let member = memberId ? members.find(item => item.id === memberId) : null;
+                if (memberId && !member) return Response.json({ error: '社員不存在' }, { status: 404 });
+                const payerName = String(body.payerName || '').trim() || member?.name || '';
+                const studentId = String(body.studentId || '').trim() || member?.studentId || '';
                 if ((!payerName && !studentId) || payerName.length > 50 || studentId.length > 30) return Response.json({ error: '繳費者至少需填姓名或學號' }, { status: 400 });
                 const amount = financeAmount(body.amount);
                 if (!amount) return Response.json({ error: '社費金額必須為 1 至 1,000,000,000 的整數' }, { status: 400 });
@@ -1116,10 +1270,21 @@ async function handleRequest(request, env, ctx) {
                 const date = financeDate(body.date || new Date().toISOString().slice(0, 10));
                 const receiptNumber = String(body.receiptNumber || '').trim().slice(0, 80);
                 const note = String(body.note || '').trim().slice(0, 500);
-                const memberId = typeof body.memberId === 'string' ? body.memberId : '';
-                const record = { id: crypto.randomUUID(), memberId, payerName, studentId, amount, date, receiver, receiptNumber, note, recordedBy: user.username, createdAt: new Date().toISOString() };
+                const feeType = receiptFeeType(body.feeType, amount);
+                // A receipt for a roster entry (chosen, or matched by student ID) updates that
+                // member's fee status, like Django's FeeRecord does for User.fee_status.
+                if (!member && studentId) {
+                    member = members.find(item => String(item.studentId || '').toUpperCase() === studentId.toUpperCase()) || null;
+                    if (member) memberId = member.id;
+                }
+                const record = { id: crypto.randomUUID(), memberId, payerName, studentId, amount, feeType, semester: semesterOf(date), date, receiver, receiptNumber, note, recordedBy: user.username, createdAt: new Date().toISOString() };
                 receipts.push(record);
                 await env.DRONE_DB.put(MEMBERSHIP_RECEIPTS_KEY, JSON.stringify(receipts));
+                if (member && applyFeeReceipt(member, feeType, date)) {
+                    member.updatedAt = new Date().toISOString();
+                    await env.DRONE_DB.put(MEMBERS_KEY, JSON.stringify(members));
+                    record.memberStatus = membershipStatus(member);
+                }
                 return Response.json(record, { status: 201 });
             }
 
@@ -1142,7 +1307,96 @@ async function handleRequest(request, env, ctx) {
                 const members = parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY));
                 if (!members.some(member => member.id === id)) return Response.json({ error: '社員不存在' }, { status: 404 });
                 await env.DRONE_DB.put(MEMBERS_KEY, JSON.stringify(members.filter(member => member.id !== id)));
+                // Release any login account bound to the removed roster entry.
+                for (const account of (await listUsers(env)).filter(item => item.memberId === id)) {
+                    delete account.memberId;
+                    await env.DRONE_DB.put(`user:${account.username}`, JSON.stringify(account));
+                }
                 return Response.json({ success: true });
+            }
+
+            // ==================== API: Own account and bound member record ====================
+            if (path === '/api/me' && method === 'GET') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                const member = user.memberId ? parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY)).find(item => item.id === user.memberId) : null;
+                const receipts = member ? parseFinanceList(await env.DRONE_DB.get(MEMBERSHIP_RECEIPTS_KEY)).filter(item => item.memberId === member.id)
+                    .sort((a, b) => b.date.localeCompare(a.date)).map(({ date, amount, feeType, semester, receiptNumber }) => ({ date, amount, feeType, semester, receiptNumber })) : [];
+                return Response.json({
+                    ...publicUser(user),
+                    member: member ? { name: member.name, studentId: member.studentId, email: member.email, phone: member.phone, position: member.position, joinedAt: member.joinedAt, feeSemester: member.feeSemester || '', status: membershipStatus(member) } : null,
+                    feeReceipts: receipts
+                });
+            }
+
+            // ==================== API: Regulations lookup (法規查詢) ====================
+            // Regulations are read-only here. They change only through an amendment that
+            // records how it was passed (see regulation-rules.js).
+            if (path === '/api/regulations' && method === 'GET') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                return Response.json(parseRegulations(await env.DRONE_DB.get(REGULATIONS_KEY)));
+            }
+
+            if (path === '/api/regulation-amendments' && ['GET', 'POST'].includes(method)) {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                const amendments = parseFinanceList(await env.DRONE_DB.get(REGULATION_AMENDMENTS_KEY));
+                if (method === 'GET') return Response.json(amendments.sort((a, b) => b.proposedAt.localeCompare(a.proposedAt)));
+                // Officers file proposals on behalf of whoever raised them (committee, petition, officers' meeting).
+                if (!canViewCms(user)) return Response.json({ error: '權限不足：修正案由幹部代為登錄' }, { status: 403 });
+                if (amendments.filter(item => item.status === 'proposed' || item.status === 'awaiting_school').length >= 30) return Response.json({ error: '進行中的修正案最多 30 件，請先處理既有提案' }, { status: 400 });
+                const regulations = parseRegulations(await env.DRONE_DB.get(REGULATIONS_KEY));
+                const amendment = { id: crypto.randomUUID(), ...normalizeAmendmentInput(await readJsonObject(request, 300_000), regulations), status: 'proposed', proposedBy: user.username, proposedAt: new Date().toISOString() };
+                amendments.push(amendment);
+                if (amendments.length > 300) amendments.splice(0, amendments.length - 300);
+                await env.DRONE_DB.put(REGULATION_AMENDMENTS_KEY, JSON.stringify(amendments));
+                return Response.json(amendment, { status: 201 });
+            }
+
+            const amendmentAction = /^\/api\/regulation-amendments\/([^/]+)\/(adopt|school-approval|close)$/.exec(path);
+            if (amendmentAction && method === 'POST') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                const [, id, action] = amendmentAction;
+                const amendments = parseFinanceList(await env.DRONE_DB.get(REGULATION_AMENDMENTS_KEY));
+                const amendment = amendments.find(item => item.id === decodeURIComponent(id));
+                if (!amendment) return Response.json({ error: '修正案不存在' }, { status: 404 });
+                const body = await readJsonObject(request);
+                const now = new Date().toISOString();
+                if (action === 'close') {
+                    const outcome = String(body.outcome || '');
+                    if (!['rejected', 'withdrawn'].includes(outcome)) return Response.json({ error: '結案方式無效' }, { status: 400 });
+                    if (amendment.status !== 'proposed' && !(amendment.status === 'awaiting_school' && outcome === 'rejected')) return Response.json({ error: '此修正案已結案' }, { status: 409 });
+                    if (outcome === 'rejected' && !canManageUsers(user)) return Response.json({ error: '只有社長可以登錄未通過結果' }, { status: 403 });
+                    if (outcome === 'withdrawn' && !canManageUsers(user) && amendment.proposedBy !== user.username) return Response.json({ error: '只有登錄者或社長可以撤回' }, { status: 403 });
+                    const note = String(body.note || '').trim().slice(0, 500);
+                    if (outcome === 'rejected' && !note) return Response.json({ error: '請填寫未通過的情形（例如社員大會出席或同意人數未達門檻、學校未核備）' }, { status: 400 });
+                    Object.assign(amendment, { status: outcome, closedAt: now, closedBy: user.username, closeNote: note });
+                    await env.DRONE_DB.put(REGULATION_AMENDMENTS_KEY, JSON.stringify(amendments));
+                    return Response.json(amendment);
+                }
+                if (!canManageUsers(user)) return Response.json({ error: '只有社長可以登錄表決及核備結果' }, { status: 403 });
+                const regulations = parseRegulations(await env.DRONE_DB.get(REGULATIONS_KEY));
+                const target = amendment.regulationId ? regulations.find(item => item.id === amendment.regulationId) : null;
+                if (amendment.regulationId && (!target || (target.revision || 0) !== amendment.baseRevision)) return Response.json({ error: '此法規在提案後已有其他修正生效，請以最新條文重新提案' }, { status: 409 });
+                if (action === 'adopt') {
+                    if (amendment.status !== 'proposed') return Response.json({ error: '只有提案中的修正案可以登錄通過' }, { status: 409 });
+                    amendment.resolution = resolutionFor(amendment, body);
+                    amendment.adoptedAt = now; amendment.adoptedBy = user.username;
+                    amendment.versionLabel = String(body.version || '').trim().slice(0, 60);
+                    if (amendment.kind === 'charter' && !amendment.resolution.schoolApprovedAt) amendment.status = 'awaiting_school';
+                } else {
+                    if (amendment.status !== 'awaiting_school') return Response.json({ error: '此修正案不在待學校核備階段' }, { status: 409 });
+                    amendment.resolution.schoolApprovedAt = financeDate(body.schoolApprovedAt);
+                }
+                if (action === 'school-approval' || amendment.status !== 'awaiting_school') {
+                    applyAmendment(regulations, amendment, now);
+                    amendment.status = 'effective'; amendment.effectiveAt = now;
+                    await env.DRONE_DB.put(REGULATIONS_KEY, JSON.stringify(regulations));
+                }
+                await env.DRONE_DB.put(REGULATION_AMENDMENTS_KEY, JSON.stringify(amendments));
+                return Response.json(amendment);
             }
 
             // ==================== Public equipment loan slip (no login, no AI) ====================
@@ -1334,7 +1588,7 @@ async function handleRequest(request, env, ctx) {
 
         } catch (e) {
             if (e instanceof PayloadTooLargeError) return Response.json({ error: e.message }, { status: 413 });
-            if (e instanceof FinanceValidationError || e instanceof FormValidationError) return Response.json({ error: e.message }, { status: 400 });
+            if (e instanceof FinanceValidationError || e instanceof FormValidationError || e instanceof RegulationRuleError) return Response.json({ error: e.message }, { status: 400 });
             if (e instanceof FormServiceError) return Response.json({ error: e.message }, { status: e.status });
             if (e instanceof PasswordResetRequiredError) {
                 if (path === '/api/login') {
@@ -1410,7 +1664,7 @@ export class EquipmentStore {
                 });
             return Response.json(result.body, { status: result.status });
         } catch (error) {
-            if (error instanceof FinanceValidationError) return Response.json({ error: error.message }, { status: 400 });
+            if (error instanceof FinanceValidationError || error instanceof RegulationRuleError) return Response.json({ error: error.message }, { status: 400 });
             console.error('Equipment store operation failed', error?.message || String(error));
             return Response.json({ error: '設備資料操作失敗' }, { status: 500 });
         }

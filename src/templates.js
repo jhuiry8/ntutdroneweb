@@ -1670,9 +1670,10 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                         ${manageFinance ? `<button class="nav-item" onclick="showPanel('finance'); loadFinance()"><i data-lucide="wallet-cards"></i> 財務管理</button>` : ''}
                         ${manageEquipment ? `<button class="nav-item" onclick="showPanel('equipment'); loadEquipment()"><i data-lucide="package-check"></i> 設備管理</button>` : ''}
                         ${viewCms ? `<button class="nav-item" onclick="showPanel('notes'); loadNotes()"><i data-lucide="sticky-note"></i> 社課備忘錄</button>` : ''}
+                        <button class="nav-item" onclick="showPanel('regulations'); loadRegulations()"><i data-lucide="scale"></i> 法規查詢</button>
                     </div>
                     <div class="nav-group"><p class="nav-group-label">系統管理</p>
-                        <button class="nav-item" onclick="showPanel('settings')"><i data-lucide="settings"></i> 系統設定</button>
+                        <button class="nav-item" onclick="showPanel('settings'); loadMyMember()"><i data-lucide="settings"></i> 系統設定</button>
                         ${user?.role === 'president' ? `<button class="nav-item" onclick="showPanel('users'); loadUsers()"><i data-lucide="users"></i> 帳號與權限</button>` : ''}
                     </div>
                 </div>
@@ -2183,15 +2184,16 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 <h2 style="font-size:1.1rem; margin-bottom:12px;">帳目與審核</h2><div class="table-container"><table><thead><tr><th>日期</th><th>事由</th><th>收入</th><th>支出</th><th>現金變動</th><th>郵局變動</th><th>狀態</th><th>操作</th></tr></thead><tbody id="finance-transactions"></tbody></table></div>
             </div>` : ''}
             ${manageMembers ? `<div id="panel-members" class="panel">
-                <div class="content-header"><div><h1>社員管理</h1><p style="color:var(--text-muted); margin-top:6px;">快速匯入、搜尋與維護社員名冊。僅社長與財務可存取。</p></div></div>
+                <div class="content-header"><div><h1>社員管理</h1><p style="color:var(--text-muted); margin-top:6px;">快速匯入、搜尋與維護社員名冊。僅社長與財務可存取。身分與社費依《社員與幹部四級分級細則》及《社費細則》（115.09.01 修訂）判定。</p></div></div>
+                <div id="member-summary" class="finance-summary" style="margin-bottom:18px;"></div>
                 <div style="margin-bottom:18px; padding:18px; border:1px solid var(--border-glass); border-radius:12px;"><h2 style="font-size:1.05rem; margin-bottom:6px;">大量新增</h2><p style="color:var(--text-muted); font-size:.88rem; margin-bottom:12px;">可匯入社員名冊 CSV／TSV，也能直接貼上社費帳本；系統會辨識欄位、從「事宜」擷取社費繳費者，並提供逐筆修改。重複學號會自動跳過；無學號資料以姓名比對。單次最多 500 筆。</p><div class="responsive-form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><input id="member-import-file" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values" class="form-control" onchange="invalidateMemberImport()"><textarea id="member-import-text" class="form-control" rows="4" oninput="invalidateMemberImport()" placeholder="貼上 CSV／TSV，或選擇社費帳本檔案"></textarea></div><div style="display:flex; gap:10px; margin-top:12px;"><button type="button" class="btn btn-secondary" onclick="previewMemberImport()">自動辨識並預覽</button><button id="member-import-submit" type="button" class="btn btn-primary" onclick="submitMemberImport()" disabled>確認新增</button></div><div id="member-import-preview" aria-live="polite" style="margin-top:12px;"></div></div>
-                <details style="margin-bottom:18px; padding:16px; border:1px solid var(--border-glass); border-radius:12px;"><summary style="cursor:pointer; font-weight:600;">單筆新增／編輯社員</summary><form id="member-form" onsubmit="saveMember(event)" class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px;"><input id="member-edit-id" type="hidden"><input id="member-name" class="form-control" placeholder="姓名（姓名或學號至少填一項）" maxlength="50"><input id="member-student-id" class="form-control" placeholder="學號" maxlength="30"><input id="member-position" class="form-control" placeholder="幹部職務（選填）" maxlength="60"><input id="member-email" class="form-control" type="email" placeholder="Email（選填）" maxlength="100"><input id="member-phone" class="form-control" placeholder="電話（選填）" maxlength="30"><input id="member-joined-at" class="form-control" type="date"><textarea id="member-note" class="form-control" rows="2" maxlength="1000" placeholder="備註（選填）"></textarea><button class="btn btn-primary" type="submit">儲存社員資料</button><button class="btn btn-secondary" type="button" onclick="resetMemberForm()">清除表單</button></form></details>
-                <div style="display:flex; gap:12px; margin-bottom:14px;"><input id="member-search" class="form-control" placeholder="依姓名、學號、Email 或電話搜尋" oninput="loadMembers()"><button type="button" class="btn btn-secondary" onclick="loadMembers()">查詢</button></div>
-                <div class="table-container"><table><thead><tr><th>姓名／學號</th><th>幹部職務</th><th>Email／電話</th><th>備註</th><th>加入日期</th><th>操作</th></tr></thead><tbody id="members-list"></tbody></table></div>
+                <details style="margin-bottom:18px; padding:16px; border:1px solid var(--border-glass); border-radius:12px;"><summary style="cursor:pointer; font-weight:600;">單筆新增／編輯社員（預設為未繳費的正式社員）</summary><p id="member-editing" style="display:none; margin-top:10px; padding:8px 12px; border-radius:8px; background:rgba(96,165,250,.12); color:#93c5fd;"></p><p style="color:var(--text-muted); font-size:.85rem; margin-top:10px;">先登記、之後再繳費的社員，選「未繳費」即可；記錄社費簽收時會自動更新為已繳費。學期會籍只在繳費學期有效（例如 115-1），在學會籍持續有效。正式幹部在任期間具表決權；未繳費的籌備幹部不具表決權。</p><form id="member-form" onsubmit="saveMember(event)" class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px;"><input id="member-edit-id" type="hidden"><input id="member-name" class="form-control" placeholder="姓名（姓名或學號至少填一項）" maxlength="50"><input id="member-student-id" class="form-control" placeholder="學號" maxlength="30"><label style="display:grid; gap:4px; font-size:.85rem; color:var(--text-muted);">社員身分<select id="member-level" class="form-control" onchange="syncMemberForm()"><option value="trial">非正式社員（體驗學員）</option><option value="member" selected>正式社員</option><option value="prep">籌備幹部</option><option value="officer">正式幹部</option></select></label><label style="display:grid; gap:4px; font-size:.85rem; color:var(--text-muted);">社費狀態<select id="member-fee-status" class="form-control" onchange="syncMemberForm()"><option value="unpaid" selected>未繳費</option><option value="semester">學期會籍（500 元）</option><option value="lifetime">在學會籍（1,000 元）</option></select></label><label id="member-fee-semester-wrap" style="display:none; gap:4px; font-size:.85rem; color:var(--text-muted);">會籍學期<input id="member-fee-semester" class="form-control" placeholder="例如 115-1" maxlength="6" pattern="\\d{2,3}-[12]"></label><label id="member-trial-wrap" style="display:none; gap:4px; font-size:.85rem; color:var(--text-muted);">已使用免費體驗社課（本學年，上限 2 次）<input id="member-trial-uses" class="form-control" type="number" min="0" max="99" step="1" value="0"></label><input id="member-position" class="form-control" placeholder="幹部職務（選填，例如 教學技術組-器材）" maxlength="60" list="member-position-options"><datalist id="member-position-options"><option value="社長"><option value="副社長"><option value="活動公關組-活動"><option value="活動公關組-公關"><option value="活動公關組-宣傳"><option value="教學技術組-教學"><option value="教學技術組-器材"><option value="行政庶務組-執秘"><option value="行政庶務組-總務"><option value="行政庶務組-場地"><option value="法規監察委員"></datalist><input id="member-email" class="form-control" type="email" placeholder="Email（選填）" maxlength="100"><input id="member-phone" class="form-control" placeholder="電話（選填）" maxlength="30"><input id="member-joined-at" class="form-control" type="date"><textarea id="member-note" class="form-control" rows="2" maxlength="1000" placeholder="備註（選填）"></textarea><button id="member-submit" class="btn btn-primary" type="submit">新增社員</button><button id="member-reset" class="btn btn-secondary" type="button" onclick="resetMemberForm()">清除表單</button></form></details>
+                <div class="responsive-form-grid" style="display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto; gap:12px; margin-bottom:14px;"><input id="member-search" class="form-control" placeholder="依姓名、學號、Email、電話或綁定帳號搜尋" oninput="loadMembers()"><select id="member-filter" class="form-control" onchange="loadMembers()" aria-label="篩選社員"><option value="">全部社員</option><option value="unpaid">未繳費社員</option><option value="paid">已繳費</option><option value="voting">具表決權（社員總額）</option><option value="trial">非正式社員</option><option value="member">正式社員</option><option value="prep">籌備幹部</option><option value="officer">正式幹部</option><option value="unbound">未綁定帳號</option></select><button type="button" class="btn btn-secondary" onclick="loadMembers()">查詢</button></div>
+                <div class="table-container"><table><thead><tr><th>姓名／學號</th><th>身分</th><th>社費</th><th>表決權</th><th>綁定帳號</th><th>幹部職務</th><th>Email／電話</th><th>備註</th><th>加入日期</th><th>操作</th></tr></thead><tbody id="members-list"></tbody></table></div>
                 <div style="margin-top:32px; padding:18px; border:1px solid var(--border-glass); border-radius:12px;">
-                    <h2 style="font-size:1.15rem;">社費簽收</h2><p style="color:var(--text-muted); margin:6px 0 16px;">記錄繳費者、收款人與收據線索；此簽收紀錄獨立保存，不會自動登成已核准財務帳目。</p>
-                    <form onsubmit="createFeeReceipt(event)" class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:20px;"><select id="fee-member" class="form-control" onchange="fillFeePayer()"><option value="">選社員或手動填寫</option></select><input id="fee-payer-name" class="form-control" placeholder="繳費者姓名（或只填學號）" maxlength="50"><input id="fee-student-id" class="form-control" placeholder="繳費者學號" maxlength="30"><input id="fee-amount" class="form-control" type="number" min="1" step="1" placeholder="收取金額（元）" required><input id="fee-date" class="form-control" type="date" required><input id="fee-receiver" class="form-control" placeholder="收款人姓名（必填）" maxlength="50" required><input id="fee-receipt-number" class="form-control" placeholder="收據編號／收據線索（選填）" maxlength="80"><input id="fee-note" class="form-control" placeholder="備註（選填）" maxlength="500"><button class="btn btn-primary" type="submit">記錄社費簽收</button></form>
-                    <div class="table-container"><table><thead><tr><th>日期</th><th>繳費者</th><th>金額</th><th>收款人</th><th>收據資訊</th><th>紀錄人</th><th>操作</th></tr></thead><tbody id="fee-receipts-list"></tbody></table></div>
+                    <h2 style="font-size:1.15rem;">社費簽收</h2><p style="color:var(--text-muted); margin:6px 0 16px;">記錄繳費者、收款人與收據線索；此簽收紀錄獨立保存，不會自動登成已核准財務帳目。選擇已造冊社員（或填寫名冊中的學號）時，會依繳費方案把該社員更新為已繳費，非正式社員同時轉為正式社員。刪除簽收紀錄不會改回社費狀態，請到社員資料手動調整。</p>
+                    <form id="fee-form" onsubmit="createFeeReceipt(event)" class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:20px;"><select id="fee-member" class="form-control" onchange="fillFeePayer()"><option value="">選社員或手動填寫</option></select><input id="fee-payer-name" class="form-control" placeholder="繳費者姓名（或只填學號）" maxlength="50"><input id="fee-student-id" class="form-control" placeholder="繳費者學號" maxlength="30"><input id="fee-amount" class="form-control" type="number" min="1" step="1" placeholder="收取金額（元）" required><select id="fee-type" class="form-control" aria-label="繳費方案" onchange="fillFeeAmount()"><option value="">繳費方案：依金額判斷（500 學期／1,000 在學）</option><option value="semester">學期會籍（500 元）</option><option value="lifetime">在學會籍（1,000 元）</option><option value="other">其他（不更新社費狀態）</option></select><input id="fee-date" class="form-control" type="date" required><input id="fee-receiver" class="form-control" placeholder="收款人姓名（必填）" maxlength="50" required><input id="fee-receipt-number" class="form-control" placeholder="收據編號／收據線索（選填）" maxlength="80"><input id="fee-note" class="form-control" placeholder="備註（選填）" maxlength="500"><button class="btn btn-primary" type="submit">記錄社費簽收</button></form>
+                    <div class="table-container"><table><thead><tr><th>日期</th><th>繳費者</th><th>金額／方案</th><th>收款人</th><th>收據資訊</th><th>紀錄人</th><th>操作</th></tr></thead><tbody id="fee-receipts-list"></tbody></table></div>
                 </div>
             </div>` : ''}
             ${manageEquipment ? `<div id="panel-equipment" class="panel">
@@ -2245,6 +2247,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 <div class="content-header">
                     <h1>系統帳號設定</h1>
                 </div>
+                <div class="forms-card" style="max-width:640px; margin-bottom:24px; padding:18px; border:1px solid var(--border-glass); border-radius:12px;"><h2 style="font-size:1.05rem; margin-bottom:10px;">我的社員資料</h2><div id="my-member" aria-live="polite" style="color:var(--text-muted);">載入中…</div></div>
                 
                 <form onsubmit="changePassword(event)" style="max-width: 450px;">
                     <div class="form-group">
@@ -2262,15 +2265,41 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     <button type="submit" class="btn btn-primary" style="margin-top: 10px;">儲存新密碼</button>
                 </form>
             </div>
+            <div id="panel-regulations" class="panel">
+                <div class="content-header"><div><h1>法規查詢</h1><p style="color:var(--text-muted); margin-top:6px;">本社組織章程、三項施行細則（115.09.01 修訂）及學校《學生社團組織及活動實施辦法》。輸入關鍵字可找出相關條文。條文不能直接修改：須提出修正案，依章程或細則規定的會議程序登錄通過後才會更新，並保留修正沿革。</p></div>${viewCms ? '<button type="button" class="btn btn-primary" onclick="openAmendmentForm()">提出修正案</button>' : ''}</div>
+                <div class="responsive-form-grid" style="display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:12px; margin-bottom:16px;"><input id="regulation-search" class="form-control" type="search" placeholder="搜尋條文關鍵字" oninput="renderRegulations()"><select id="regulation-doc" class="form-control" onchange="renderRegulations()" aria-label="選擇法規"><option value="">全部法規</option></select></div>
+                <div style="display:flex; flex-wrap:wrap; gap:8px; margin:-6px 0 16px;" aria-label="常用關鍵字"><span style="color:var(--text-muted); font-size:.85rem; align-self:center;">常用：</span><button type="button" class="btn btn-secondary" style="padding:4px 12px; font-size:.85rem;" onclick="searchRegulation(this.textContent)">表決權</button><button type="button" class="btn btn-secondary" style="padding:4px 12px; font-size:.85rem;" onclick="searchRegulation(this.textContent)">社費</button><button type="button" class="btn btn-secondary" style="padding:4px 12px; font-size:.85rem;" onclick="searchRegulation(this.textContent)">退費</button><button type="button" class="btn btn-secondary" style="padding:4px 12px; font-size:.85rem;" onclick="searchRegulation(this.textContent)">體驗</button><button type="button" class="btn btn-secondary" style="padding:4px 12px; font-size:.85rem;" onclick="searchRegulation(this.textContent)">社服</button><button type="button" class="btn btn-secondary" style="padding:4px 12px; font-size:.85rem;" onclick="searchRegulation(this.textContent)">幹部</button><button type="button" class="btn btn-secondary" style="padding:4px 12px; font-size:.85rem;" onclick="searchRegulation(this.textContent)">解任</button><button type="button" class="btn btn-secondary" style="padding:4px 12px; font-size:.85rem;" onclick="searchRegulation(this.textContent)">器材</button><button type="button" class="btn btn-secondary" style="padding:4px 12px; font-size:.85rem;" onclick="searchRegulation(this.textContent)">事故</button><button type="button" class="btn btn-secondary" style="padding:4px 12px; font-size:.85rem;" onclick="searchRegulation(this.textContent)">空拍</button><button type="button" class="btn btn-secondary" style="padding:4px 12px; font-size:.85rem;" onclick="searchRegulation('')">清除</button></div>
+                ${viewCms ? `<form id="amendment-form" onsubmit="submitAmendment(event)" style="display:none; gap:12px; margin-bottom:20px; padding:16px; border:1px solid var(--border-glass); border-radius:12px;">
+                    <h2 style="font-size:1.05rem;">提出修正案</h2>
+                    <p style="color:var(--text-muted); font-size:.85rem; margin:0;">送出後只是「提案中」，條文不會改變。要等社長依規定登錄會議表決（章程另需學校核備）後才會生效。</p>
+                    <div class="responsive-form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                        <label style="display:grid; gap:4px; font-size:.85rem; color:var(--text-muted);">要做什麼<select id="amendment-action" class="form-control" onchange="syncAmendmentForm(true)"><option value="amend">修正現有法規</option><option value="create">制定新的施行細則／登錄學校法規</option><option value="repeal">廢止現有細則</option></select></label>
+                        <label id="amendment-regulation-wrap" style="display:grid; gap:4px; font-size:.85rem; color:var(--text-muted);">法規<select id="amendment-regulation" class="form-control" onchange="syncAmendmentForm(true)"></select></label>
+                        <label id="amendment-kind-wrap" style="display:none; gap:4px; font-size:.85rem; color:var(--text-muted);">類別<select id="amendment-kind" class="form-control" onchange="syncAmendmentForm(false)"><option value="bylaw">施行細則（幹部會議通過、社長核定）</option><option value="school">學校法規（照學校公告登錄）</option></select></label>
+                    </div>
+                    <div id="amendment-procedure" style="padding:10px 12px; border-radius:8px; background:rgba(96,165,250,.1); color:#bfdbfe; font-size:.88rem; line-height:1.6;"></div>
+                    <div id="amendment-source-wrap" class="responsive-form-grid" style="display:none; grid-template-columns:1fr 1fr; gap:12px;"><label style="display:grid; gap:4px; font-size:.85rem; color:var(--text-muted);">提案來源（章程第十三條）<select id="amendment-source" class="form-control" onchange="syncAmendmentForm(false)"><option value="committee">法規監察委員會提出</option><option value="petition">正式社員連署提出</option></select></label><label id="amendment-signers-wrap" style="display:none; gap:4px; font-size:.85rem; color:var(--text-muted);">連署人數（至少 5 人）<input id="amendment-signers" class="form-control" type="number" min="0" step="1"></label></div>
+                    <label id="amendment-assembly-wrap" style="display:none; align-items:center; gap:8px; font-size:.9rem;"><input id="amendment-needs-assembly" type="checkbox" onchange="syncAmendmentForm(false)"> 涉及社員權利義務之重大變更或社費標準，需提社員大會</label>
+                    <input id="amendment-title" class="form-control" placeholder="法規名稱" maxlength="120">
+                    <textarea id="amendment-content" class="form-control" rows="14" maxlength="50000" placeholder="修正後的完整條文。每條以「第一條」或「壹、」開頭另起一行。" oninput="renderAmendmentDiff()"></textarea>
+                    <details id="amendment-diff-wrap"><summary style="cursor:pointer;">預覽與現行條文的差異</summary><div id="amendment-diff" style="margin-top:8px;"></div></details>
+                    <textarea id="amendment-reason" class="form-control" rows="3" maxlength="2000" placeholder="修正理由（必填）：為什麼要改、改了什麼" required></textarea>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;"><button class="btn btn-primary" type="submit">送出提案</button><button class="btn btn-secondary" type="button" onclick="closeAmendmentForm()">取消</button></div>
+                </form>` : ''}
+                <div id="amendment-list" style="margin-bottom:20px;"></div>
+                <div id="regulation-results" aria-live="polite"></div>
+            </div>
             ${user?.role === 'president' ? `<div id="panel-users" class="panel">
                 <div class="content-header"><h1>帳號與權限</h1></div>
                 <form onsubmit="createUser(event)" style="display:grid; gap:12px; max-width:520px; margin-bottom:24px;">
                     <input id="account-username" class="form-control" placeholder="帳號（英數字，至少 3 位）" required>
                     <input id="account-password" type="password" class="form-control" placeholder="初始密碼（至少 8 位）" minlength="8" required>
                     <select id="account-role" class="form-control"><option value="president">社長</option><option value="finance">財務</option><option value="cadre">一般幹部</option><option value="member">社員</option></select>
+                    <select id="account-member" class="form-control" aria-label="綁定社員"><option value="">不綁定社員（之後可再綁定）</option></select>
                     <button class="btn btn-primary" type="submit">新增帳號</button>
                 </form>
-                <div class="table-container"><table><thead><tr><th>帳號</th><th>角色</th><th>狀態</th><th>操作</th></tr></thead><tbody id="users-list"></tbody></table></div>
+                <p style="color:var(--text-muted); font-size:.88rem; margin-bottom:12px;">每個帳號可綁定一位社員名冊資料，綁定後該帳號可在「系統設定」查看自己的身分、社費與表決權狀態。一位社員只能綁定一個帳號；刪除社員會自動解除綁定。變更綁定不會讓對方登出。</p>
+                <div class="table-container"><table><thead><tr><th>帳號</th><th>角色</th><th>狀態</th><th>綁定社員</th><th>操作</th></tr></thead><tbody id="users-list"></tbody></table></div>
             </div>` : ''}
         </div>
 
@@ -2611,18 +2640,39 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 }
             }
 
+            let pendingAccountMember = '';
             async function loadUsers() {
-                const res = await fetch('/api/users');
+                const [res, membersRes] = await Promise.all([fetch('/api/users'), fetch('/api/members')]);
                 if (!res.ok) return showToast('無法載入帳號', true);
                 const users = await res.json();
+                const members = membersRes.ok ? await membersRes.json() : [];
+                const memberLabel = item => (item.name || '姓名待查') + '（' + (item.studentId || '無學號') + '）';
+                const memberOptions = (select, current, owner) => {
+                    select.add(new Option(owner ? '不綁定' : '不綁定社員（之後可再綁定）', ''));
+                    for (const item of members) {
+                        if (item.account && item.account !== owner) continue;
+                        select.add(new Option(memberLabel(item) + '・' + item.status.levelLabel, item.id));
+                    }
+                    select.value = current || '';
+                };
+                const createSelect = document.getElementById('account-member');
+                if (createSelect) { createSelect.replaceChildren(); memberOptions(createSelect, pendingAccountMember, ''); pendingAccountMember = ''; }
                 const tbody = document.getElementById('users-list');
                 tbody.replaceChildren();
                 for (const user of users) {
                     const tr = document.createElement('tr');
-                    for (const value of [user.username, {president:'社長',finance:'財務',cadre:'一般幹部',member:'社員'}[user.role], user.active ? '啟用' : '停用']) {
+                    const bound = user.member ? memberLabel(user.member) + '・' + user.member.status.levelLabel + '・' + user.member.status.feeLabel : '未綁定';
+                    for (const value of [user.username, {president:'社長',finance:'財務',cadre:'一般幹部',member:'社員'}[user.role], user.active ? '啟用' : '停用', bound]) {
                         const td = document.createElement('td'); td.textContent = value; tr.appendChild(td);
                     }
                     const td = document.createElement('td');
+                    const binding = document.createElement('select'); binding.className = 'form-control'; binding.setAttribute('aria-label', user.username + ' 綁定社員');
+                    memberOptions(binding, user.memberId, user.username);
+                    const bind = document.createElement('button'); bind.className = 'btn btn-secondary'; bind.textContent = '儲存綁定';
+                    bind.onclick = () => updateUser(user.username, { memberId: binding.value });
+                    const line = () => { const div = document.createElement('div'); div.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:6px;'; return div; };
+                    const bindLine = line(); bindLine.append(binding, bind); binding.style.flex = '1 1 200px';
+                    td.append(bindLine);
                     const role = document.createElement('select'); role.className = 'form-control';
                     for (const [value, label] of Object.entries({president:'社長',finance:'財務',cadre:'一般幹部',member:'社員'})) {
                         const option = new Option(label, value); role.add(option);
@@ -2631,10 +2681,11 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     const save = document.createElement('button'); save.className = 'btn btn-secondary'; save.textContent = '儲存角色';
                     save.onclick = () => updateUser(user.username, { role: role.value });
                     const toggle = document.createElement('button'); toggle.className = 'btn btn-secondary'; toggle.textContent = user.active ? '停用' : '啟用';
-                    toggle.onclick = () => updateUser(user.username, { active: !user.active });
+                    toggle.onclick = () => { if (!user.active || confirm('確定停用帳號 ' + user.username + '？停用後對方會立即被登出。')) updateUser(user.username, { active: !user.active }); };
                     const reset = document.createElement('button'); reset.className = 'btn btn-secondary'; reset.textContent = '重設密碼';
                     reset.onclick = () => { const password = prompt('輸入新密碼（至少 8 位）'); if (password) updateUser(user.username, { password }); };
-                    td.append(role, save, toggle, reset); tr.appendChild(td); tbody.appendChild(tr);
+                    const roleLine = line(); role.style.flex = '1 1 120px'; roleLine.append(role, save, toggle, reset);
+                    td.append(roleLine); tr.appendChild(td); tbody.appendChild(tr);
                 }
             }
             async function updateUser(username, changes) {
@@ -2644,7 +2695,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             }
             async function createUser(event) {
                 event.preventDefault();
-                const body = { username: document.getElementById('account-username').value, password: document.getElementById('account-password').value, role: document.getElementById('account-role').value };
+                const body = { username: document.getElementById('account-username').value, password: document.getElementById('account-password').value, role: document.getElementById('account-role').value, memberId: document.getElementById('account-member')?.value || '' };
                 const res = await fetch('/api/users', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
                 const data = await res.json(); showToast(res.ok ? '帳號已新增' : data.error, !res.ok);
                 if (res.ok) { event.target.reset(); loadUsers(); }
@@ -2784,7 +2835,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             let memberCache = [];
             let memberImportRows = [];
             function invalidateMemberImport() { memberImportRows=[]; const button=document.getElementById('member-import-submit'); if(button)button.disabled=true; const preview=document.getElementById('member-import-preview'); if(preview)preview.innerHTML=''; }
-            const importFields = {name:'姓名',studentId:'學號',email:'Email',phone:'電話',position:'職務',joinedAt:'加入日期',note:'備註'};
+            const importFields = {name:'姓名',studentId:'學號',level:'身分',feeStatus:'社費狀態',email:'Email',phone:'電話',position:'職務',joinedAt:'加入日期',note:'備註'};
             function renderMemberImportPreview() {
                 const seenIds=new Set(), seenNames=new Set(), seenNamesWithoutId=new Set(); let duplicates=0;
                 const rows=memberImportRows.map((item,index)=>{
@@ -2792,7 +2843,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     const duplicate=id?(seenIds.has(id)||seenNamesWithoutId.has(name)):seenNames.has(name);
                     if(id)seenIds.add(id); if(name){seenNames.add(name);if(!id)seenNamesWithoutId.add(name);}
                     if(duplicate)duplicates++;
-                    const cells=Object.keys(importFields).map(key=>'<td><input class="form-control" data-key="'+key+'" aria-label="'+importFields[key]+'，第 '+(index+1)+' 筆" value="'+escapeText(item[key]||'')+'" maxlength="'+({name:50,studentId:30,email:100,phone:30,position:60,joinedAt:10,note:1000}[key])+'" onchange="updateMemberImport('+index+',this.dataset.key,this.value)" '+(key==='joinedAt'?'type="date"':'')+'></td>').join('');
+                    const cells=Object.keys(importFields).map(key=>'<td><input class="form-control" data-key="'+key+'" aria-label="'+importFields[key]+'，第 '+(index+1)+' 筆" value="'+escapeText(item[key]||'')+'" maxlength="'+({name:50,studentId:30,level:20,feeStatus:20,email:100,phone:30,position:60,joinedAt:10,note:1000}[key])+'" onchange="updateMemberImport('+index+',this.dataset.key,this.value)" '+(key==='joinedAt'?'type="date"':'')+'></td>').join('');
                     return '<tr>'+cells+'<td>'+ (duplicate?'<span style="color:#fbbf24">重複，將跳過</span>':'<span style="color:#34d399">待新增</span>')+'</td><td><button type="button" class="btn btn-danger" onclick="removeMemberImportRow('+index+')">移除</button></td></tr>';
                 }).join('');
                 document.getElementById('member-import-preview').innerHTML='<p style="margin-bottom:8px;">辨識 '+memberImportRows.length+' 筆；目前 '+duplicates+' 筆重複資料將略過。可直接修改欄位或移除列。</p><div class="table-container"><table style="min-width:1100px"><thead><tr>'+Object.values(importFields).map(label=>'<th>'+label+'</th>').join('')+'<th>狀態</th><th>操作</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
@@ -2807,7 +2858,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     if (!text) { memberImportRows = []; document.getElementById('member-import-submit').disabled = true; return showToast('請選擇 CSV／TSV 檔案或貼上資料', true); }
                     const rows = parseSheet(text); if (!rows.length) return showToast('沒有可匯入的資料', true);
                     const headers = rows.shift().map(value => value.replace(/^\uFEFF/, '').trim().toLowerCase());
-                    const aliases = {name:['姓名','name'],studentId:['學號','studentid','student id'],email:['email','電子郵件'],phone:['電話','手機','phone'],position:['職務','幹部職務','position'],joinedAt:['加入日期','入社日期','joinedat','joined at'],note:['備註','note']};
+                    const aliases = {name:['姓名','name'],studentId:['學號','studentid','student id'],level:['身分','社員身分','社團身分','level','membership_status'],feeStatus:['社費狀態','社費繳交狀態','繳費狀態','feestatus','fee_status'],email:['email','電子郵件'],phone:['電話','手機','phone'],position:['職務','幹部職務','position'],joinedAt:['加入日期','入社日期','joinedat','joined at'],note:['備註','note']};
                     const columns = Object.fromEntries(Object.entries(aliases).map(([key, names]) => [key, headers.findIndex(value => names.includes(value))]));
                     let data;
                     const dateColumn=headers.indexOf('日期'), itemColumn=headers.indexOf('事宜'), incomeColumn=headers.indexOf('收入');
@@ -2817,7 +2868,10 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                             const studentId=/^(?:\\d{9}|\\d{4}[a-z]\\d{4})$/i.test(raw)?raw.toUpperCase():'';
                             const rawDate=String(row[dateColumn]||'').trim(); const dateMatch=/^(\\d{4})[/-](\\d{1,2})[/-](\\d{1,2})$/.exec(rawDate);
                             const feeDate=dateMatch?dateMatch[1]+'-'+dateMatch[2].padStart(2,'0')+'-'+dateMatch[3].padStart(2,'0'):'';
-                            return {name:studentId?'':raw,studentId,email:'',phone:'',position:'',joinedAt:'',note:feeDate?'社費紀錄日期：'+feeDate:''};
+                            const paidAmount=Number(String(row[incomeColumn]||'').replace(/[,$\\s]/g,''));
+                            const semester=dateMatch?(Number(dateMatch[2])>=8?(Number(dateMatch[1])-1911)+'-1':(Number(dateMatch[1])-1912)+'-'+(Number(dateMatch[2])===1?1:2)):'';
+                            const feeStatus=paidAmount>=1000?'在學會籍':paidAmount>=500?'學期會籍':'未繳費';
+                            return {name:studentId?'':raw,studentId,level:'正式社員',feeStatus,feeSemester:feeStatus==='學期會籍'?semester:'',email:'',phone:'',position:'',joinedAt:'',note:feeDate?'社費紀錄日期：'+feeDate:''};
                         }).filter(item=>item.name||item.studentId);
                     } else {
                         if (columns.name < 0 && columns.studentId < 0) { memberImportRows=[]; return showToast('找不到可辨識的社員欄位；請提供姓名／學號欄，或社費帳本的日期、事宜、收入欄', true); }
@@ -2834,16 +2888,276 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 try { const res=await fetch('/api/members/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:memberImportRows})}); const data=await res.json(); showToast(res.ok?'已新增 '+data.imported+' 位，略過重複 '+data.skipped+' 位':data.error,!res.ok); if(res.ok){memberImportRows=[];document.getElementById('member-import-text').value='';document.getElementById('member-import-file').value='';document.getElementById('member-import-preview').innerHTML='';loadMembers();} }
                 catch { showToast('匯入失敗，請稍後重試',true); } finally { button.disabled=!memberImportRows.length; }
             }
-            async function loadMembers() { const query = document.getElementById('member-search')?.value || ''; const res = await fetch('/api/members?q=' + encodeURIComponent(query)); if (!res.ok) return showToast('無法載入社員資料', true); const members = await res.json(); memberCache = members; const body = document.getElementById('members-list'); body.innerHTML = members.map(item => '<tr><td>' + escapeText(item.name || '（姓名待查）') + '<br><small>' + escapeText(item.studentId || '無學號') + '</small></td><td>' + escapeText(item.position || '—') + '</td><td>' + escapeText([item.email,item.phone].filter(Boolean).join('／') || '—') + '</td><td style="white-space:pre-wrap">' + escapeText(item.note || '—') + '</td><td>' + escapeText(item.joinedAt || '—') + '</td><td><button class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="editMember(this.dataset.id)">編輯</button> <button class="btn btn-danger" data-id="' + escapeText(item.id) + '" onclick="deleteMember(this.dataset.id)">刪除</button></td></tr>').join('') || '<tr><td colspan="6" style="text-align:center; color:var(--text-muted)">查無社員資料。</td></tr>'; const select=document.getElementById('fee-member'); if(select){const current=select.value;select.innerHTML='<option value="">選社員或手動填寫</option>'+members.map(item=>'<option value="'+escapeText(item.id)+'">'+escapeText(item.name||'姓名待查')+'（'+escapeText(item.studentId||'無學號')+'）</option>').join('');select.value=current;} }
-            function resetMemberForm() { const form=document.getElementById('member-form'); if(form)form.reset(); document.getElementById('member-edit-id').value=''; }
-            function editMember(id) { const item=memberCache.find(member=>member.id===id); if(!item)return; document.getElementById('member-edit-id').value=item.id; document.getElementById('member-name').value=item.name||''; document.getElementById('member-student-id').value=item.studentId||''; document.getElementById('member-position').value=item.position||''; document.getElementById('member-email').value=item.email||''; document.getElementById('member-phone').value=item.phone||''; document.getElementById('member-note').value=item.note||''; document.getElementById('member-joined-at').value=item.joinedAt||''; document.getElementById('member-form').closest('details').open=true; document.getElementById('member-form').scrollIntoView({behavior:'smooth',block:'center'}); }
-            async function saveMember(event) { event.preventDefault(); const id=document.getElementById('member-edit-id').value; const body={name:document.getElementById('member-name').value,studentId:document.getElementById('member-student-id').value,position:document.getElementById('member-position').value,email:document.getElementById('member-email').value,phone:document.getElementById('member-phone').value,note:document.getElementById('member-note').value,joinedAt:document.getElementById('member-joined-at').value}; const res=await fetch(id?'/api/members/'+encodeURIComponent(id):'/api/members',{method:id?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const data=await res.json(); showToast(res.ok?(id?'社員資料已更新':'社員已新增'):data.error,!res.ok); if(res.ok){resetMemberForm();loadMembers();} }
-            async function deleteMember(id) { if (!confirm('確定刪除此社員？此操作無法復原。')) return; const res=await fetch('/api/members/'+encodeURIComponent(id),{method:'DELETE'}); const data=await res.json(); showToast(res.ok?'社員已刪除':data.error,!res.ok); if(res.ok)loadMembers(); }
+            const memberLevelLabels={trial:'非正式社員',member:'正式社員',prep:'籌備幹部',officer:'正式幹部'};
+            const feeTypeLabels={semester:'學期會籍',lifetime:'在學會籍',other:'其他'};
+            function memberBadge(text,color) { return '<span style="display:inline-block; padding:2px 8px; border-radius:999px; font-size:.8rem; border:1px solid '+color+'; color:'+color+'; white-space:nowrap;">'+escapeText(text)+'</span>'; }
+            function memberFeeCell(status) { return status.paid?memberBadge(status.feeLabel,'#34d399'):status.exempt?memberBadge(status.feeLabel,'#60a5fa'):memberBadge(status.feeLabel,'#fbbf24'); }
+            function syncMemberForm() { const fee=document.getElementById('member-fee-status').value, level=document.getElementById('member-level').value; document.getElementById('member-fee-semester-wrap').style.display=fee==='semester'?'grid':'none'; document.getElementById('member-trial-wrap').style.display=level==='trial'?'grid':'none'; }
+            async function loadMembers() {
+                const query = document.getElementById('member-search')?.value || ''; const filter = document.getElementById('member-filter')?.value || '';
+                const [res, allRes] = await Promise.all([fetch('/api/members?q=' + encodeURIComponent(query) + '&filter=' + encodeURIComponent(filter)), fetch('/api/members')]);
+                if (!res.ok || !allRes.ok) return showToast('無法載入社員資料', true);
+                const members = await res.json(); const all = await allRes.json(); memberCache = all;
+                const count = test => all.filter(test).length;
+                const summary = document.getElementById('member-summary');
+                if (summary) summary.innerHTML = [['名冊人數', all.length], ['社員總額（具表決權）', count(item => item.status.voting)], ['未繳費社員', count(item => item.status.unpaid)], ['非正式社員', count(item => item.status.level === 'trial')]].map(([label, value]) => '<div class="finance-card"><span>' + label + '</span><strong>' + value + '</strong></div>').join('') + '<p style="grid-column:1/-1; margin:0; color:var(--text-muted); font-size:.82rem;">目前學期：' + escapeText(all[0]?.status.semester || '') + '。社員總額依組織章程第四條，計入具表決權之正式社員與幹部。</p>';
+                const body = document.getElementById('members-list');
+                body.innerHTML = members.map(item => {
+                    const status = item.status; const trial = status.level === 'trial' ? '<br><small>免費體驗剩 ' + status.trialRemaining + ' 次</small>' : '';
+                    return '<tr><td>' + escapeText(item.name || '（姓名待查）') + '<br><small>' + escapeText(item.studentId || '無學號') + '</small></td><td>' + escapeText(status.levelLabel) + trial + '</td><td>' + memberFeeCell(status) + '</td><td>' + (status.voting ? '有' : '無') + '</td><td>' + escapeText(item.account || '—') + '</td><td>' + escapeText(item.position || '—') + '</td><td>' + escapeText([item.email,item.phone].filter(Boolean).join('／') || '—') + '</td><td style="white-space:pre-wrap">' + escapeText(item.note || '—') + '</td><td>' + escapeText(item.joinedAt || '—') + '</td><td style="white-space:nowrap;">' + (status.unpaid ? '<button class="btn btn-primary" data-id="' + escapeText(item.id) + '" onclick="startFeeFor(this.dataset.id)">記錄繳費</button> ' : '') + (canCreateAccounts && !item.account ? '<button class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="startAccountFor(this.dataset.id)">建立帳號</button> ' : '') + '<button class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="editMember(this.dataset.id)">編輯</button> <button class="btn btn-danger" data-id="' + escapeText(item.id) + '" onclick="deleteMember(this.dataset.id)">刪除</button></td></tr>';
+                }).join('') || '<tr><td colspan="10" style="text-align:center; color:var(--text-muted)">查無社員資料。</td></tr>';
+                const select=document.getElementById('fee-member'); if(select){const current=select.value;select.innerHTML='<option value="">選社員或手動填寫</option>'+all.map(item=>'<option value="'+escapeText(item.id)+'">'+escapeText(item.name||'姓名待查')+'（'+escapeText(item.studentId||'無學號')+'）'+(item.status.unpaid?'・未繳費':'')+'</option>').join('');select.value=current;}
+            }
+            const canCreateAccounts = ${user?.role === 'president'};
+            function memberName(item) { return (item.name || '姓名待查') + (item.studentId ? '（' + item.studentId + '）' : ''); }
+            function resetMemberForm() { const form=document.getElementById('member-form'); if(form)form.reset(); document.getElementById('member-edit-id').value=''; document.getElementById('member-editing').style.display='none'; document.getElementById('member-submit').textContent='新增社員'; document.getElementById('member-reset').textContent='清除表單'; syncMemberForm(); }
+            function startFeeFor(id) {
+                const item = memberCache.find(member => member.id === id); if (!item) return;
+                document.getElementById('fee-member').value = id; fillFeePayer();
+                const type = document.getElementById('fee-type'); if (!type.value) type.value = item.feeStatus === 'lifetime' ? 'lifetime' : 'semester'; fillFeeAmount();
+                const form = document.getElementById('fee-form'); form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                document.getElementById(document.getElementById('fee-receiver').value ? 'fee-receipt-number' : 'fee-receiver').focus({ preventScroll: true });
+                showToast('已帶入 ' + memberName(item) + '，確認金額與收款人後按「記錄社費簽收」');
+            }
+            function startAccountFor(id) {
+                const item = memberCache.find(member => member.id === id); if (!item) return;
+                pendingAccountMember = id;
+                showPanel('users'); loadUsers();
+                const username = document.getElementById('account-username');
+                username.value = String(item.studentId || '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
+                document.getElementById('account-role').value = 'member';
+                document.getElementById(username.value ? 'account-password' : 'account-username').focus();
+                showToast('已帶入 ' + memberName(item) + '：帳號預設為學號，請設定初始密碼');
+            }
+            function fillFeeAmount() { const type = document.getElementById('fee-type').value; const amount = document.getElementById('fee-amount'); if (type === 'semester') amount.value = 500; else if (type === 'lifetime') amount.value = 1000; }
+            function editMember(id) { const item=memberCache.find(member=>member.id===id); if(!item)return; document.getElementById('member-edit-id').value=item.id; document.getElementById('member-name').value=item.name||''; document.getElementById('member-student-id').value=item.studentId||''; document.getElementById('member-position').value=item.position||''; document.getElementById('member-email').value=item.email||''; document.getElementById('member-phone').value=item.phone||''; document.getElementById('member-note').value=item.note||''; document.getElementById('member-joined-at').value=item.joinedAt||''; document.getElementById('member-level').value=item.status.level; document.getElementById('member-fee-status').value=item.status.feeStatus; document.getElementById('member-fee-semester').value=item.feeSemester||''; document.getElementById('member-trial-uses').value=item.trialUses||0; syncMemberForm(); const editing=document.getElementById('member-editing'); editing.textContent='正在編輯：'+memberName(item)+'。改完按「更新社員資料」，或按「取消編輯」放棄。'; editing.style.display='block'; document.getElementById('member-submit').textContent='更新社員資料'; document.getElementById('member-reset').textContent='取消編輯'; document.getElementById('member-form').closest('details').open=true; document.getElementById('member-form').scrollIntoView({behavior:'smooth',block:'center'}); }
+            async function saveMember(event) { event.preventDefault(); const id=document.getElementById('member-edit-id').value; const body={name:document.getElementById('member-name').value,studentId:document.getElementById('member-student-id').value,position:document.getElementById('member-position').value,email:document.getElementById('member-email').value,phone:document.getElementById('member-phone').value,note:document.getElementById('member-note').value,joinedAt:document.getElementById('member-joined-at').value,level:document.getElementById('member-level').value,feeStatus:document.getElementById('member-fee-status').value,feeSemester:document.getElementById('member-fee-semester').value,trialUses:Number(document.getElementById('member-trial-uses').value||0)}; const res=await fetch(id?'/api/members/'+encodeURIComponent(id):'/api/members',{method:id?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const data=await res.json(); showToast(res.ok?(id?'社員資料已更新':'社員已新增（'+data.status.levelLabel+'・'+data.status.feeLabel+'）'):data.error,!res.ok); if(res.ok){resetMemberForm();loadMembers();} }
+            async function deleteMember(id) { const target=memberCache.find(member=>member.id===id); if (!confirm('確定刪除 '+(target?memberName(target):'此社員')+'？'+(target&&target.account?'綁定的帳號 '+target.account+' 會自動解除綁定（帳號本身保留）。':'')+'此操作無法復原。')) return; const res=await fetch('/api/members/'+encodeURIComponent(id),{method:'DELETE'}); const data=await res.json(); showToast(res.ok?'社員已刪除':data.error,!res.ok); if(res.ok)loadMembers(); }
             function fillFeePayer() { const item=memberCache.find(member=>member.id===document.getElementById('fee-member').value); if(!item)return; document.getElementById('fee-payer-name').value=item.name||''; document.getElementById('fee-student-id').value=item.studentId||''; }
-            async function loadFeeReceipts() { const body=document.getElementById('fee-receipts-list'); if(!body)return; const res=await fetch('/api/member-fee-receipts'); const data=await res.json(); if(!res.ok){body.innerHTML='<tr><td colspan="7">'+escapeText(data.error||'無法載入簽收紀錄')+'</td></tr>';return;} body.innerHTML=data.map(item=>'<tr><td>'+escapeText(item.date)+'</td><td>'+escapeText(item.payerName||'姓名待查')+'<br><small>'+escapeText(item.studentId||'無學號')+'</small></td><td>NT$ '+new Intl.NumberFormat('zh-TW').format(item.amount)+'</td><td>'+escapeText(item.receiver)+'</td><td>'+escapeText(item.receiptNumber||'—')+(item.note?'<br><small>'+escapeText(item.note)+'</small>':'')+'</td><td>'+escapeText(item.recordedBy)+'</td><td><button class="btn btn-danger" data-id="'+escapeText(item.id)+'" onclick="deleteFeeReceipt(this.dataset.id)">刪除</button></td></tr>').join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">尚無社費簽收紀錄。</td></tr>'; const date=document.getElementById('fee-date'); if(date&&!date.value)date.value=new Date().toISOString().slice(0,10); }
-            async function createFeeReceipt(event) { event.preventDefault(); const memberId=document.getElementById('fee-member').value; const body={memberId,payerName:document.getElementById('fee-payer-name').value,studentId:document.getElementById('fee-student-id').value,amount:Number(document.getElementById('fee-amount').value),date:document.getElementById('fee-date').value,receiver:document.getElementById('fee-receiver').value,receiptNumber:document.getElementById('fee-receipt-number').value,note:document.getElementById('fee-note').value}; const res=await fetch('/api/member-fee-receipts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const data=await res.json(); showToast(res.ok?'社費簽收已記錄':data.error,!res.ok); if(res.ok){event.target.reset();loadFeeReceipts();} }
+            async function loadFeeReceipts() { const body=document.getElementById('fee-receipts-list'); if(!body)return; const res=await fetch('/api/member-fee-receipts'); const data=await res.json(); if(!res.ok){body.innerHTML='<tr><td colspan="7">'+escapeText(data.error||'無法載入簽收紀錄')+'</td></tr>';return;} body.innerHTML=data.map(item=>'<tr><td>'+escapeText(item.date)+'</td><td>'+escapeText(item.payerName||'姓名待查')+'<br><small>'+escapeText(item.studentId||'無學號')+'</small></td><td>NT$ '+new Intl.NumberFormat('zh-TW').format(item.amount)+(item.feeType?'<br><small>'+escapeText(feeTypeLabels[item.feeType]||'')+(item.feeType==='semester'&&item.semester?' '+escapeText(item.semester):'')+'</small>':'')+'</td><td>'+escapeText(item.receiver)+'</td><td>'+escapeText(item.receiptNumber||'—')+(item.note?'<br><small>'+escapeText(item.note)+'</small>':'')+'</td><td>'+escapeText(item.recordedBy)+'</td><td><button class="btn btn-danger" data-id="'+escapeText(item.id)+'" onclick="deleteFeeReceipt(this.dataset.id)">刪除</button></td></tr>').join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">尚無社費簽收紀錄。</td></tr>'; const date=document.getElementById('fee-date'); if(date&&!date.value)date.value=new Date().toISOString().slice(0,10); restoreFeeReceiver(); }
+            async function createFeeReceipt(event) { event.preventDefault(); const memberId=document.getElementById('fee-member').value; const body={memberId,payerName:document.getElementById('fee-payer-name').value,studentId:document.getElementById('fee-student-id').value,amount:Number(document.getElementById('fee-amount').value),feeType:document.getElementById('fee-type').value,date:document.getElementById('fee-date').value,receiver:document.getElementById('fee-receiver').value,receiptNumber:document.getElementById('fee-receipt-number').value,note:document.getElementById('fee-note').value}; const res=await fetch('/api/member-fee-receipts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const data=await res.json(); showToast(res.ok?(data.memberStatus?'社費簽收已記錄，社員狀態更新為：'+data.memberStatus.levelLabel+'・'+data.memberStatus.feeLabel:'社費簽收已記錄'):data.error,!res.ok); if(res.ok){try{localStorage.setItem('feeReceiver',body.receiver);}catch{} event.target.reset();restoreFeeReceiver();loadFeeReceipts();loadMembers();} }
+            function restoreFeeReceiver() { const input=document.getElementById('fee-receiver'); if(!input||input.value)return; try{input.value=localStorage.getItem('feeReceiver')||'';}catch{} }
             async function deleteFeeReceipt(id) { if(!confirm('確定刪除此簽收紀錄？'))return; const res=await fetch('/api/member-fee-receipts/'+encodeURIComponent(id),{method:'DELETE'}); const data=await res.json(); showToast(res.ok?'簽收紀錄已刪除':data.error,!res.ok); if(res.ok)loadFeeReceipts(); }
             ${manageMembers ? 'loadFeeReceipts();' : ''}
+            async function loadMyMember() {
+                const box = document.getElementById('my-member'); if (!box) return;
+                try {
+                    const res = await fetch('/api/me'); const data = await res.json();
+                    if (!res.ok) { box.textContent = data.error || '無法載入'; return; }
+                    if (!data.member) { box.innerHTML = '此帳號（' + escapeText(data.username) + '）尚未綁定社員資料。請聯絡社長在「帳號與權限」完成綁定。'; return; }
+                    const m = data.member, status = m.status;
+                    const rows = [['姓名', m.name || '—'], ['學號', m.studentId || '—'], ['身分', status.levelLabel + (status.level === 'trial' ? '（免費體驗社課剩 ' + status.trialRemaining + ' 次）' : '')], ['社費', status.feeLabel], ['表決權', status.voting ? '有（列入社員總額）' : '無'], ['幹部職務', m.position || '—'], ['加入日期', m.joinedAt || '—']];
+                    let html = '<dl style="display:grid; grid-template-columns:max-content 1fr; gap:6px 16px; margin:0; color:var(--text-main);">' + rows.map(([k, v]) => '<dt style="color:var(--text-muted);">' + k + '</dt><dd style="margin:0;">' + escapeText(v) + '</dd>').join('') + '</dl>';
+                    if (status.unpaid) html += '<p style="margin-top:12px; color:#fbbf24;">目前為未繳費狀態。依《社費細則》，學期會籍每學期 500 元、在學會籍一次 1,000 元；繳費後請向總務簽收。</p>';
+                    if (data.feeReceipts.length) html += '<p style="margin-top:12px;">繳費紀錄：' + data.feeReceipts.map(item => escapeText(item.date + ' NT$ ' + item.amount + (feeTypeLabels[item.feeType] ? '（' + feeTypeLabels[item.feeType] + '）' : ''))).join('、') + '</p>';
+                    box.innerHTML = html;
+                } catch { box.textContent = '無法載入社員資料'; }
+            }
+            if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('load', loadMyMember);
+
+            let regulationCache = [];
+            let amendmentCache = [];
+            const isPresident = ${user?.role === 'president'};
+            const currentUsername = ${JSON.stringify(String(user?.username || ''))};
+            const canPropose = ${viewCms};
+            const amendmentStatusLabels = { proposed: '提案中', awaiting_school: '已通過，待學校核備', effective: '已生效', rejected: '未通過', withdrawn: '已撤回' };
+            const amendmentStatusColors = { proposed: '#fbbf24', awaiting_school: '#60a5fa', effective: '#34d399', rejected: '#f87171', withdrawn: '#9ca3af' };
+            const amendmentActionLabels = { amend: '修正', create: '制定', repeal: '廢止' };
+            const regulationKindLabels = { charter: '組織章程', bylaw: '施行細則', school: '學校法規' };
+            const regulationHeading = /^(第[一二三四五六七八九十百零〇]+條|[壹貳參肆伍陸柒捌玖拾]+、)/;
+            function procedureText(kind, needsAssembly) {
+                if (kind === 'charter') return '<strong>組織章程修正程序</strong>（章程第十條、第十三條）：①由法規監察委員會提出，或正式社員 5 人以上連署 → ②社員大會：社員總額三分之二以上出席、出席社員三分之二以上同意 → ③送學校核備，核備後才生效。';
+                if (kind === 'school') return '<strong>學校法規</strong>由學校訂定，本社不能修改。只能在學校公告新版本後，登錄學校公告日期與來源，更新為學校版本。';
+                return '<strong>施行細則修正程序</strong>（各細則施行條文）：①幹部會議通過 → ②報請社長核定後施行。' + (needsAssembly ? '<br>③因涉及社員權利義務之重大變更或社費標準，另須社員大會決議（社員總額三分之一以上出席、出席社員二分之一以上同意）。' : '<br>若涉及社員權利義務之重大變更或社費標準，請勾選下方選項，另提社員大會。');
+            }
+            function regulationSections(content) {
+                const sections = []; let current = { heading: '', lines: [] };
+                for (const line of String(content || '').split('\\n')) {
+                    if (regulationHeading.test(line.trim())) { if (current.heading || current.lines.some(Boolean)) sections.push(current); current = { heading: line.trim(), lines: [] }; }
+                    else current.lines.push(line);
+                }
+                if (current.heading || current.lines.some(Boolean)) sections.push(current);
+                return sections;
+            }
+            function highlightText(text, keyword) {
+                const safe = escapeText(text); if (!keyword) return safe;
+                const needle = escapeText(keyword); return safe.split(needle).join('<mark>' + needle + '</mark>');
+            }
+            // Line diff (longest common subsequence) between the current and proposed text.
+            function lineDiff(before, after) {
+                const a = String(before || '').split('\\n'), b = String(after || '').split('\\n');
+                if (a.length * b.length > 400000) return '<p style="color:var(--text-muted);">條文過長，無法顯示差異。</p>';
+                const table = Array.from({ length: a.length + 1 }, () => new Uint16Array(b.length + 1));
+                for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) table[i][j] = a[i] === b[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+                const rows = []; let i = 0, j = 0;
+                while (i < a.length || j < b.length) {
+                    if (i < a.length && j < b.length && a[i] === b[j]) { rows.push(['same', a[i]]); i++; j++; }
+                    else if (i < a.length && (j >= b.length || table[i + 1][j] >= table[i][j + 1])) { rows.push(['del', a[i]]); i++; }
+                    else { rows.push(['add', b[j]]); j++; }
+                }
+                if (!rows.some(row => row[0] !== 'same')) return '<p style="color:var(--text-muted);">沒有差異。</p>';
+                const style = { same: 'color:var(--text-muted);', add: 'background:rgba(52,211,153,.15); color:#6ee7b7;', del: 'background:rgba(248,113,113,.15); color:#fca5a5; text-decoration:line-through;' };
+                const mark = { same: '　', add: '＋', del: '－' };
+                // Keep two unchanged lines around each change so the context stays readable.
+                const keep = rows.map((row, index) => row[0] !== 'same' || rows.slice(Math.max(0, index - 2), index + 3).some(near => near[0] !== 'same'));
+                let html = '', skipped = false;
+                rows.forEach((row, index) => {
+                    if (!keep[index]) { if (!skipped) html += '<div style="color:var(--text-muted); padding:2px 8px;">⋯</div>'; skipped = true; return; }
+                    skipped = false; html += '<div style="padding:2px 8px; white-space:pre-wrap; ' + style[row[0]] + '">' + mark[row[0]] + ' ' + escapeText(row[1]) + '</div>';
+                });
+                return '<div style="border:1px solid var(--border-glass); border-radius:8px; font-size:.88rem; line-height:1.6; max-height:420px; overflow:auto;">' + html + '</div>';
+            }
+            async function loadRegulations() {
+                const [res, amendRes] = await Promise.all([fetch('/api/regulations'), fetch('/api/regulation-amendments')]);
+                const data = await res.json();
+                if (!res.ok) return showToast(data.error || '無法載入法規', true);
+                regulationCache = data; amendmentCache = amendRes.ok ? await amendRes.json() : [];
+                const select = document.getElementById('regulation-doc'); const current = select.value;
+                select.innerHTML = '<option value="">全部法規</option>' + data.map(item => '<option value="' + escapeText(item.id) + '">' + escapeText(item.title) + (item.repealed ? '（已廢止）' : '') + '</option>').join('');
+                select.value = data.some(item => item.id === current) ? current : '';
+                renderRegulations(); renderAmendments();
+            }
+            function searchRegulation(keyword) { const input = document.getElementById('regulation-search'); input.value = keyword; renderRegulations(); input.focus(); }
+            function renderRegulations() {
+                const keyword = document.getElementById('regulation-search').value.trim();
+                const docId = document.getElementById('regulation-doc').value;
+                const html = regulationCache.filter(item => (!docId || item.id === docId) && (!item.repealed || docId)).map(item => {
+                    let sections = regulationSections(item.content);
+                    if (keyword) sections = sections.filter(section => (section.heading + '\\n' + section.lines.join('\\n')).includes(keyword) || item.title.includes(keyword));
+                    if (keyword && !sections.length) return '';
+                    const body = sections.map(section => (section.heading ? '<h3 style="font-size:1rem; margin:14px 0 6px; color:var(--color-cyan);">' + highlightText(section.heading, keyword) + '</h3>' : '') + section.lines.filter(line => line.trim()).map(line => '<p style="margin:4px 0; line-height:1.7;">' + highlightText(line, keyword) + '</p>').join('')).join('');
+                    const pending = amendmentCache.filter(entry => entry.regulationId === item.id && (entry.status === 'proposed' || entry.status === 'awaiting_school')).length;
+                    const history = (item.history || []).slice().reverse();
+                    const historyHtml = history.length ? '<details style="margin-top:12px;"><summary style="cursor:pointer; color:var(--text-muted);">修正沿革（' + history.length + ' 個舊版本）</summary>' + history.map((old, index) => { const next = index === 0 ? item : history[index - 1]; return '<details style="margin:8px 0 0 12px;"><summary style="cursor:pointer;">' + escapeText(old.version || '原始版本') + ' → ' + escapeText(next.version || '') + '</summary>' + lineDiff(old.content, next.content) + '</details>'; }).join('') + '</details>' : '';
+                    const actions = canPropose && !item.repealed ? '<button type="button" class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="openAmendmentForm(this.dataset.id)">' + (item.kind === 'school' ? '更新為學校新版' : '提出修正案') + '</button>' : '';
+                    const meta = [regulationKindLabels[item.kind] || item.category, item.version].filter(Boolean).join('・') + (pending ? '・<span style="color:#fbbf24;">' + pending + ' 件修正案進行中</span>' : '') + (item.repealed ? '・<span style="color:#f87171;">已廢止</span>' : '') + (keyword ? '・符合 ' + sections.length + ' 條' : '');
+                    return '<details class="forms-card" ' + (keyword || docId ? 'open' : '') + ' style="margin-bottom:14px; padding:16px; border:1px solid var(--border-glass); border-radius:12px;"><summary style="cursor:pointer; font-weight:600;">' + escapeText(item.title) + ' <small style="color:var(--text-muted); font-weight:400;">' + meta + '</small></summary><div style="display:flex; justify-content:flex-end; margin-top:8px;">' + actions + '</div>' + body + historyHtml + '</details>';
+                }).join('');
+                document.getElementById('regulation-results').innerHTML = html || '<p style="color:var(--text-muted);">' + (keyword ? '找不到包含「' + escapeText(keyword) + '」的條文，換個說法試試，例如「社員大會」、「繳費」。' : '尚無法規資料。') + '</p>';
+            }
+            function renderAmendments() {
+                const box = document.getElementById('amendment-list'); if (!box) return;
+                const open = amendmentCache.filter(item => item.status === 'proposed' || item.status === 'awaiting_school');
+                const closed = amendmentCache.filter(item => !(item.status === 'proposed' || item.status === 'awaiting_school'));
+                const card = item => {
+                    const regulation = regulationCache.find(entry => entry.id === item.regulationId);
+                    const badge = '<span style="padding:2px 8px; border-radius:999px; font-size:.8rem; border:1px solid ' + amendmentStatusColors[item.status] + '; color:' + amendmentStatusColors[item.status] + ';">' + amendmentStatusLabels[item.status] + '</span>';
+                    const source = item.source === 'petition' ? '正式社員 ' + item.signers + ' 人連署' : item.source === 'committee' ? '法規監察委員會提出' : '';
+                    const r = item.resolution || {};
+                    const record = [r.officersMeetingDate && '幹部會議 ' + r.officersMeetingDate, r.presidentApprovedAt && '社長核定 ' + r.presidentApprovedAt, r.assembly && '社員大會 ' + r.assembly.date + '（總額 ' + r.assembly.total + '、出席 ' + r.assembly.attendance + '、同意 ' + r.assembly.agree + '）', r.schoolApprovedAt && '學校核備 ' + r.schoolApprovedAt, r.schoolAnnouncedAt && '學校公告 ' + r.schoolAnnouncedAt + '（' + r.source + '）', item.closeNote && '說明：' + item.closeNote].filter(Boolean).join('；');
+                    const diff = item.action === 'repeal' ? '<p>廢止「' + escapeText(item.title) + '」全文。</p>' : item.action === 'create' ? lineDiff('', item.content) : lineDiff(item.baseContent, item.content);
+                    const outdated = regulation && item.status !== 'effective' && (regulation.revision || 0) !== item.baseRevision;
+                    let actions = '';
+                    if (item.status === 'proposed') actions = (isPresident ? '<button type="button" class="btn btn-primary" data-id="' + escapeText(item.id) + '" onclick="openAdoptForm(this.dataset.id)">登錄通過</button> <button type="button" class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="closeAmendment(this.dataset.id,\\'rejected\\')">登錄未通過</button> ' : '') + (isPresident || item.proposedBy === currentUsername ? '<button type="button" class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="closeAmendment(this.dataset.id,\\'withdrawn\\')">撤回</button>' : '');
+                    if (item.status === 'awaiting_school' && isPresident) actions = '<button type="button" class="btn btn-primary" data-id="' + escapeText(item.id) + '" onclick="recordSchoolApproval(this.dataset.id)">登錄學校核備</button> <button type="button" class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="closeAmendment(this.dataset.id,\\'rejected\\')">學校未核備</button>';
+                    return '<details style="margin-bottom:10px; padding:12px 14px; border:1px solid var(--border-glass); border-radius:10px;"' + (item.status === 'proposed' || item.status === 'awaiting_school' ? ' open' : '') + '><summary style="cursor:pointer;">' + badge + ' <strong>' + amendmentActionLabels[item.action] + '「' + escapeText(item.title) + '」</strong> <small style="color:var(--text-muted);">' + escapeText(item.proposedAt.slice(0, 10) + ' 由 ' + item.proposedBy + ' 登錄' + (source ? '・' + source : '') + (item.needsAssembly ? '・需社員大會' : '')) + '</small></summary>' +
+                        '<p style="margin:10px 0 6px;"><strong>修正理由：</strong>' + escapeText(item.reason) + '</p>' + (record ? '<p style="margin:6px 0; color:var(--text-muted);">' + escapeText(record) + '</p>' : '') +
+                        (outdated ? '<p style="color:#fbbf24;">此法規在提案後已有其他修正生效，這份提案已過時，請撤回後以最新條文重新提案。</p>' : '') +
+                        '<details style="margin:8px 0;"><summary style="cursor:pointer;">條文差異</summary>' + diff + '</details>' + (actions ? '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">' + actions + '</div>' : '') + '<div id="adopt-' + escapeText(item.id) + '"></div></details>';
+                };
+                box.innerHTML = (open.length ? '<h2 style="font-size:1.05rem; margin-bottom:10px;">進行中的修正案（' + open.length + '）</h2>' + open.map(card).join('') : '') + (closed.length ? '<details style="margin-top:8px;"><summary style="cursor:pointer; color:var(--text-muted);">已結案的修正案（' + closed.length + '）</summary><div style="margin-top:10px;">' + closed.map(card).join('') + '</div></details>' : '');
+            }
+            function selectedAmendmentKind() {
+                const action = document.getElementById('amendment-action').value;
+                if (action === 'create') return document.getElementById('amendment-kind').value;
+                const regulation = regulationCache.find(item => item.id === document.getElementById('amendment-regulation').value);
+                return regulation ? (regulation.kind || 'bylaw') : 'bylaw';
+            }
+            function syncAmendmentForm(reload) {
+                const action = document.getElementById('amendment-action').value;
+                const select = document.getElementById('amendment-regulation');
+                if (reload) {
+                    const current = select.value;
+                    const options = regulationCache.filter(item => !item.repealed && (action !== 'repeal' || item.kind === 'bylaw'));
+                    select.innerHTML = options.map(item => '<option value="' + escapeText(item.id) + '">' + escapeText(item.title) + '</option>').join('');
+                    if (options.some(item => item.id === current)) select.value = current;
+                }
+                const regulation = regulationCache.find(item => item.id === select.value);
+                const kind = selectedAmendmentKind();
+                document.getElementById('amendment-regulation-wrap').style.display = action === 'create' ? 'none' : 'grid';
+                document.getElementById('amendment-kind-wrap').style.display = action === 'create' ? 'grid' : 'none';
+                document.getElementById('amendment-source-wrap').style.display = kind === 'charter' ? 'grid' : 'none';
+                document.getElementById('amendment-signers-wrap').style.display = document.getElementById('amendment-source').value === 'petition' ? 'grid' : 'none';
+                document.getElementById('amendment-assembly-wrap').style.display = kind === 'bylaw' && action !== 'create' || (action === 'create' && kind === 'bylaw') ? 'flex' : 'none';
+                const repeal = action === 'repeal';
+                for (const id of ['amendment-title', 'amendment-content', 'amendment-diff-wrap']) document.getElementById(id).style.display = repeal ? 'none' : '';
+                if (reload && !repeal) {
+                    document.getElementById('amendment-title').value = action === 'create' ? '' : (regulation?.title || '');
+                    document.getElementById('amendment-content').value = action === 'create' ? '' : (regulation?.content || '');
+                }
+                document.getElementById('amendment-procedure').innerHTML = procedureText(kind, document.getElementById('amendment-needs-assembly').checked);
+                renderAmendmentDiff();
+            }
+            function renderAmendmentDiff() {
+                const action = document.getElementById('amendment-action').value;
+                const regulation = regulationCache.find(item => item.id === document.getElementById('amendment-regulation').value);
+                document.getElementById('amendment-diff').innerHTML = lineDiff(action === 'create' ? '' : regulation?.content, document.getElementById('amendment-content').value);
+            }
+            function openAmendmentForm(id) {
+                const form = document.getElementById('amendment-form'); if (!form) return;
+                form.reset(); form.style.display = 'grid';
+                document.getElementById('amendment-action').value = 'amend';
+                syncAmendmentForm(true);
+                if (id) { document.getElementById('amendment-regulation').value = id; syncAmendmentForm(true); }
+                form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            function closeAmendmentForm() { const form = document.getElementById('amendment-form'); if (form) { form.reset(); form.style.display = 'none'; } }
+            async function submitAmendment(event) {
+                event.preventDefault();
+                const action = document.getElementById('amendment-action').value;
+                const body = { action, regulationId: document.getElementById('amendment-regulation').value, kind: document.getElementById('amendment-kind').value, title: document.getElementById('amendment-title').value, content: document.getElementById('amendment-content').value, reason: document.getElementById('amendment-reason').value, source: document.getElementById('amendment-source').value, signers: Number(document.getElementById('amendment-signers').value || 0), needsAssembly: document.getElementById('amendment-needs-assembly').checked };
+                const res = await fetch('/api/regulation-amendments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const data = await res.json(); showToast(res.ok ? '修正案已登錄為「提案中」，條文尚未變更' : data.error, !res.ok);
+                if (res.ok) { closeAmendmentForm(); loadRegulations(); }
+            }
+            const dateInput = (id, label) => '<label style="display:grid; gap:4px; font-size:.85rem; color:var(--text-muted);">' + label + '<input id="' + id + '" class="form-control" type="date" value="' + new Date().toISOString().slice(0, 10) + '"></label>';
+            const numberInput = (id, label, value) => '<label style="display:grid; gap:4px; font-size:.85rem; color:var(--text-muted);">' + label + '<input id="' + id + '" class="form-control" type="number" min="0" step="1" value="' + (value ?? '') + '" oninput="updateThresholdHint()"></label>';
+            let adoptingAmendment = null;
+            async function openAdoptForm(id) {
+                const item = amendmentCache.find(entry => entry.id === id); if (!item) return;
+                document.querySelectorAll('[id^="adopt-"]').forEach(node => { node.innerHTML = ''; });
+                adoptingAmendment = item;
+                let votingTotal = '';
+                if (item.kind === 'charter' || item.needsAssembly) { try { const res = await fetch('/api/members?filter=voting'); if (res.ok) votingTotal = (await res.json()).length; } catch {} }
+                let fields = '';
+                if (item.kind === 'bylaw') fields += dateInput('adopt-officers-date', '幹部會議通過日期') + dateInput('adopt-president-date', '社長核定日期');
+                if (item.kind === 'charter' || item.needsAssembly) fields += dateInput('adopt-assembly-date', '社員大會日期') + numberInput('adopt-total', '社員總額（具表決權人數' + (votingTotal !== '' ? '，名冊目前 ' + votingTotal + ' 人' : '') + '）', votingTotal) + numberInput('adopt-attendance', '出席人數') + numberInput('adopt-agree', '同意人數');
+                if (item.kind === 'charter') fields += '<label style="display:grid; gap:4px; font-size:.85rem; color:var(--text-muted);">學校核備日期（尚未核備請留空）<input id="adopt-school-date" class="form-control" type="date"></label>';
+                if (item.kind === 'school') fields += dateInput('adopt-school-announced', '學校公告／會議日期') + '<label style="display:grid; gap:4px; font-size:.85rem; color:var(--text-muted);">學校公告來源<input id="adopt-source" class="form-control" maxlength="200" placeholder="例如 115 學年度第 1 學期學務會議"></label>';
+                fields += '<label style="display:grid; gap:4px; font-size:.85rem; color:var(--text-muted);">版本標示（選填，預設依日期產生）<input id="adopt-version" class="form-control" maxlength="60" placeholder="例如 115.12.01 修訂"></label>';
+                document.getElementById('adopt-' + id).innerHTML = '<form onsubmit="adoptAmendment(event)" style="display:grid; gap:12px; margin-top:12px; padding:14px; border:1px dashed var(--border-glass); border-radius:10px;"><div style="color:#bfdbfe; font-size:.88rem;">' + procedureText(item.kind, item.needsAssembly) + '</div><div class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px;">' + fields + '</div><p id="adopt-threshold" style="margin:0; font-size:.88rem;"></p><div style="display:flex; gap:8px;"><button class="btn btn-primary" type="submit">確認登錄</button><button class="btn btn-secondary" type="button" onclick="this.closest(\\'form\\').remove()">取消</button></div></form>';
+                updateThresholdHint();
+            }
+            function updateThresholdHint() {
+                const hint = document.getElementById('adopt-threshold'); if (!hint || !adoptingAmendment || !document.getElementById('adopt-total')) { if (hint) hint.textContent = ''; return; }
+                const major = adoptingAmendment.kind === 'charter';
+                const total = Number(document.getElementById('adopt-total').value || 0), attendance = Number(document.getElementById('adopt-attendance').value || 0), agree = Number(document.getElementById('adopt-agree').value || 0);
+                const needAttend = Math.ceil(total * (major ? 2 : 1) / 3), needAgree = major ? Math.ceil(attendance * 2 / 3) : Math.ceil(attendance / 2);
+                const ok = total > 0 && attendance <= total && agree <= attendance && attendance >= needAttend && agree >= needAgree;
+                hint.style.color = ok ? '#34d399' : '#fbbf24';
+                hint.textContent = (major ? '重大決議' : '一般決議') + '門檻：出席需 ' + needAttend + ' 人以上' + (attendance ? '、同意需 ' + needAgree + ' 人以上' : '') + '。' + (total ? (ok ? '✓ 已達門檻，可以登錄通過。' : '✗ 目前未達門檻；若會議實際未達門檻，請改按「登錄未通過」。') : '請先填社員總額。');
+            }
+            async function adoptAmendment(event) {
+                event.preventDefault(); const item = adoptingAmendment; if (!item) return;
+                const value = id => document.getElementById(id)?.value || '';
+                const body = { officersMeetingDate: value('adopt-officers-date'), presidentApprovedAt: value('adopt-president-date'), schoolApprovedAt: value('adopt-school-date'), schoolAnnouncedAt: value('adopt-school-announced'), source: value('adopt-source'), version: value('adopt-version') };
+                if (document.getElementById('adopt-total')) body.assembly = { date: value('adopt-assembly-date'), total: Number(value('adopt-total')), attendance: Number(value('adopt-attendance')), agree: Number(value('adopt-agree')) };
+                const res = await fetch('/api/regulation-amendments/' + encodeURIComponent(item.id) + '/adopt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const data = await res.json();
+                showToast(res.ok ? (data.status === 'awaiting_school' ? '已登錄社員大會通過，待學校核備後生效' : '修正案已生效，條文已更新') : data.error, !res.ok);
+                if (res.ok) { adoptingAmendment = null; loadRegulations(); }
+            }
+            async function recordSchoolApproval(id) {
+                const date = prompt('學校核備日期（YYYY-MM-DD）', new Date().toISOString().slice(0, 10)); if (!date) return;
+                const res = await fetch('/api/regulation-amendments/' + encodeURIComponent(id) + '/school-approval', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schoolApprovedAt: date }) });
+                const data = await res.json(); showToast(res.ok ? '學校已核備，章程修正生效' : data.error, !res.ok); if (res.ok) loadRegulations();
+            }
+            async function closeAmendment(id, outcome) {
+                const note = outcome === 'rejected' ? prompt('請說明未通過的情形（例如：社員大會出席 8 人，未達 10 人門檻）') : (confirm('確定撤回這份修正案？') ? '' : null);
+                if (note === null || (outcome === 'rejected' && !note.trim())) return;
+                const res = await fetch('/api/regulation-amendments/' + encodeURIComponent(id) + '/close', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ outcome, note }) });
+                const data = await res.json(); showToast(res.ok ? (outcome === 'rejected' ? '已登錄為未通過' : '修正案已撤回') : data.error, !res.ok); if (res.ok) loadRegulations();
+            }
 
             function setNoteDate() { const date = document.getElementById('note-date'); if (date && !date.value) date.value = new Date().toISOString().slice(0, 10); }
             function addNoteLink() { const container = document.getElementById('note-links'); if (!container || container.children.length >= 20) return showToast('每則備忘最多 20 個網址', true); container.insertAdjacentHTML('beforeend', '<div class="note-link-row responsive-form-grid" style="display:grid; grid-template-columns:1fr 2fr auto; gap:8px;"><input class="form-control note-link-label" placeholder="網址說明，例如：課程投影片" maxlength="100"><input class="form-control note-link-url" type="url" placeholder="https://..." maxlength="2048"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()" aria-label="移除此網址">移除</button></div>'); }
