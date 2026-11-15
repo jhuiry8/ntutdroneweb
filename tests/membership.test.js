@@ -213,3 +213,26 @@ test('regulations change only through amendments that meet the required procedur
     assert.equal((await (await request(`/api/regulation-amendments/${rejected.id}/close`, 'president', 'POST', { outcome: 'rejected', note: '幹部會議未通過' })).json()).status, 'rejected');
     assert.equal((await request(`/api/regulation-amendments/${rejected.id}/adopt`, 'president', 'POST', {})).status, 409);
 });
+
+test('officers can select many members and update or delete them at once', async () => {
+    const { request, store } = fixture();
+    const ids = [];
+    for (const name of ['甲', '乙', '丙']) ids.push((await (await request('/api/members', 'finance', 'POST', { name })).json()).id);
+    assert.equal((await request('/api/members/bulk', 'cadre', 'POST', { ids, level: 'officer' })).status, 403);
+    assert.equal((await request('/api/members/bulk', 'finance', 'POST', { ids: [], level: 'officer' })).status, 400);
+    assert.equal((await request('/api/members/bulk', 'finance', 'POST', { ids })).status, 400, 'something must change');
+    assert.equal((await request('/api/members/bulk', 'finance', 'POST', { ids: [...ids, 'missing'], level: 'officer' })).status, 409);
+    assert.equal((await request('/api/members/bulk', 'finance', 'POST', { ids, feeStatus: 'semester', feeSemester: 'bad' })).status, 400);
+    assert.equal(JSON.parse(store.get('members:list'))[0].feeStatus, 'unpaid', 'an invalid value changes nothing');
+
+    const updated = await request('/api/members/bulk', 'finance', 'POST', { ids: ids.slice(0, 2), feeStatus: 'semester', feeSemester: '115-1' });
+    assert.deepEqual(await updated.json(), { updated: 2, deleted: 0 });
+    await request('/api/members/bulk', 'finance', 'POST', { ids: ids.slice(0, 2), level: 'prep' });
+    const list = JSON.parse(store.get('members:list'));
+    assert.deepEqual(list.map(item => [item.level, item.feeStatus, item.feeSemester]), [['prep', 'semester', '115-1'], ['prep', 'semester', '115-1'], ['member', 'unpaid', '']], 'level-only change keeps the fee semester');
+
+    await request('/api/users', 'president', 'PATCH', { username: 'member', memberId: ids[0] });
+    assert.deepEqual(await (await request('/api/members/bulk', 'finance', 'POST', { ids: ids.slice(0, 2), action: 'delete' })).json(), { updated: 0, deleted: 2 });
+    assert.equal(JSON.parse(store.get('members:list')).length, 1);
+    assert.equal(JSON.parse(store.get('user:member')).memberId, undefined, 'bound accounts are released');
+});

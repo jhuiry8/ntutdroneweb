@@ -1233,6 +1233,38 @@ async function handleRequest(request, env, ctx) {
                 return Response.json(memberView(member), { status: 201 });
             }
 
+            // Bulk update or delete selected roster entries (全選後批次修改).
+            if (path === '/api/members/bulk' && method === 'POST') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+                const body = await readJsonObject(request);
+                const ids = Array.isArray(body.ids) ? [...new Set(body.ids.filter(id => typeof id === 'string'))] : [];
+                if (!ids.length || ids.length > 1000) return Response.json({ error: '請選擇 1 至 1,000 位社員' }, { status: 400 });
+                const members = parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY));
+                const selected = new Set(ids);
+                const targets = members.filter(member => selected.has(member.id));
+                if (targets.length !== ids.length) return Response.json({ error: '部分社員已不存在，請重新整理後再試' }, { status: 409 });
+                if (body.action === 'delete') {
+                    await env.DRONE_DB.put(MEMBERS_KEY, JSON.stringify(members.filter(member => !selected.has(member.id))));
+                    for (const account of (await listUsers(env)).filter(item => selected.has(item.memberId))) {
+                        delete account.memberId;
+                        await env.DRONE_DB.put(`user:${account.username}`, JSON.stringify(account));
+                    }
+                    return Response.json({ updated: 0, deleted: targets.length });
+                }
+                const changes = {};
+                if (body.level) changes.level = body.level;
+                if (body.feeStatus) { changes.feeStatus = body.feeStatus; changes.feeSemester = body.feeSemester || ''; }
+                if (!Object.keys(changes).length) return Response.json({ error: '請選擇要修改的身分或社費狀態' }, { status: 400 });
+                // Validate every row first so a bad value changes nothing.
+                const updates = targets.map(member => normalizeMemberInput({ ...member, ...changes, ...(changes.feeStatus ? {} : { feeSemester: member.feeSemester }) }, null, false));
+                const now = new Date().toISOString();
+                targets.forEach((member, index) => Object.assign(member, { level: updates[index].level, feeStatus: updates[index].feeStatus, feeSemester: updates[index].feeSemester, updatedAt: now }));
+                await env.DRONE_DB.put(MEMBERS_KEY, JSON.stringify(members));
+                return Response.json({ updated: targets.length, deleted: 0 });
+            }
+
             if (path.startsWith('/api/members/') && method === 'PATCH') {
                 const user = await sessionUser(request, env);
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
