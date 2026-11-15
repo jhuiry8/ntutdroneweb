@@ -5,6 +5,7 @@ import { parseDocument } from 'htmlparser2';
 import worker from '../src/worker.js';
 import { renderAdminDashboard } from '../src/templates.js';
 import { sanitizeContent } from '../src/html.js';
+import { withSiteStore } from './helpers/site-store.js';
 
 function elements(html) {
     const result = [];
@@ -28,6 +29,7 @@ function fixture() {
         async put(key, value) { store.set(key, value); },
         async delete(key) { store.delete(key); }
     } };
+    withSiteStore(env);
     const request = (path, role, method = 'GET', body) => worker.fetch(new Request(`https://example.com${path}`, {
         method,
         headers: { 'Content-Type': 'application/json', ...(role ? { Cookie: `session=${role}` } : {}) },
@@ -43,8 +45,13 @@ test('cadre content cannot inject scripts or handlers into a president dashboard
     const slug = `x');${attack};//" onmouseover="${attack}`;
     assert.equal((await request('/api/users', 'cadre', 'PATCH', { username: 'cadre', role: 'president' })).status, 403);
     for (const type of ['posts', 'pages']) {
-        assert.equal((await request(`/api/${type}`, 'cadre', 'POST', { title, slug, content: 'Hello' })).status, 200);
+        // Unsafe slugs are rejected outright; safe ones still need escaped titles.
+        assert.equal((await request(`/api/${type}`, 'cadre', 'POST', { title, slug, content: 'Hello' })).status, 400);
+        assert.equal((await request(`/api/${type}`, 'cadre', 'POST', { title, slug: 'safe-slug', content: 'Hello' })).status, 200);
     }
+    // Legacy KV data written before slug validation must still render safely.
+    store.set('posts_list', JSON.stringify([{ title, slug, summary: title, date: new Date().toISOString() }]));
+    store.set('pages_list', JSON.stringify([{ title, slug }]));
     const html = await (await request('/admin/dashboard', 'president')).text();
     const nodes = elements(html);
     const baseline = elements(renderAdminDashboard([], [], { role: 'president' }));
@@ -198,4 +205,50 @@ test('editor preview ignores stale responses and falls back to text on failure',
     await failed;
     assert.equal(body.textContent, textarea.value);
     assert.equal(body.innerHTML, '<p>new</p>', 'Failure must never insert raw source as HTML');
+});
+
+test('image upload to the repository is gone and pages carry a CSP', async () => {
+    const { request } = fixture();
+    const upload = await request('/api/upload', 'president', 'POST', {});
+    assert.equal(upload.status, 404);
+    const dashboard = await request('/admin/dashboard', 'president');
+    const csp = dashboard.headers.get('content-security-policy');
+    assert.match(csp, /object-src 'none'/);
+    assert.match(csp, /frame-ancestors 'none'/);
+    assert.match(csp, /connect-src 'self'/);
+    const html = await dashboard.text();
+    assert.doesNotMatch(html, /handleFileUpload|\/api\/upload|panel-media/);
+    assert.doesNotMatch(html, /cdn\.jsdelivr\.net|@latest/, 'third-party scripts must not float to a new version');
+});
+
+test('content slugs are restricted and renames cannot overwrite another entry', async () => {
+    const { request, store } = fixture();
+    for (const slug of ['a b', 'a?b', '#x', '../x', 'x/y', '-x', 'a'.repeat(101)]) {
+        assert.equal((await request('/api/posts', 'cadre', 'POST', { title: 't', slug, content: 'c' })).status, 400, slug);
+    }
+    assert.equal((await request('/api/posts', 'cadre', 'POST', { title: 'one', slug: 'one', content: 'c' })).status, 200);
+    assert.equal((await request('/api/posts', 'cadre', 'POST', { title: 'two', slug: 'two', content: 'c' })).status, 200);
+    const rename = await request('/api/posts', 'cadre', 'POST', { title: 'two', slug: 'one', content: 'c', originalSlug: 'two' });
+    assert.equal(rename.status, 400);
+    assert.equal(JSON.parse(store.get('post:one')).title, 'one');
+    assert.equal((await request('/api/posts', 'cadre', 'POST', { title: 'x', slug: 'lang-test', content: 'c', lang: '"><script>' })).status, 200);
+    assert.equal(JSON.parse(store.get('post:lang-test')).lang, 'zh');
+});
+
+test('editors saving at the same time keep every list entry', async () => {
+    const { request, store } = fixture();
+    const saves = Array.from({ length: 8 }, (_, i) => request('/api/posts', 'cadre', 'POST', { title: `p${i}`, slug: `p${i}`, content: 'c' }));
+    for (const res of await Promise.all(saves)) assert.equal(res.status, 200);
+    assert.equal(JSON.parse(store.get('posts_list')).length, 8);
+    const pages = Array.from({ length: 8 }, (_, i) => request('/api/pages', 'cadre', 'POST', { title: `q${i}`, slug: `q${i}`, content: 'c' }));
+    for (const res of await Promise.all(pages)) assert.equal(res.status, 200);
+    assert.equal(JSON.parse(store.get('pages_list')).length, 8);
+});
+
+test('JSON bodies are size limited and must be objects', async () => {
+    const { request } = fixture();
+    const huge = await request('/api/homepage', 'cadre', 'POST', { heroTitle: 'x'.repeat(300 * 1024) });
+    assert.equal(huge.status, 413);
+    assert.equal((await request('/api/homepage', 'cadre', 'POST', null)).status, 400);
+    assert.equal((await request('/api/preview', 'cadre', 'POST', [])).status, 400);
 });

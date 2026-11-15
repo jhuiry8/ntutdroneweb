@@ -34,9 +34,9 @@ import {
     aiProvider
 } from './forms.js';
 export { FormStore } from './form-store.js';
+export { SiteStore } from './site-store.js';
 
-// Configuration Defaults
-const DEFAULT_PASS = 'admin123';
+// Legacy unsalted admin hash format (migrated to PBKDF2 on first login)
 const SALT = 'ntut_drone_salt_123';
 
 // Helper: Hashing password
@@ -52,19 +52,48 @@ const LOGIN_MAX_ATTEMPTS_PER_IP = 20;
 const LOGIN_LOCKOUT_SECONDS = 900;
 const CAPTCHA_MAX_PER_IP = 60;
 
+// CAPTCHA challenges, login counters and the CMS content lists go through one
+// serialized Durable Object, so concurrent requests cannot race them.
+async function siteStore(env, path, payload = {}) {
+    const namespace = env.SITE_STORE;
+    const stub = namespace.get(namespace.idFromName('site-security'));
+    const response = await stub.fetch(`https://site-store${path}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    const body = await response.json();
+    if (response.status >= 500 || response.status === 400) throw new Error(body?.error || 'Site store failed');
+    return { status: response.status, body };
+}
+const captchaStore = env => (path, payload) => siteStore(env, path, payload);
+
+// Atomically takes one attempt from every listed counter; false once any is used up.
+async function takeAttempt(env, limits) {
+    return (await siteStore(env, '/limit/check', { limits, hit: true })).status === 200;
+}
+async function giveBackAttempt(env, keys) {
+    for (const key of keys) await siteStore(env, '/limit/release', { key });
+}
+
 // Helper: Render the login page. When Cloudflare Turnstile is not configured,
 // a self-hosted image CAPTCHA is attached so every login attempt needs one.
 async function loginPageResponse(env, message = '', status = 200) {
-    const captcha = env.TURNSTILE_SECRET_KEY ? null : await createCaptcha(env.DRONE_DB);
+    const captcha = env.TURNSTILE_SECRET_KEY ? null : await createCaptcha(captchaStore(env));
     return new Response(renderLogin(message, env.TURNSTILE_SITE_KEY, captcha), {
         status,
         headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }
     });
 }
 
-async function bumpCounter(kv, key, current) {
-    await kv.put(key, String(current + 1), { expirationTtl: LOGIN_LOCKOUT_SECONDS });
+// Verified against when the account does not exist, so a login for an unknown
+// username takes as long as one for a real account.
+let dummyPasswordHash = null;
+async function dummyHash() {
+    dummyPasswordHash ??= await passwordHash(crypto.randomUUID());
+    return dummyPasswordHash;
 }
+
+// Slugs become KV keys and URL path segments, so keep them to a safe charset.
+const SLUG_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/;
 
 // Helper: Parse Cookies
 function parseCookies(request) {
@@ -119,7 +148,7 @@ const PUBLIC_LOAN_DAILY_LIMIT = 200;
 const PUBLIC_LOAN_PRINT_DAYS = 3;
 
 async function verifyTurnstile(env, token, ip) {
-    if (!env.TURNSTILE_SECRET_KEY) return true;
+    if (!env.TURNSTILE_SECRET_KEY) return false;
     if (!token) return false;
     const verification = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
         method: 'POST', body: new URLSearchParams({ secret: env.TURNSTILE_SECRET_KEY, response: token, remoteip: ip || '' })
@@ -158,7 +187,13 @@ async function readFormSettings(env) {
 }
 
 class FinanceValidationError extends Error {}
-class PayloadTooLargeError extends Error {}
+class PayloadTooLargeError extends Error {
+    constructor(maxBytes) {
+        super(`請求資料不可超過 ${maxBytes >= 1_000_000 ? `${Math.round(maxBytes / 1_000_000)} MB` : `${Math.round(maxBytes / 1024)} KB`}`);
+    }
+}
+const DEFAULT_JSON_LIMIT = 256 * 1024;
+const CONTENT_JSON_LIMIT = 1_000_000;
 
 async function readJsonLimited(request, maxBytes) {
     const reader = request.body?.getReader();
@@ -171,7 +206,7 @@ async function readJsonLimited(request, maxBytes) {
         size += value.byteLength;
         if (size > maxBytes) {
             await reader.cancel();
-            throw new PayloadTooLargeError();
+            throw new PayloadTooLargeError(maxBytes);
         }
         chunks.push(value);
     }
@@ -180,6 +215,13 @@ async function readJsonLimited(request, maxBytes) {
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
     try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
     catch { throw new FinanceValidationError('JSON 格式錯誤'); }
+}
+
+// Reads a size-limited JSON body that must be an object.
+async function readJsonObject(request, maxBytes = DEFAULT_JSON_LIMIT) {
+    const body = await readJsonLimited(request, maxBytes);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new FinanceValidationError('請提供 JSON 物件');
+    return body;
 }
 
 function financeAmount(value) {
@@ -352,8 +394,27 @@ async function sessionUser(request, env) {
     return user?.active !== false && user?.version === session.version ? user : null;
 }
 
+// The pages still use inline scripts and onclick handlers, so 'unsafe-inline'
+// is needed for scripts. The policy still blocks plugins, <base> hijacking,
+// framing, cross-origin form posts and fetch() to other origins, and only
+// loads scripts from this site and Cloudflare Turnstile.
+const CONTENT_SECURITY_POLICY = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' https: data:",
+    "connect-src 'self'",
+    'frame-src https://challenges.cloudflare.com',
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'"
+].join('; ');
+
 function addSecurityHeaders(response, request) {
     const headers = new Headers(response.headers);
+    if (!headers.has('Content-Security-Policy')) headers.set('Content-Security-Policy', CONTENT_SECURITY_POLICY);
     headers.set('X-Content-Type-Options', 'nosniff');
     headers.set('X-Frame-Options', 'DENY');
     if (!headers.has('Referrer-Policy')) headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -531,7 +592,7 @@ async function handleRequest(request, env, ctx) {
                 const user = await sessionUser(request, env);
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
                 if (!canViewCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
-                const { content } = await request.json();
+                const { content } = await readJsonObject(request, CONTENT_JSON_LIMIT);
                 if (typeof content !== 'string') return Response.json({ error: '內容格式錯誤' }, { status: 400 });
                 return Response.json({ html: sanitizeContent(marked.parse(content)) });
             }
@@ -540,10 +601,10 @@ async function handleRequest(request, env, ctx) {
             if (path === '/api/captcha' && method === 'POST') {
                 if (env.TURNSTILE_SECRET_KEY) return Response.json({ error: '未啟用' }, { status: 404 });
                 const genKey = `captcha-gen:${request.headers.get('CF-Connecting-IP') || 'unknown'}`;
-                const generated = Number(await env.DRONE_DB.get(genKey) || 0);
-                if (generated >= CAPTCHA_MAX_PER_IP) return Response.json({ error: '請求過於頻繁，請稍後再試' }, { status: 429 });
-                await bumpCounter(env.DRONE_DB, genKey, generated);
-                return Response.json(await createCaptcha(env.DRONE_DB), { headers: { 'Cache-Control': 'no-store' } });
+                if (!(await takeAttempt(env, [{ key: genKey, max: CAPTCHA_MAX_PER_IP, windowSeconds: LOGIN_LOCKOUT_SECONDS }]))) {
+                    return Response.json({ error: '請求過於頻繁，請稍後再試' }, { status: 429 });
+                }
+                return Response.json(await createCaptcha(captchaStore(env)), { headers: { 'Cache-Control': 'no-store' } });
             }
 
             if (path === '/api/login' && method === 'POST') {
@@ -551,22 +612,29 @@ async function handleRequest(request, env, ctx) {
                 const username = String(formData.get('username') || '').trim().toLowerCase();
                 const password = String(formData.get('password') || '');
                 const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
-                const attemptsKey = `login-attempts:${username}:${clientIp}`;
+                const attemptsKey = `login-attempts:${username.slice(0, 100)}:${clientIp}`;
                 const ipAttemptsKey = `login-attempts-ip:${clientIp}`;
-                const attempts = Number(await env.DRONE_DB.get(attemptsKey) || 0);
-                const ipAttempts = Number(await env.DRONE_DB.get(ipAttemptsKey) || 0);
-                if (attempts >= LOGIN_MAX_ATTEMPTS_PER_ACCOUNT || ipAttempts >= LOGIN_MAX_ATTEMPTS_PER_IP) {
+                // Every attempt is counted atomically before anything is checked, so
+                // parallel requests cannot all slip in under the limit.
+                if (!(await takeAttempt(env, [
+                    { key: attemptsKey, max: LOGIN_MAX_ATTEMPTS_PER_ACCOUNT, windowSeconds: LOGIN_LOCKOUT_SECONDS },
+                    { key: ipAttemptsKey, max: LOGIN_MAX_ATTEMPTS_PER_IP, windowSeconds: LOGIN_LOCKOUT_SECONDS }
+                ]))) {
                     return loginPageResponse(env, '登入嘗試過多，請 15 分鐘後再試。', 429);
                 }
                 if (env.TURNSTILE_SECRET_KEY) {
                     const token = String(formData.get('cf-turnstile-response') || '');
-                    if (!token) return loginPageResponse(env, '請完成驗證碼。', 400);
+                    if (!token) {
+                        await giveBackAttempt(env, [attemptsKey, ipAttemptsKey]);
+                        return loginPageResponse(env, '請完成驗證碼。', 400);
+                    }
                     if (!(await verifyTurnstile(env, token, clientIp === 'unknown' ? '' : clientIp))) {
-                        await bumpCounter(env.DRONE_DB, ipAttemptsKey, ipAttempts);
+                        await giveBackAttempt(env, [attemptsKey]);
                         return loginPageResponse(env, '驗證碼無效，請重試。', 400);
                     }
-                } else if (!(await verifyCaptcha(env.DRONE_DB, String(formData.get('captcha_id') || ''), formData.get('captcha')))) {
-                    await bumpCounter(env.DRONE_DB, ipAttemptsKey, ipAttempts);
+                } else if (!(await verifyCaptcha(captchaStore(env), String(formData.get('captcha_id') || ''), formData.get('captcha')))) {
+                    // A wrong CAPTCHA still counts against the IP, not against the account.
+                    await giveBackAttempt(env, [attemptsKey]);
                     return loginPageResponse(env, '驗證碼錯誤或已過期，請重新輸入。', 400);
                 }
                 let userJson = await env.DRONE_DB.get(`user:${username}`);
@@ -580,8 +648,11 @@ async function handleRequest(request, env, ctx) {
                         await env.DRONE_DB.delete('admin_password_hash');
                     }
                 }
-                if (user?.active !== false && await verifyPassword(password, user?.passwordHash)) {
-                    await env.DRONE_DB.delete(attemptsKey);
+                // Always run one PBKDF2 derivation so unknown usernames are not faster.
+                const passwordOk = await verifyPassword(password, user ? user.passwordHash : await dummyHash());
+                if (user && user.active !== false && passwordOk) {
+                    await siteStore(env, '/limit/clear', { key: attemptsKey });
+                    await giveBackAttempt(env, [ipAttemptsKey]);
                     const token = crypto.randomUUID();
                     await env.DRONE_DB.put(`session:${token}`, JSON.stringify({ username: user.username, version: user.version }), { expirationTtl: 86400 });
 
@@ -593,8 +664,6 @@ async function handleRequest(request, env, ctx) {
                         }
                     });
                 } else {
-                    await bumpCounter(env.DRONE_DB, attemptsKey, attempts);
-                    await bumpCounter(env.DRONE_DB, ipAttemptsKey, ipAttempts);
                     return loginPageResponse(env, '帳號或密碼不正確，請重新輸入！');
                 }
             }
@@ -650,23 +719,23 @@ async function handleRequest(request, env, ctx) {
                 if (method === 'DELETE') {
                     const slug = path.substring(11);
                     await env.DRONE_DB.delete(`post:${slug}`);
-                    
-                    const postsListJson = await env.DRONE_DB.get('posts_list');
-                    let postsList = postsListJson ? JSON.parse(postsListJson) : [];
-                    postsList = postsList.filter(p => p.slug !== slug);
-                    await env.DRONE_DB.put('posts_list', JSON.stringify(postsList));
+                    await siteStore(env, '/content-index', { list: 'posts_list', remove: [slug] });
                     
                     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
                 }
 
                 if (method === 'POST') {
-                    const { title, lang: postLang, slug, summary, content, originalSlug } = await request.json();
+                    const { title, lang: postLang, slug, summary, content, originalSlug } = await readJsonObject(request, CONTENT_JSON_LIMIT);
                     
                     if (!title || !slug || !content) {
                         return new Response(JSON.stringify({ error: '標題、路徑與內容為必填！' }), { status: 400 });
                     }
+                    if (typeof title !== 'string' || typeof content !== 'string' || (summary !== undefined && typeof summary !== 'string') || typeof slug !== 'string' || !SLUG_PATTERN.test(slug)) {
+                        return Response.json({ error: '網址代稱只能使用英文字母、數字、底線或連字號（最多 100 字），且需以英數字開頭' }, { status: 400 });
+                    }
+                    if (originalSlug !== undefined && originalSlug !== null && typeof originalSlug !== 'string') return Response.json({ error: '原網址代稱格式錯誤' }, { status: 400 });
 
-                    if (!originalSlug) {
+                    if (!originalSlug || originalSlug !== slug) {
                         const existing = await env.DRONE_DB.get(`post:${slug}`);
                         if (existing) {
                             return new Response(JSON.stringify({ error: '該網址代稱已存在。' }), { status: 400 });
@@ -675,7 +744,7 @@ async function handleRequest(request, env, ctx) {
 
                     const postData = {
                         title,
-                        lang: postLang || 'zh',
+                        lang: postLang === 'en' ? 'en' : 'zh',
                         slug,
                         summary,
                         content,
@@ -683,27 +752,13 @@ async function handleRequest(request, env, ctx) {
                     };
 
                     await env.DRONE_DB.put(`post:${slug}`, JSON.stringify(postData));
-
-                    const postsListJson = await env.DRONE_DB.get('posts_list');
-                    let postsList = postsListJson ? JSON.parse(postsListJson) : [];
-                    
-                    if (originalSlug) {
-                        postsList = postsList.filter(p => p.slug !== originalSlug);
-                        if (originalSlug !== slug) {
-                            await env.DRONE_DB.delete(`post:${originalSlug}`);
-                        }
-                    }
-
-                    postsList.push({
-                        title,
-                        lang: postData.lang,
-                        slug,
-                        summary,
-                        date: postData.date
+                    if (originalSlug && originalSlug !== slug) await env.DRONE_DB.delete(`post:${originalSlug}`);
+                    await siteStore(env, '/content-index', {
+                        list: 'posts_list',
+                        remove: originalSlug ? [originalSlug] : [],
+                        add: { title, lang: postData.lang, slug, summary, date: postData.date },
+                        sortByDate: true
                     });
-
-                    postsList.sort((a, b) => new Date(b.date) - new Date(a.date));
-                    await env.DRONE_DB.put('posts_list', JSON.stringify(postsList));
 
                     return new Response(JSON.stringify({ success: true, post: postData }), { headers: { 'Content-Type': 'application/json' } });
                 }
@@ -743,23 +798,23 @@ async function handleRequest(request, env, ctx) {
                 if (method === 'DELETE') {
                     const slug = path.substring(11);
                     await env.DRONE_DB.delete(`page:${slug}`);
-                    
-                    const pagesListJson = await env.DRONE_DB.get('pages_list');
-                    let pagesList = pagesListJson ? JSON.parse(pagesListJson) : [];
-                    pagesList = pagesList.filter(p => p.slug !== slug);
-                    await env.DRONE_DB.put('pages_list', JSON.stringify(pagesList));
+                    await siteStore(env, '/content-index', { list: 'pages_list', remove: [slug] });
                     
                     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
                 }
 
                 if (method === 'POST') {
-                    const { title, lang: pageLang, slug, content, originalSlug } = await request.json();
+                    const { title, lang: pageLang, slug, content, originalSlug } = await readJsonObject(request, CONTENT_JSON_LIMIT);
                     
                     if (!title || !slug || !content) {
                         return new Response(JSON.stringify({ error: '標題、路徑與內容為必填！' }), { status: 400 });
                     }
+                    if (typeof title !== 'string' || typeof content !== 'string' || typeof slug !== 'string' || !SLUG_PATTERN.test(slug)) {
+                        return Response.json({ error: '頁面路徑只能使用英文字母、數字、底線或連字號（最多 100 字），且需以英數字開頭' }, { status: 400 });
+                    }
+                    if (originalSlug !== undefined && originalSlug !== null && typeof originalSlug !== 'string') return Response.json({ error: '原頁面路徑格式錯誤' }, { status: 400 });
 
-                    if (!originalSlug) {
+                    if (!originalSlug || originalSlug !== slug) {
                         const existing = await env.DRONE_DB.get(`page:${slug}`);
                         if (existing) {
                             return new Response(JSON.stringify({ error: '該頁面路徑已存在！' }), { status: 400 });
@@ -768,28 +823,17 @@ async function handleRequest(request, env, ctx) {
 
                     const pageData = {
                         title,
-                        lang: pageLang || 'zh',
+                        lang: pageLang === 'en' ? 'en' : 'zh',
                         slug,
                         content
                     };
                     await env.DRONE_DB.put(`page:${slug}`, JSON.stringify(pageData));
-
-                    const pagesListJson = await env.DRONE_DB.get('pages_list');
-                    let pagesList = pagesListJson ? JSON.parse(pagesListJson) : [];
-                    
-                    if (originalSlug) {
-                        pagesList = pagesList.filter(p => p.slug !== originalSlug);
-                        if (originalSlug !== slug) {
-                            await env.DRONE_DB.delete(`page:${originalSlug}`);
-                        }
-                    }
-
-                    pagesList.push({
-                        title,
-                        lang: pageData.lang,
-                        slug
+                    if (originalSlug && originalSlug !== slug) await env.DRONE_DB.delete(`page:${originalSlug}`);
+                    await siteStore(env, '/content-index', {
+                        list: 'pages_list',
+                        remove: originalSlug ? [originalSlug] : [],
+                        add: { title, lang: pageData.lang, slug }
                     });
-                    await env.DRONE_DB.put('pages_list', JSON.stringify(pagesList));
 
                     return new Response(JSON.stringify({ success: true, page: pageData }), { headers: { 'Content-Type': 'application/json' } });
                 }
@@ -799,7 +843,7 @@ async function handleRequest(request, env, ctx) {
             if (path === '/api/change-password' && method === 'POST') {
                 const user = await sessionUser(request, env);
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-                const { oldPassword, newPassword } = await request.json();
+                const { oldPassword, newPassword } = await readJsonObject(request);
                 if (!await verifyPassword(oldPassword, user.passwordHash)) {
                     return new Response(JSON.stringify({ error: '舊密碼輸入錯誤！' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
                 }
@@ -823,7 +867,7 @@ async function handleRequest(request, env, ctx) {
                         return { ...publicUser(item), member: member ? { id: member.id, name: member.name, studentId: member.studentId, status: membershipStatus(member) } : null };
                     }));
                 }
-                const body = await request.json();
+                const body = await readJsonObject(request);
                 const username = String(body.username || '').trim().toLowerCase();
                 if (!/^[a-z0-9._-]{3,40}$/.test(username)) return Response.json({ error: '帳號須為 3–40 位英數字、點、底線或連字號' }, { status: 400 });
                 // Binding an account to a roster entry (帳號與社員綁定). One roster entry per account.
@@ -893,7 +937,7 @@ async function handleRequest(request, env, ctx) {
                 const user = await sessionUser(request, env);
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
                 if (!canManageFinance(user)) return Response.json({ error: '權限不足' }, { status: 403 });
-                const body = await request.json();
+                const body = await readJsonObject(request);
                 const kind = String(body.kind || '');
                 if (!['income', 'expense', 'transfer'].includes(kind)) return Response.json({ error: '收支類型無效' }, { status: 400 });
                 const amount = financeAmount(body.amount);
@@ -921,7 +965,7 @@ async function handleRequest(request, env, ctx) {
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
                 if (!canManageUsers(user)) return Response.json({ error: '僅社長可審核收支' }, { status: 403 });
                 const id = path.slice('/api/finance/transactions/'.length, -'/review'.length);
-                const body = await request.json();
+                const body = await readJsonObject(request);
                 const status = body.status === 'approved' || body.status === 'rejected' ? body.status : null;
                 if (!status) return Response.json({ error: '審核結果無效' }, { status: 400 });
                 const transactions = parseFinanceList(await env.DRONE_DB.get(FINANCE_TRANSACTIONS_KEY));
@@ -955,7 +999,7 @@ async function handleRequest(request, env, ctx) {
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
                 if (!canManageFinance(user)) return Response.json({ error: '權限不足' }, { status: 403 });
                 if (method === 'GET') return Response.json(parseFinanceList(await env.DRONE_DB.get(FINANCE_BUDGETS_KEY)));
-                const { budgets } = await request.json();
+                const { budgets } = await readJsonObject(request);
                 if (!Array.isArray(budgets) || budgets.length > 100) return Response.json({ error: '預算最多 100 個分類' }, { status: 400 });
                 const names = new Set();
                 const normalized = budgets.map(item => {
@@ -974,7 +1018,7 @@ async function handleRequest(request, env, ctx) {
                 const user = await sessionUser(request, env);
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
                 if (!canManageFinance(user)) return Response.json({ error: '權限不足' }, { status: 403 });
-                const { rows } = await request.json();
+                const { rows } = await readJsonObject(request);
                 if (!Array.isArray(rows) || rows.length < 1 || rows.length > 1000) return Response.json({ error: '匯入資料需介於 1 至 1,000 筆' }, { status: 400 });
                 let previousCash = 0, previousPostal = 0;
                 const imported = rows.map((row, index) => {
@@ -1005,7 +1049,7 @@ async function handleRequest(request, env, ctx) {
                     const query = String(url.searchParams.get('q') || '').trim().toLowerCase();
                     return equipmentStoreRequest(env, '/list', { query });
                 }
-                const body = await request.json();
+                const body = await readJsonObject(request);
                 return equipmentStoreRequest(env, '/create', { fields: body, username: user.username });
             }
 
@@ -1014,7 +1058,7 @@ async function handleRequest(request, env, ctx) {
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
                 if (!canManageEquipment(user)) return Response.json({ error: '權限不足' }, { status: 403 });
                 const id = path.slice('/api/equipment/'.length);
-                const body = await request.json();
+                const body = await readJsonObject(request);
                 return equipmentStoreRequest(env, `/update/${encodeURIComponent(id)}`, { fields: body, username: user.username });
             }
 
@@ -1028,7 +1072,7 @@ async function handleRequest(request, env, ctx) {
                     return Response.json(notes.sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt)));
                 }
                 if (!canEditCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
-                const body = await request.json();
+                const body = await readJsonObject(request);
                 const title = financeText(body.title, '社課名稱', 120);
                 const date = financeDate(body.date);
                 const content = String(body.content ?? '').trim();
@@ -1067,7 +1111,7 @@ async function handleRequest(request, env, ctx) {
                 if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
                 if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type') || '')) return Response.json({ error: 'Content-Type 必須為 application/json' }, { status: 415 });
                 const contentLength = Number(request.headers.get('Content-Length') || 0);
-                if (contentLength > 1_000_000) throw new PayloadTooLargeError();
+                if (contentLength > 1_000_000) throw new PayloadTooLargeError(1_000_000);
                 const body = await readJsonLimited(request, 1_000_000);
                 if (!Array.isArray(body.rows) || body.rows.length < 1 || body.rows.length > 500) return Response.json({ error: '一次匯入需為 1 至 500 筆資料' }, { status: 400 });
                 const members = parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY));
@@ -1108,7 +1152,7 @@ async function handleRequest(request, env, ctx) {
                     else if (MEMBER_LEVELS[filter]) list = list.filter(member => member.status.level === filter);
                     return Response.json(list);
                 }
-                const body = await request.json();
+                const body = await readJsonObject(request);
                 const fields = normalizeMemberInput(body);
                 const studentId = fields.studentId;
                 if (studentId && members.some(member => String(member.studentId || '').trim().toUpperCase() === studentId)) return Response.json({ error: '學號已存在' }, { status: 409 });
@@ -1126,7 +1170,7 @@ async function handleRequest(request, env, ctx) {
                 const members = parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY));
                 const member = members.find(item => item.id === id);
                 if (!member) return Response.json({ error: '社員不存在' }, { status: 404 });
-                const body = await request.json();
+                const body = await readJsonObject(request);
                 const fields = normalizeMemberInput({ ...member, ...body }, null, false);
                 const studentId = fields.studentId;
                 if (studentId && members.some(item => item.id !== id && String(item.studentId || '').trim().toUpperCase() === studentId)) return Response.json({ error: '學號已存在' }, { status: 409 });
@@ -1141,7 +1185,7 @@ async function handleRequest(request, env, ctx) {
                 if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
                 const receipts = parseFinanceList(await env.DRONE_DB.get(MEMBERSHIP_RECEIPTS_KEY));
                 if (method === 'GET') return Response.json(receipts.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)));
-                const body = await request.json();
+                const body = await readJsonObject(request);
                 let memberId = typeof body.memberId === 'string' ? body.memberId : '';
                 const members = parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY));
                 let member = memberId ? members.find(item => item.id === memberId) : null;
@@ -1223,7 +1267,7 @@ async function handleRequest(request, env, ctx) {
                 if (!canManageUsers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
                 if (regulations.length >= 50) return Response.json({ error: '法規最多 50 份' }, { status: 400 });
                 const now = new Date().toISOString();
-                const regulation = { id: crypto.randomUUID(), ...normalizeRegulationInput(await request.json()), updatedAt: now, updatedBy: user.username };
+                const regulation = { id: crypto.randomUUID(), ...normalizeRegulationInput(await readJsonObject(request, 300_000)), updatedAt: now, updatedBy: user.username };
                 regulations.push(regulation);
                 await env.DRONE_DB.put(REGULATIONS_KEY, JSON.stringify(regulations));
                 return Response.json(regulation, { status: 201 });
@@ -1238,14 +1282,15 @@ async function handleRequest(request, env, ctx) {
                 const index = regulations.findIndex(item => item.id === id);
                 if (index < 0) return Response.json({ error: '法規不存在' }, { status: 404 });
                 if (method === 'DELETE') regulations.splice(index, 1);
-                else Object.assign(regulations[index], normalizeRegulationInput({ ...regulations[index], ...(await request.json()) }), { updatedAt: new Date().toISOString(), updatedBy: user.username });
+                else Object.assign(regulations[index], normalizeRegulationInput({ ...regulations[index], ...(await readJsonObject(request, 300_000)) }), { updatedAt: new Date().toISOString(), updatedBy: user.username });
                 await env.DRONE_DB.put(REGULATIONS_KEY, JSON.stringify(regulations));
                 return Response.json(method === 'DELETE' ? { success: true } : regulations[index]);
             }
 
             // ==================== Public equipment loan slip (no login, no AI) ====================
             if (path === '/forms/equipment-loan' && method === 'GET') {
-                return new Response(renderPublicLoanForm(env.TURNSTILE_SITE_KEY), {
+                const captcha = env.TURNSTILE_SECRET_KEY ? null : await createCaptcha(captchaStore(env));
+                return new Response(renderPublicLoanForm(env.TURNSTILE_SITE_KEY, captcha), {
                     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }
                 });
             }
@@ -1253,7 +1298,11 @@ async function handleRequest(request, env, ctx) {
             if (path === '/api/public/equipment-loan' && method === 'POST') {
                 const body = await readJsonLimited(request, 32 * 1024);
                 const ip = request.headers.get('CF-Connecting-IP') || '';
-                if (!(await verifyTurnstile(env, String(body?.turnstileToken || ''), ip))) return Response.json({ error: '請先完成驗證碼' }, { status: 400 });
+                // Without Turnstile the self-hosted image CAPTCHA is required instead.
+                const human = env.TURNSTILE_SECRET_KEY
+                    ? await verifyTurnstile(env, String(body?.turnstileToken || ''), ip)
+                    : await verifyCaptcha(captchaStore(env), String(body?.captchaId || ''), body?.captcha);
+                if (!human) return Response.json({ error: '驗證碼錯誤或已過期，請重新輸入' }, { status: 400 });
                 const day = taipeiToday();
                 const data = normalizePublicLoan(body?.data, day);
                 const now = new Date().toISOString();
@@ -1383,64 +1432,6 @@ async function handleRequest(request, env, ctx) {
                 }
             }
 
-            // ==================== API: Upload Image to GitHub ====================
-            if (path === '/api/upload' && method === 'POST') {
-                const user = await sessionUser(request, env);
-                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-                if (!canEditCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
-
-                if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) {
-                    return new Response(JSON.stringify({ error: 'Worker 尚未設定 GITHUB_TOKEN 或 GITHUB_REPO 變數！' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
-                }
-
-                const formData = await request.formData();
-                const file = formData.get('image');
-
-                if (!file || typeof file === 'string') {
-                    return new Response(JSON.stringify({ error: '無效的圖片檔案' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-                }
-
-                const arrayBuffer = await file.arrayBuffer();
-                const base64Content = btoa(
-                    new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-                );
-
-                const extension = file.name.split('.').pop();
-                const timestamp = Date.now();
-                const filename = `upload_${timestamp}.${extension}`;
-                const commitPath = `public/assets/uploads/${filename}`;
-
-                const githubUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${commitPath}`;
-                const commitBody = {
-                    message: `Upload image: ${filename} via CMS Admin`,
-                    content: base64Content,
-                    branch: 'main'
-                };
-
-                const githubResponse = await fetch(githubUrl, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `token ${env.GITHUB_TOKEN}`,
-                        'Accept': 'application/vnd.github.v3+json',
-                        'User-Agent': 'Cloudflare-Worker-CMS'
-                    },
-                    body: JSON.stringify(commitBody)
-                });
-
-                if (!githubResponse.ok) {
-                    const errText = await githubResponse.text();
-                    return new Response(JSON.stringify({ error: `GitHub API 錯誤: ${errText}` }), { status: 500, headers: { 'Content-Type': 'application/json' } });
-                }
-
-                const publicUrl = `/assets/uploads/${filename}`;
-
-                return new Response(JSON.stringify({
-                    success: true,
-                    filename,
-                    url: publicUrl
-                }), { headers: { 'Content-Type': 'application/json' } });
-            }
-
             // ==================== API: Get Homepage Content ====================
             if (path === '/api/homepage' && method === 'GET') {
                 const user = await sessionUser(request, env);
@@ -1455,7 +1446,7 @@ async function handleRequest(request, env, ctx) {
                 const user = await sessionUser(request, env);
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
                 if (!canEditCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
-                const body = await request.json();
+                const body = await readJsonObject(request);
                 // Whitelist allowed keys for full homepage customization
                 const allowed = [
                     'heroTitle', 'heroDesc', 'heroBadge',
@@ -1484,7 +1475,7 @@ async function handleRequest(request, env, ctx) {
             return new Response('Not Found', { status: 404 });
 
         } catch (e) {
-            if (e instanceof PayloadTooLargeError) return Response.json({ error: '匯入資料不可超過 1 MB' }, { status: 413 });
+            if (e instanceof PayloadTooLargeError) return Response.json({ error: e.message }, { status: 413 });
             if (e instanceof FinanceValidationError || e instanceof FormValidationError) return Response.json({ error: e.message }, { status: 400 });
             if (e instanceof FormServiceError) return Response.json({ error: e.message }, { status: e.status });
             if (e instanceof PasswordResetRequiredError) {

@@ -18,6 +18,10 @@ class_name = "EquipmentStore"
 name = "FORM_STORE"
 class_name = "FormStore"
 
+[[durable_objects.bindings]]
+name = "SITE_STORE"
+class_name = "SiteStore"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["EquipmentStore"]
@@ -25,3 +29,7 @@ new_sqlite_classes = ["EquipmentStore"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["FormStore"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["SiteStore"]

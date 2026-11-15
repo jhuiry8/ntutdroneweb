@@ -13,9 +13,8 @@
 2. **🌐 雙語語系動態切換 (i18n Support)**
    * 前台頂端導覽列支援「中文 / English」即時切換，並以 Cookie 記憶使用者語言偏好。
    * 後台發佈文章與頁面時，皆可指定專屬語系，實現真正的多語系國際化動態網站。
-3. **📁 GitHub 媒體庫整合 (Cloud Image Storage)**
-   * 在後台編輯器中直接選取或拖放圖片，系統會透過 Cloudflare Worker 自動將檔案提交（Commit）至本 GitHub 儲存庫的 `public/assets/uploads/` 目錄中。
-   * 圖片上傳後直接享有 Cloudflare 全球 CDN 加速，無須任何額外圖床或外部儲存成本！
+3. **🖼️ 文章圖片**
+   * 文章與頁面可用 Markdown 引用 `https://` 圖片網址（例如社群或雲端相簿的公開連結）。基於安全考量，後台不提供直接上傳檔案到網站的功能。
 4. **📝 動態頁面與文章管理 (CMS Dashboard)**
    * **動態部落格**：支援 Markdown 完整語法，編輯時可即時預覽。
    * **獨立頁面生成器**：免改程式碼！可在後台任意建立如 `/page/info`、`/page/join` 等專屬客製化網頁。
@@ -56,19 +55,6 @@
 
 > 🎉 **自動化驗證與發佈**：設定完成這 3 個 Secrets 後，只要您在專案有任何 Push 行為（或在 Actions 頁面手動觸發），系統便會開始執行 `.github/workflows/deploy.yml`，自動完成打包、金鑰注入與 Cloudflare Workers 發佈！您可以隨時到 GitHub **Actions** 分頁查看綠色的成功打勾圖示。
 
-### 第三步：在 Cloudflare 後台設定 GitHub 圖片上傳權限
-為了讓 CMS 後台能夠把您上傳的圖片儲存回 GitHub 專案中，請在 Cloudflare 後台加上授權變數：
-1. **取得 GitHub Token**：
-   * 前往 GitHub 右上角頭像 -> **Settings** -> **Developer settings** -> **Personal access tokens** -> **Tokens (classic)**。
-   * 點擊 **Generate new token (classic)**，勾選 **`repo`** (完整控制儲存庫) 權限，產生後複製該 Token。
-2. **在 Cloudflare Workers 設定變數**：
-   * 進入 [Cloudflare 控制台](https://dash.cloudflare.com/) -> **Workers & Pages** -> 點選自動部署建立的 **`ntut-drone-web`** 服務。
-   * 點選 **Settings (設定)** -> **Variables and Secrets (變數與機密)**。
-   * 在 **Environment Variables / Secrets** 區塊中新增以下兩項：
-     * **`GITHUB_TOKEN`** : 點選右側的 **Encrypt (加密/機密)** 按鈕，填入剛才取得的 GitHub Token。
-     * **`GITHUB_REPO`** : 填入儲存庫名稱：`jhuiry8/ntutdroneweb` (不需要加密)。
-   * 點擊 **Save and Deploy (儲存並部署)** 即可立即生效！
-
 ---
 
 ## 💻 網站使用與後台操作指南
@@ -82,7 +68,7 @@
 * 社長可在「帳號與權限」新增帳號、設定角色、停用帳號及重設密碼。角色為社長、財務、一般幹部、社員。社長與一般幹部可編輯 CMS；財務可查看 CMS；社員可登入並修改自己的密碼，後續社員資料功能將整合於此帳號。
 * 帳號密碼至少 8 位。修改或重設密碼會使舊 session 失效。登入密碼連續錯誤 5 次會暫停 15 分鐘（依帳號與來源 IP 計）。
 * 密碼使用 PBKDF2-SHA256、隨機 salt 與 100,000 次迭代，格式中記錄迭代次數，以符合正式 Cloudflare Workers 上限。舊站 `admin_password_hash` 仍可自動轉換；若曾在其他執行環境建立 120,000 次的 `pbkdf2:salt:hash` 帳號，需由可登入的社長重設該帳號密碼，不會自動覆寫既有憑證。若唯一管理員也使用該格式，需由部署管理者進行帳號復原。
-* 若要啟用登入驗證碼，請在 Cloudflare Turnstile 建立對應網站網域的 widget，將公開 site key 設為 Worker 變數 `TURNSTILE_SITE_KEY`，secret key 設為 Worker 加密變數 `TURNSTILE_SECRET_KEY`。兩者設定後，登入表單會顯示驗證碼，伺服器會透過 Siteverify 驗證每次登入。未設定 Turnstile 時，登入頁會自動改用內建的圖形驗證碼（5 個字元、不分大小寫、5 分鐘內有效且只能使用一次，可按「換一張」更新），不需額外設定。另外同一帳號＋IP 連續失敗 5 次、或同一 IP 失敗 20 次（含驗證碼錯誤）都會鎖定 15 分鐘，防止暴力破解。
+* 若要啟用登入驗證碼，請在 Cloudflare Turnstile 建立對應網站網域的 widget，將公開 site key 設為 Worker 變數 `TURNSTILE_SITE_KEY`，secret key 設為 Worker 加密變數 `TURNSTILE_SECRET_KEY`。兩者設定後，登入表單會顯示驗證碼，伺服器會透過 Siteverify 驗證每次登入。未設定 Turnstile 時，登入頁會自動改用內建的圖形驗證碼（5 個字元、不分大小寫、5 分鐘內有效且只能使用一次，可按「換一張」更新），不需額外設定。另外同一帳號＋IP 連續失敗 5 次、或同一 IP 失敗 20 次（含驗證碼錯誤）都會鎖定 15 分鐘，防止暴力破解。驗證碼與失敗次數存放在 Durable Object（`SITE_STORE`，部署時由 `wrangler.toml` 的 migration 自動建立），同時送出大量請求也無法重複使用同一張驗證碼或超過次數上限；文章與頁面列表的更新也經由它排隊，多位幹部同時存檔不會互相覆蓋。
 
 #### 舊網站轉換步驟
 1. 舊網站只有共用管理密碼，沒有個別使用者資料，因此不會自動產生每位管理者的帳號。部署新版後，原管理者在 `/admin` 輸入帳號 `admin` 與原本的共用密碼；若啟用了 Turnstile，先完成驗證碼。
@@ -130,35 +116,26 @@
 * 表單依類型與民國年自動編號（例如 `申115-001`、`借115-003`），編號只增不減，刪除表單後也不會重複使用。表單、編號與每日次數限制都存放在 Durable Object（`FORM_STORE`，部署時由 `wrangler.toml` 的 migration 自動建立），多人同時送出也不會互相覆蓋。社員只看得到自己的表單；社長、財務、一般幹部可查看全部。只有填表人或社長可以修改、刪除。每種表單也能「列印空白表單」手寫使用。
 * **公開的設備借用申請**：網址 `/forms/equipment-loan`（前台頁尾「設備借用申請」也有連結），**不需登入**即可填寫設備借據，學號與電話須自行填寫且為必填；此頁**不提供 AI 功能**。送出後會取得借據編號與列印連結（3 天內有效、僅填寫者持有）；借用日期不可早於當天、線上借用期間最長 30 天，填寫日期由伺服器自動帶入，請對方列印、簽名後交給財產管理人與社長簽核。
   * 送出的借據會存入後台「表單紀錄」並標示「外部填寫」，社長、財務、一般幹部可查看、補填財產編號或刪除；社員帳號看不到外部借據。
-  * 防濫用：同一 IP 每日最多送出 5 張、全站每日最多 200 張，外部借據另有 1,000 筆的獨立上限，不會佔用幹部的表單額度；若已設定 Turnstile（`TURNSTILE_SITE_KEY`／`TURNSTILE_SECRET_KEY`），送出前須通過驗證碼，建議正式上線前啟用。
+  * 防濫用：同一 IP 每日最多送出 5 張、全站每日最多 200 張，外部借據另有 1,000 筆的獨立上限，不會佔用幹部的表單額度；送出前須通過驗證碼：已設定 Turnstile（`TURNSTILE_SITE_KEY`／`TURNSTILE_SECRET_KEY`）時使用 Turnstile，否則使用與登入頁相同的內建圖形驗證碼。
 * 社長可在「表單設定」修改列印抬頭、社團簡稱、社長姓名（借據與公文署名）、財產管理人與指導老師。
 * 啟用 AI：在 Cloudflare Worker 新增加密變數 **`GROQ_API_KEY`**（[Groq Console](https://console.groq.com/keys) 建立的金鑰）；可選填一般變數 `GROQ_MODEL`（預設 `openai/gpt-oss-120b`，想更快可改 `openai/gpt-oss-20b`）。若未設定 Groq 但有 `GEMINI_API_KEY`，會改用 Google Gemini（`GEMINI_MODEL` 預設 `gemini-2.5-flash`）。後台「表單申請」標題下方會顯示目前使用的 AI。
 * AI 填寫表單開放所有登入帳號；AI 公文僅社長、財務、一般幹部可用。兩者合計每人每日上限 30 次。未設定金鑰時，其他表單功能照常可用。
 * 列印時請選 A4、縮放 100%，並取消瀏覽器的「頁首及頁尾」；也可在列印對話框選「另存為 PDF」。
 
-### 4. 圖片上傳與引用 (Image Uploads)
-* 在文章或頁面編輯時，點擊下方 **「雲端上傳圖片」** 的雲端圖示或拖放圖片至該區域。
-* 系統會立即在後台顯示圖片縮圖，並會提示已將圖片提交至 GitHub。
-* 點擊縮圖下方的 **「複製 MD」** 按鈕，即可獲得類似 `![檔名](/assets/uploads/圖片.jpg)` 的語法，直接貼入文章內容中即可！
-  > 💡 **同步小撇步**：圖片上傳後會儲存在 GitHub 中，並觸發約 30 秒的 GitHub Actions 自動 CDN 同步。後台會立即以本地暫存縮圖預覽，待同步完成後，前台訪客即可透過超高速 Cloudflare CDN 瀏覽圖片。
-
 ### 4. 獨立網頁建立 (Custom Pages)
 * 如果您需要為社團迎新、比賽報名或贊助招商建立專屬介紹頁，前往 **「頁面管理」** -> 「新增獨立網頁」。
-* 填寫標題與路徑（例如 `join-us`），儲存後即可直接透過 `https://您的網站網址/page/join-us` 分享給所有人，無須修改任何一行程式碼！
+* 填寫標題與路徑（例如 `join-us`；文章與頁面的路徑只能使用英文字母、數字、底線或連字號，最多 100 字），儲存後即可直接透過 `https://您的網站網址/page/join-us` 分享給所有人，無須修改任何一行程式碼！
 
 ---
 
 ## ⚠️ 錯誤自查與排除指南 (Troubleshooting)
 
-為了協助您在運營時快速排解任何潛在問題，以下整理了三個常見的驗證檢查點：
+為了協助您在運營時快速排解任何潛在問題，以下整理了常見的驗證檢查點：
 
 1. **Q: 為什麼 GitHub Actions 顯示失敗 (紅叉)？**
    * **檢查原因**：最常見的原因是未設定 `CLOUDFLARE_KV_ID` 等機密變數。
    * **解決方式**：點進 GitHub Actions 的失敗 Log，若看到 `CLOUDFLARE_KV_ID secret is not set...`，請回到 GitHub Settings -> Secrets and variables -> Actions 補齊該金鑰即可。
-2. **Q: 為什麼在上傳圖片時跳出「Worker 尚未設定 GITHUB_TOKEN」或「GitHub API 錯誤」？**
-   * **檢查原因**：Cloudflare Worker 無法驗證 GitHub 寫入權限。
-   * **解決方式**：請回到 Cloudflare 控制台 -> `ntut-drone-web` -> Settings -> Variables and Secrets，確認 `GITHUB_TOKEN` (需有 `repo` 權限) 與 `GITHUB_REPO` (`jhuiry8/ntutdroneweb`) 皆正確輸入並儲存。
-3. **Q: 前台或後台讀取資料顯示 500 錯誤？**
+2. **Q: 前台或後台讀取資料顯示 500 錯誤？**
    * **檢查原因**：KV 資料庫綁定遺失或名稱不符。
    * **解決方式**：請在 Cloudflare 後台的 Worker 設定確認 **KV Namespace Bindings** 中，`DRONE_DB` 變數名稱有正確指向您在第一步建立的 KV Namespace。
 

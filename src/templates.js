@@ -17,7 +17,7 @@ function getHeader(title, lang = 'zh') {
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-        <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
+        <script src="/vendor/lucide-1.65.0.min.js"></script>
         <link rel="stylesheet" href="/style.css">
         <script>(function(){var t='dark';try{t=localStorage.getItem('ntut-theme')||'dark'}catch(e){}document.documentElement.setAttribute('data-theme',t)})();</script>
     </head>
@@ -92,7 +92,7 @@ function getFooter(lang = 'zh') {
 }
 
 // Public equipment loan slip: anyone can fill it in without logging in (no AI), then prints it for signatures.
-export function renderPublicLoanForm(turnstileSiteKey = '') {
+export function renderPublicLoanForm(turnstileSiteKey = '', captcha = null) {
     const row = `<tr><td><input class="pl-input" data-col="name" maxlength="100" aria-label="設備名稱／型號" placeholder="例如：DJI Mini 4 Pro"></td><td><input class="pl-input" data-col="quantity" type="number" min="1" max="1000" step="1" value="1" aria-label="數量"></td><td><input class="pl-input" data-col="accessories" maxlength="100" aria-label="配件" placeholder="例如：電池 x3、遙控器"></td><td><button type="button" class="pl-remove" aria-label="刪除此列">✕</button></td></tr>`;
     return `${getHeader('設備借用申請', 'zh')}
     ${turnstileSiteKey ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}
@@ -161,6 +161,15 @@ export function renderPublicLoanForm(turnstileSiteKey = '') {
                 </ol>
                 <label class="pl-agree"><input type="checkbox" id="pl-agree" required> 我已閱讀並同意遵守以上借用規定。</label>
                 ${turnstileSiteKey ? `<div class="cf-turnstile" data-sitekey="${escapeHtml(turnstileSiteKey)}" style="margin-top:14px;"></div>` : ''}
+                ${captcha ? `<div class="pl-field" style="margin-top:14px;">
+                    <span>驗證碼 <b>*</b></span>
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:6px 0;">
+                        <div id="pl-captcha-image" style="border:1px solid #b1b4b6; border-radius:4px; line-height:0; overflow:hidden; background:#f4f1e8;">${captcha.svg}</div>
+                        <button type="button" class="pl-btn" id="pl-captcha-refresh">換一張</button>
+                    </div>
+                    <input type="hidden" id="pl-captcha-id" value="${escapeHtml(captcha.id)}">
+                    <input class="pl-input" id="pl-captcha" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="5" required placeholder="請輸入圖片中的 5 個字元（不分大小寫）">
+                </div>` : ''}
                 <p class="pl-error" id="pl-error" role="alert"></p>
                 <div class="pl-actions"><button type="submit" class="pl-btn primary" id="pl-submit">送出並取得借據</button></div>
             </section>
@@ -286,7 +295,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-        <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
+        <script src="/vendor/lucide-1.65.0.min.js"></script>
         <link rel="stylesheet" href="/style.css">
         <script>(function(){var t='dark';try{t=localStorage.getItem('ntut-theme')||'dark'}catch(e){}document.documentElement.setAttribute('data-theme',t)})();</script>
         <script type="application/ld+json">
@@ -969,7 +978,7 @@ export function renderLogin(errorMessage = '', turnstileSiteKey = '', captcha = 
         <title>後台登入 | 北科無人機社</title>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
         ${turnstileSiteKey ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}
-        <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
+        <script src="/vendor/lucide-1.65.0.min.js"></script>
         <link rel="stylesheet" href="/style.css">
         <style>
             body {
@@ -1119,7 +1128,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>後台管理面板 | 北科無人機社</title>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
-        <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
+        <script src="/vendor/lucide-1.65.0.min.js"></script>
         <script>
             function showToast(text, isError) {
                 var toast = document.getElementById('toast');
@@ -1313,7 +1322,6 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 .table-container { overflow-x: auto; }
                 .responsive-form-grid { grid-template-columns: minmax(0, 1fr) !important; }
                 .finance-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-                #uploaded-files-grid { grid-template-columns: minmax(0, 1fr) !important; }
                 input, textarea, select { max-width: 100%; font-size: 16px !important; }
                 .btn { min-height: 44px; }
             }
@@ -1492,21 +1500,6 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 pointer-events: auto;
             }
             
-            /* Uploader */
-            .upload-dropzone {
-                border: 2px dashed var(--border-glass);
-                border-radius: 12px;
-                padding: 30px;
-                text-align: center;
-                cursor: pointer;
-                transition: 0.2s;
-                background: rgba(0,0,0,0.1);
-            }
-            .upload-dropzone:hover {
-                border-color: var(--color-cyan);
-                background: rgba(0, 240, 255, 0.02);
-            }
-
             /* --- Rich Markdown Visual Editor Toolbar & Preview --- */
             .md-editor-container {
                 border: 1px solid rgba(255, 255, 255, 0.15);
@@ -1669,7 +1662,6 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     ${viewCms ? `<div class="nav-group"><p class="nav-group-label">網站管理</p>
                         <button class="nav-item active" onclick="showPanel('posts')"><i data-lucide="book-open"></i> 文章管理</button>
                         <button class="nav-item" onclick="showPanel('pages')"><i data-lucide="file-text"></i> 頁面管理</button>
-                        <button class="nav-item" onclick="showPanel('media')"><i data-lucide="image"></i> 媒體庫上傳</button>
                         <button class="nav-item" onclick="showPanel('homepage')"><i data-lucide="home"></i> 首頁設定</button>
                     </div>` : ''}
                     <div class="nav-group"><p class="nav-group-label">社務管理</p>
@@ -1923,31 +1915,6 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 </div>
             </div>
 
-            <!-- Media Panel -->
-            <div id="panel-media" class="panel">
-                <div class="content-header">
-                    <h1>媒體庫上傳 (GitHub 儲存庫)</h1>
-                </div>
-                
-                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">
-                    在這裡上傳的圖片會直接利用 GitHub API 提交到您的 <code>assets/uploads/</code> 專案目錄下。完成上傳後，您可以複製 Markdown 代碼，直接貼上到文章或頁面的內容編輯器中。
-                </p>
-                
-                <div class="form-group">
-                    <div class="upload-dropzone" onclick="document.getElementById('file-upload-input').click()">
-                        <i data-lucide="cloud-upload" style="width: 48px; height: 48px; color: var(--color-cyan); margin-bottom: 12px;"></i>
-                        <p>點擊此處選擇圖片進行上傳</p>
-                        <span style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 4px;">支援 JPG, PNG, GIF, WEBP</span>
-                        <input type="file" id="file-upload-input" style="display: none;" onchange="handleFileUpload(event)">
-                    </div>
-                </div>
-
-                <div id="uploaded-files-title" style="margin-top: 40px; margin-bottom: 16px; font-weight: 700; font-size: 1.1rem; display: none;">近期上傳的圖片</div>
-                <div id="uploaded-files-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
-                    <!-- Dynamically populated uploads -->
-                </div>
-            </div>
-
             <!-- Homepage Settings Panel -->
             <div id="panel-homepage" class="panel">
                 <div class="content-header">
@@ -2087,7 +2054,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                                 <input type="text" id="hp-ig1-tag" class="form-control" placeholder="FPV 穿越機">
                             </div>
                             <div class="form-group">
-                                <label for="hp-ig1-img">圖片網址 (可用媒體庫上傳連結，或留空)</label>
+                                <label for="hp-ig1-img">圖片網址 (https:// 開頭，或留空)</label>
                                 <input type="text" id="hp-ig1-img" class="form-control" placeholder="/assets/images/fpv_drone_hero.jpg">
                             </div>
                             <div class="form-group" style="grid-column: 1 / -1;">
@@ -2387,7 +2354,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             }
 
             function insertImageMD(targetId) {
-                var url = prompt('請輸入圖片網址 (可用後台「媒體庫」複製的網址):', '/assets/uploads/');
+                var url = prompt('請輸入圖片網址 (https:// 開頭):', 'https://');
                 if (!url) return;
                 var alt = prompt('請輸入圖片說明文字 (Alt text):', '圖片說明');
                 insertMD(targetId, '![' + (alt || '圖片說明') + '](' + url + ')', '', '');
@@ -2619,66 +2586,6 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 } catch (err) {
                     showToast('網路連線失敗', true);
                 }
-            }
-
-            async function handleFileUpload(e) {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                const formData = new FormData();
-                formData.append('image', file);
-                showToast('正在上傳圖片到 GitHub...', false);
-
-                try {
-                    const res = await fetch('/api/upload', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    const data = await res.json();
-                    if (res.ok) {
-                        showToast('圖片上傳並成功提交到 GitHub！(約30秒自動同步至 Cloudflare)');
-                        const previewUrl = URL.createObjectURL(file);
-                        addUploadedImageToGrid(data.filename, data.url, previewUrl);
-                    } else {
-                        showToast(data.error || '上傳失敗', true);
-                    }
-                } catch (err) {
-                    showToast('圖片上傳連線失敗', true);
-                }
-            }
-
-            function addUploadedImageToGrid(filename, url, previewUrl) {
-                document.getElementById('uploaded-files-title').style.display = 'block';
-                const grid = document.getElementById('uploaded-files-grid');
-                const card = document.createElement('div');
-                card.style.background = 'rgba(255,255,255,0.03)';
-                card.style.border = '1px solid var(--border-glass)';
-                card.style.borderRadius = '12px';
-                card.style.padding = '12px';
-                card.style.textAlign = 'center';
-                
-                const displayUrl = previewUrl || url;
-                const markdownText = '![' + filename + '](' + url + ')';
-
-                card.innerHTML = '<img style="max-width:100%; height:120px; object-fit:cover; border-radius:8px; margin-bottom:10px;">' +
-                    '<div style="font-size:0.75rem; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; color:var(--text-muted); margin-bottom:8px;"></div>' +
-                    '<button class="btn btn-secondary copy-btn" style="width:100%; padding:6px; font-size:0.75rem; justify-content:center;"><i data-lucide="copy" style="width:12px; height:12px;"></i> 複製 MD</button>';
-                
-                card.querySelector('img').src = displayUrl;
-                card.querySelector('div').textContent = filename;
-                const copyBtn = card.querySelector('.copy-btn');
-                if (copyBtn) {
-                    copyBtn.onclick = function() { copyText(markdownText); };
-                }
-
-                grid.insertBefore(card, grid.firstChild);
-                if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
-            }
-
-            function copyText(text) {
-                navigator.clipboard.writeText(text);
-                showToast('已複製 Markdown 圖片代碼！');
             }
 
             async function changePassword(e) {

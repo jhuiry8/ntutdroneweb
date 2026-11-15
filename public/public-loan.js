@@ -89,13 +89,20 @@
         if (data.endDate < data.startDate) return showError('歸還日期不可早於借用日期。');
         var tokenInput = form.querySelector('[name="cf-turnstile-response"]');
         if (document.querySelector('.cf-turnstile') && !(tokenInput && tokenInput.value)) return showError('請先完成驗證碼。');
+        var captchaId = $('pl-captcha-id');
+        var captchaInput = $('pl-captcha');
         submit.disabled = true;
         submit.textContent = '送出中…';
         try {
             var response = await fetch('/api/public/equipment-loan', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ data: data, turnstileToken: tokenInput ? tokenInput.value : '' })
+                body: JSON.stringify({
+                    data: data,
+                    turnstileToken: tokenInput ? tokenInput.value : '',
+                    captchaId: captchaId ? captchaId.value : '',
+                    captcha: captchaInput ? captchaInput.value : ''
+                })
             });
             var result = await response.json().catch(function () { return {}; });
             if (!response.ok) throw new Error(result.error || '送出失敗，請稍後再試');
@@ -112,8 +119,28 @@
             submit.disabled = false;
             submit.textContent = '送出並取得借據';
             if (window.turnstile && document.querySelector('.cf-turnstile')) window.turnstile.reset();
+            // Each image CAPTCHA works only once, so fetch a new one after every attempt.
+            if (captchaId) refreshCaptcha();
         }
     });
+
+    async function refreshCaptcha() {
+        var button = $('pl-captcha-refresh');
+        if (button) button.disabled = true;
+        try {
+            var response = await fetch('/api/captcha', { method: 'POST', cache: 'no-store' });
+            if (!response.ok) throw new Error('captcha refresh failed');
+            var next = await response.json();
+            $('pl-captcha-image').innerHTML = next.svg;
+            $('pl-captcha-id').value = next.id;
+            $('pl-captcha').value = '';
+        } catch (error) {
+            showError('無法更新驗證碼，請重新整理頁面。');
+        } finally {
+            if (button) button.disabled = false;
+        }
+    }
+    if ($('pl-captcha-refresh')) $('pl-captcha-refresh').addEventListener('click', refreshCaptcha);
 
     $('pl-again').addEventListener('click', function () {
         $('pl-purpose').value = '';
