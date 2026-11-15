@@ -168,7 +168,7 @@ export function renderPublicLoanForm(turnstileSiteKey = '') {
         <section class="pl-card pl-done" id="pl-done" hidden aria-live="polite">
             <h2>已送出，借據編號</h2>
             <strong id="pl-number"></strong>
-            <p class="pl-lead" style="margin-top:12px;">請立即列印借據並簽名，交給財產管理人與社長簽核。列印連結 <span id="pl-days">30</span> 天內有效，只有你拿得到，請勿分享。</p>
+            <p class="pl-lead" style="margin-top:12px;">請立即列印借據並簽名，交給財產管理人與社長簽核。列印連結 <span id="pl-days">3</span> 天內有效，只有你拿得到，請勿分享。</p>
             <div class="pl-actions"><a class="pl-btn primary" id="pl-print" href="#" target="_blank" rel="noopener">列印借據</a><button type="button" class="pl-btn" id="pl-again">再填一張</button></div>
         </section>
     </main>

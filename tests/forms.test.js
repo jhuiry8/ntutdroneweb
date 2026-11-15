@@ -2,9 +2,26 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
-import worker from '../src/worker.js';
+import worker, { FormStore } from '../src/worker.js';
 import { renderAdminDashboard } from '../src/templates.js';
-import { chineseAmount, nextFormNumber, normalizeFormData, renderFormPrint, parseLetterDraft, inclusiveDays, FormValidationError, sanitizeFormFill, formFillPrompt } from '../src/forms.js';
+import { chineseAmount, formNumberPrefix, taipeiToday, normalizePublicLoan, normalizeFormData, renderFormPrint, parseLetterDraft, inclusiveDays, FormValidationError, sanitizeFormFill, formFillPrompt } from '../src/forms.js';
+
+// In-memory Durable Object storage whose transactions run one at a time, like the real runtime.
+function createMockFormStore() {
+    const values = new Map();
+    let tail = Promise.resolve();
+    const storage = {
+        async get(key) { return structuredClone(values.get(key)); },
+        async put(key, value) { values.set(key, structuredClone(value)); },
+        async delete(keys) { for (const key of [].concat(keys)) values.delete(key); },
+        async list({ prefix = '' } = {}) { return new Map([...values.entries()].filter(([key]) => key.startsWith(prefix)).sort(([a], [b]) => a.localeCompare(b))); },
+        transaction(callback) { const result = tail.then(() => callback(storage)); tail = result.catch(() => {}); return result; }
+    };
+    const object = new FormStore({ storage });
+    return { idFromName: name => name, get: () => ({ fetch: (input, init) => object.fetch(new Request(input, init)) }), values };
+}
+
+const dayOffset = days => new Date(Date.parse(`${taipeiToday()}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
 
 function fixture(extraEnv = {}) {
     const store = new Map();
@@ -19,13 +36,14 @@ function fixture(extraEnv = {}) {
         store.set(`user:${name}`, JSON.stringify({ username: name, role, active: true, version: 'v1' }));
         store.set(`session:${name}`, JSON.stringify({ username: name, version: 'v1' }));
     }
-    const env = { DRONE_DB: db, ...extraEnv };
-    const request = (path, who, method = 'GET', body) => worker.fetch(new Request(`https://example.com${path}`, {
+    const formStore = createMockFormStore();
+    const env = { DRONE_DB: db, FORM_STORE: formStore, ...extraEnv };
+    const request = (path, who, method = 'GET', body, ip = '203.0.113.7') => worker.fetch(new Request(`https://example.com${path}`, {
         method,
-        headers: { ...(who ? { Cookie: `session=${who}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+        headers: { 'CF-Connecting-IP': ip, ...(who ? { Cookie: `session=${who}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
     }), env);
-    return { store, request, env };
+    return { store, request, env, formStore };
 }
 
 const expenseRequest = {
@@ -51,11 +69,9 @@ test('chineseAmount writes NT dollar amounts in formal characters', () => {
     assert.equal(chineseAmount(1050000), '壹佰零伍萬元整');
 });
 
-test('form numbers count up per type and ROC year', () => {
-    const records = [{ number: '申115-001' }, { number: '申115-007' }, { number: '借115-003' }, { number: '申114-020' }];
-    assert.equal(nextFormNumber('expense-request', records, '2026-11-15T00:00:00Z'), '申115-008');
-    assert.equal(nextFormNumber('equipment-loan', records, '2026-11-15T00:00:00Z'), '借115-004');
-    assert.equal(nextFormNumber('activity-report', records, '2027-01-02T00:00:00Z'), '報116-001');
+test('form number prefixes use the type and ROC year', () => {
+    assert.equal(formNumberPrefix('expense-request', '2026-11-15T00:00:00Z'), '申115');
+    assert.equal(formNumberPrefix('activity-report', '2027-01-02T00:00:00Z'), '報116');
 });
 
 test('form validation rejects incomplete or inconsistent data', () => {
@@ -156,7 +172,7 @@ test('AI letter falls back to Gemini, is officer-only, needs a key and is rate l
     });
     const withoutKey = fixture();
     assert.equal((await withoutKey.request('/api/forms/ai-letter', 'cadre', 'POST', { text: '想辦成果展' })).status, 503);
-    assert.equal(withoutKey.store.size, 10, 'a missing key must not use up the daily quota');
+    assert.equal([...withoutKey.formStore.values.keys()].some(key => key.startsWith('quota:')), false, 'a missing key must not use up the daily quota');
 
     const { request, store } = fixture({ GEMINI_API_KEY: 'test-key' });
     assert.equal((await request('/api/forms/ai-letter', 'member', 'POST', { text: '想辦成果展' })).status, 403);
@@ -168,7 +184,7 @@ test('AI letter falls back to Gemini, is officer-only, needs a key and is rate l
     assert.equal(captured.init.headers['x-goog-api-key'], 'test-key');
     assert.match(JSON.parse(captured.init.body).contents[0].parts[0].text, /公文類型：簽/);
 
-    store.set(`forms:ai-usage:cadre:${new Date().toISOString().slice(0, 10)}`, '30');
+    for (let i = 0; i < 29; i++) assert.equal((await request('/api/forms/ai-letter', 'cadre', 'POST', { text: '想辦成果展' })).status, 200);
     assert.equal((await request('/api/forms/ai-letter', 'cadre', 'POST', { text: '想辦成果展' })).status, 429);
 });
 
@@ -236,13 +252,13 @@ test('AI form fill route returns sanitized fields for any signed-in user', async
     assert.deepEqual(await response.json(), { fields: { applicant: '林小明', studentId: 'B11234567', category: 'consumable', items: [{ name: '6S 電池', quantity: 4, unitPrice: 1250 }] }, notes: '請補上申請日期' });
     assert.match(captured.messages[0].content, /社費支出事前申請單/);
     assert.match(captured.messages[1].content, /林小明/);
-    store.set(`forms:ai-usage:member:${new Date().toISOString().slice(0, 10)}`, '30');
+    for (let i = 0; i < 29; i++) assert.equal((await request('/api/forms/ai-fill', 'member', 'POST', { type: 'expense-request', text: '買電池' })).status, 200);
     assert.equal((await request('/api/forms/ai-fill', 'member', 'POST', { type: 'expense-request', text: '買電池' })).status, 429);
     const noKey = fixture();
     assert.equal((await noKey.request('/api/forms/ai-fill', 'member', 'POST', { type: 'expense-request', text: '買電池' })).status, 503);
 });
 
-const publicLoan = { ...loan, studentId: 'b11200001', phone: '0912-345-678' };
+const publicLoan = { ...loan, studentId: 'b11200001', phone: '0912-345-678', startDate: dayOffset(1), endDate: dayOffset(3) };
 
 test('public equipment loan page needs no login and offers no AI', async () => {
     const { request } = fixture({ GROQ_API_KEY: 'gsk_test' });
@@ -293,4 +309,61 @@ test('public loans are rate limited per IP and verify Turnstile when configured'
     assert.equal((await guarded.request('/api/public/equipment-loan', null, 'POST', { data: publicLoan })).status, 400);
     assert.equal((await guarded.request('/api/public/equipment-loan', null, 'POST', { data: publicLoan, turnstileToken: 'bad' })).status, 400);
     assert.equal((await guarded.request('/api/public/equipment-loan', null, 'POST', { data: publicLoan, turnstileToken: 'good-token' })).status, 201);
+});
+
+test('form numbers are never reused, even after deleting the newest form', async () => {
+    const { request } = fixture();
+    const first = await (await request('/api/forms', 'cadre', 'POST', { type: 'equipment-loan', data: loan })).json();
+    const second = await (await request('/api/forms', 'cadre', 'POST', { type: 'equipment-loan', data: loan })).json();
+    assert.equal((await request(`/api/forms/${second.id}`, 'cadre', 'DELETE')).status, 200);
+    const third = await (await request('/api/forms', 'cadre', 'POST', { type: 'equipment-loan', data: loan })).json();
+    assert.match(first.number, /-001$/);
+    assert.match(second.number, /-002$/);
+    assert.match(third.number, /-003$/);
+});
+
+test('concurrent submissions keep every record with distinct numbers and respect limits', async () => {
+    const { request } = fixture();
+    const internal = await Promise.all(Array.from({ length: 8 }, () => request('/api/forms', 'cadre', 'POST', { type: 'expense-request', data: expenseRequest })));
+    assert.deepEqual(internal.map(response => response.status), Array(8).fill(201));
+    const numbers = await Promise.all(internal.map(response => response.json().then(body => body.number)));
+    assert.equal(new Set(numbers).size, 8);
+    const burst = await Promise.all(Array.from({ length: 12 }, () => request('/api/public/equipment-loan', null, 'POST', { data: publicLoan }, '198.51.100.9')));
+    assert.equal(burst.filter(response => response.status === 201).length, 5, 'per-IP limit must hold under a parallel burst');
+    assert.equal((await (await request('/api/forms', 'president', 'GET')).json()).length, 13);
+});
+
+test('public slips have their own cap and cannot block officers', async () => {
+    const { request, formStore } = fixture();
+    formStore.values.set('count:public', 1000);
+    assert.equal((await request('/api/public/equipment-loan', null, 'POST', { data: publicLoan })).status, 409);
+    assert.equal((await request('/api/forms', 'cadre', 'POST', { type: 'equipment-loan', data: loan })).status, 201);
+});
+
+test('public loans cannot start in the past or run too long, and fill date is set by the server', () => {
+    const today = taipeiToday();
+    assert.throws(() => normalizePublicLoan({ ...publicLoan, startDate: dayOffset(-1) }, today), /不可早於今天/);
+    assert.throws(() => normalizePublicLoan({ ...publicLoan, endDate: dayOffset(40) }, today), /不可超過 30 天/);
+    assert.equal(normalizePublicLoan({ ...publicLoan, fillDate: '2000-01-01' }, today).fillDate, today);
+    assert.throws(() => normalizeFormData('equipment-loan', { ...loan, startDate: '2020-01-01', endDate: '2030-12-31' }), /不可超過 180 天/);
+});
+
+test('public print links expire after 3 days and send no referrer', async () => {
+    const { request, formStore } = fixture();
+    const { printUrl, printDays } = await (await request('/api/public/equipment-loan', null, 'POST', { data: publicLoan })).json();
+    assert.equal(printDays, 3);
+    const fresh = await request(printUrl, null, 'GET');
+    assert.equal(fresh.status, 200);
+    assert.equal(fresh.headers.get('Referrer-Policy'), 'no-referrer');
+    const [, id] = /\/forms\/print\/([\w-]+)/.exec(printUrl);
+    const key = `form:${id}`;
+    formStore.values.set(key, { ...formStore.values.get(key), createdAt: new Date(Date.now() - 4 * 86400000).toISOString() });
+    assert.equal((await request(printUrl, null, 'GET')).status, 404);
+});
+
+test('a failed AI call refunds the daily quota', async (t) => {
+    t.mock.method(globalThis, 'fetch', async () => new Response('down', { status: 500 }));
+    const { request, formStore } = fixture({ GROQ_API_KEY: 'gsk_test' });
+    assert.equal((await request('/api/forms/ai-fill', 'member', 'POST', { type: 'expense-request', text: '買電池' })).status, 502);
+    assert.equal(formStore.values.get('quota:ai:member'), 0);
 });

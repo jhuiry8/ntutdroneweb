@@ -1,7 +1,7 @@
 // NTUT Drone Club - Cloudflare Worker Entry Point (with i18n support)
 import { marked } from 'marked';
 import { sanitizeContent } from './html.js';
-import { passwordHash, verifyPassword, PasswordResetRequiredError, validRole, canManageUsers, canEditCms, canViewCms, canManageFinance, canManageMembers, canManageEquipment, publicUser } from './auth.js';
+import { passwordHash, verifyPassword, constantTimeEqual, PasswordResetRequiredError, validRole, canManageUsers, canEditCms, canViewCms, canManageFinance, canManageMembers, canManageEquipment, publicUser } from './auth.js';
 import {
     renderLandingPage,
     renderBlogList,
@@ -15,19 +15,22 @@ import {
     FORM_TYPES,
     LETTER_TYPES,
     MAX_FORM_RECORDS,
+    MAX_PUBLIC_FORM_RECORDS,
     DEFAULT_FORM_SETTINGS,
     FormValidationError,
     FormServiceError,
     normalizeFormData,
     normalizePublicLoan,
     normalizeFormSettings,
-    nextFormNumber,
+    formNumberPrefix,
+    taipeiToday,
     formTitle,
     renderFormPrint,
     draftOfficialLetter,
     fillFormWithAi,
     aiProvider
 } from './forms.js';
+export { FormStore } from './form-store.js';
 
 // Configuration Defaults
 const DEFAULT_PASS = 'admin123';
@@ -70,7 +73,6 @@ const MEMBERSHIP_RECEIPTS_KEY = 'members:fee-receipts';
 const NOTES_KEY = 'club:class-notes';
 const EQUIPMENT_KEY = 'equipment:assets';
 const EQUIPMENT_MIGRATION_KEY = 'equipment:durable-object-migrated';
-const FORM_RECORDS_KEY = 'forms:records';
 const FORM_SETTINGS_KEY = 'forms:settings';
 const AI_DAILY_LIMIT = 30;
 
@@ -91,7 +93,7 @@ function formRecordView(record) {
 
 const PUBLIC_LOAN_IP_DAILY_LIMIT = 5;
 const PUBLIC_LOAN_DAILY_LIMIT = 200;
-const PUBLIC_LOAN_PRINT_DAYS = 30;
+const PUBLIC_LOAN_PRINT_DAYS = 3;
 
 async function verifyTurnstile(env, token, ip) {
     if (!env.TURNSTILE_SECRET_KEY) return true;
@@ -102,21 +104,29 @@ async function verifyTurnstile(env, token, ip) {
     return verification.ok && (await verification.json()).success === true;
 }
 
-function sameSecret(a, b) {
-    const left = new TextEncoder().encode(String(a)), right = new TextEncoder().encode(String(b));
-    if (left.length !== right.length) return false;
-    let difference = 0;
-    for (let i = 0; i < left.length; i++) difference |= left[i] ^ right[i];
-    return difference === 0;
+// All form records, numbers and quotas go through one serialized Durable Object.
+async function formStore(env, path, payload = {}) {
+    const namespace = env.FORM_STORE;
+    const stub = namespace.get(namespace.idFromName('club-forms'));
+    const response = await stub.fetch(`https://form-store${path}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    const body = await response.json();
+    if (response.status >= 500) throw new Error(body?.error || 'Form store failed');
+    return { status: response.status, body };
 }
 
-// One shared daily AI quota per account; returns a 429 response once it is used up.
-async function consumeAiQuota(env, user) {
-    const usageKey = `forms:ai-usage:${user.username}:${new Date().toISOString().slice(0, 10)}`;
-    const used = Number(await env.DRONE_DB.get(usageKey) || 0);
-    if (used >= AI_DAILY_LIMIT) return Response.json({ error: `今日 AI 使用已達 ${AI_DAILY_LIMIT} 次上限，請明天再試` }, { status: 429 });
-    await env.DRONE_DB.put(usageKey, String(used + 1), { expirationTtl: 172800 });
-    return null;
+// One shared daily AI quota per account, taken atomically and refunded if the AI call fails.
+async function withAiQuota(env, user, run) {
+    const quota = { key: `ai:${user.username}`, limit: AI_DAILY_LIMIT, day: taipeiToday() };
+    const taken = await formStore(env, '/quota', quota);
+    if (taken.status === 429) return Response.json({ error: `今日 AI 使用已達 ${AI_DAILY_LIMIT} 次上限，請明天再試` }, { status: 429 });
+    try {
+        return Response.json(await run());
+    } catch (error) {
+        await formStore(env, '/quota', { ...quota, release: true });
+        throw error;
+    }
 }
 
 async function readFormSettings(env) {
@@ -279,7 +289,7 @@ function addSecurityHeaders(response, request) {
     const headers = new Headers(response.headers);
     headers.set('X-Content-Type-Options', 'nosniff');
     headers.set('X-Frame-Options', 'DENY');
-    headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    if (!headers.has('Referrer-Policy')) headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     if (new URL(request.url).protocol === 'https:') headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
@@ -472,10 +482,7 @@ async function handleRequest(request, env, ctx) {
                 if (env.TURNSTILE_SECRET_KEY) {
                     const token = String(formData.get('cf-turnstile-response') || '');
                     if (!token) return new Response(renderLogin('請完成驗證碼。', env.TURNSTILE_SITE_KEY), { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-                    const verification = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-                        method: 'POST', body: new URLSearchParams({ secret: env.TURNSTILE_SECRET_KEY, response: token, remoteip: request.headers.get('CF-Connecting-IP') || '' })
-                    });
-                    if (!verification.ok || !(await verification.json()).success) return new Response(renderLogin('驗證碼無效，請重試。', env.TURNSTILE_SITE_KEY), { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+                    if (!(await verifyTurnstile(env, token, request.headers.get('CF-Connecting-IP') || ''))) return new Response(renderLogin('驗證碼無效，請重試。', env.TURNSTILE_SITE_KEY), { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
                 }
                 let userJson = await env.DRONE_DB.get(`user:${username}`);
                 let user = userJson ? JSON.parse(userJson) : null;
@@ -1066,33 +1073,31 @@ async function handleRequest(request, env, ctx) {
 
             if (path === '/api/public/equipment-loan' && method === 'POST') {
                 const body = await readJsonLimited(request, 32 * 1024);
-                const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+                const ip = request.headers.get('CF-Connecting-IP') || '';
                 if (!(await verifyTurnstile(env, String(body?.turnstileToken || ''), ip))) return Response.json({ error: '請先完成驗證碼' }, { status: 400 });
-                const data = normalizePublicLoan(body?.data);
-                const day = new Date().toISOString().slice(0, 10);
-                const ipKey = `forms:public-loan:${ip}:${day}`, totalKey = `forms:public-loan:all:${day}`;
-                const [ipCount, totalCount] = (await Promise.all([env.DRONE_DB.get(ipKey), env.DRONE_DB.get(totalKey)])).map(value => Number(value || 0));
-                if (ipCount >= PUBLIC_LOAN_IP_DAILY_LIMIT || totalCount >= PUBLIC_LOAN_DAILY_LIMIT) return Response.json({ error: '今日送出的借據已達上限，請明天再試或直接聯絡幹部' }, { status: 429 });
-                const records = parseFinanceList(await env.DRONE_DB.get(FORM_RECORDS_KEY));
-                if (records.length >= MAX_FORM_RECORDS) return Response.json({ error: '系統表單紀錄已滿，請聯絡幹部' }, { status: 409 });
+                const day = taipeiToday();
+                const data = normalizePublicLoan(body?.data, day);
                 const now = new Date().toISOString();
                 const accessToken = Array.from(crypto.getRandomValues(new Uint8Array(24)), value => value.toString(16).padStart(2, '0')).join('');
-                const record = { id: crypto.randomUUID(), type: 'equipment-loan', source: 'public', number: nextFormNumber('equipment-loan', records, now), title: formTitle('equipment-loan', data), data, createdBy: '', createdAt: now, updatedBy: '', updatedAt: now, accessToken };
-                records.push(record);
-                await env.DRONE_DB.put(FORM_RECORDS_KEY, JSON.stringify(records));
-                await Promise.all([
-                    env.DRONE_DB.put(ipKey, String(ipCount + 1), { expirationTtl: 172800 }),
-                    env.DRONE_DB.put(totalKey, String(totalCount + 1), { expirationTtl: 172800 })
-                ]);
-                return Response.json({ number: record.number, printUrl: `/forms/print/${record.id}?token=${accessToken}`, printDays: PUBLIC_LOAN_PRINT_DAYS }, { status: 201 });
+                // Cloudflare always sends CF-Connecting-IP; without it only the site-wide limit applies.
+                const quotas = [{ key: 'public-loan:all', limit: PUBLIC_LOAN_DAILY_LIMIT }, ...(ip ? [{ key: `public-loan:ip:${ip}`, limit: PUBLIC_LOAN_IP_DAILY_LIMIT }] : [])];
+                const created = await formStore(env, '/create', {
+                    day, quotas,
+                    numberPrefix: formNumberPrefix('equipment-loan', now),
+                    cap: { limit: MAX_PUBLIC_FORM_RECORDS, message: '外部借據已達上限，請聯絡幹部' },
+                    record: { id: crypto.randomUUID(), type: 'equipment-loan', source: 'public', title: formTitle('equipment-loan', data), data, createdBy: '', createdAt: now, updatedBy: '', updatedAt: now, accessToken }
+                });
+                if (created.status !== 201) return Response.json(created.body, { status: created.status });
+                return Response.json({ number: created.body.number, printUrl: `/forms/print/${created.body.id}?token=${accessToken}`, printDays: PUBLIC_LOAN_PRINT_DAYS }, { status: 201 });
             }
 
             const publicPrint = /^\/forms\/print\/([\w-]{1,80})$/.exec(path);
             if (publicPrint && method === 'GET') {
-                const record = parseFinanceList(await env.DRONE_DB.get(FORM_RECORDS_KEY)).find(item => item.id === publicPrint[1]);
+                const found = await formStore(env, '/get', { id: publicPrint[1] });
+                const record = found.status === 200 ? found.body : null;
                 const token = url.searchParams.get('token') || '';
                 const fresh = record && Date.now() - Date.parse(record.createdAt) < PUBLIC_LOAN_PRINT_DAYS * 86400000;
-                if (!record || record.source !== 'public' || !record.accessToken || !fresh || !sameSecret(token, record.accessToken)) {
+                if (!record || record.source !== 'public' || !record.accessToken || !fresh || !constantTimeEqual(token, record.accessToken)) {
                     return new Response('借據不存在或列印連結已失效，請聯絡幹部。', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
                 }
                 return new Response(renderFormPrint(record, await readFormSettings(env)), {
@@ -1123,9 +1128,7 @@ async function handleRequest(request, env, ctx) {
                 if (!plainText || plainText.length > 4000) return Response.json({ error: '請輸入 1 至 4000 字的白話內容' }, { status: 400 });
                 const docType = LETTER_TYPES.includes(body?.docType) ? body.docType : '函';
                 if (!aiProvider(env)) return Response.json({ error: '尚未設定 GROQ_API_KEY，無法使用 AI 公文產生' }, { status: 503 });
-                const limited = await consumeAiQuota(env, user);
-                if (limited) return limited;
-                return Response.json(await draftOfficialLetter(env, plainText, docType));
+                return await withAiQuota(env, user, () => draftOfficialLetter(env, plainText, docType));
             }
 
             // AI turns a free-text description into form fields; the user reviews them before saving.
@@ -1139,50 +1142,48 @@ async function handleRequest(request, env, ctx) {
                 const description = String(body?.text ?? '').trim();
                 if (!description || description.length > 4000) return Response.json({ error: '請輸入 1 至 4000 字的描述' }, { status: 400 });
                 if (!aiProvider(env)) return Response.json({ error: '尚未設定 GROQ_API_KEY，無法使用 AI 協助填寫' }, { status: 503 });
-                const limited = await consumeAiQuota(env, user);
-                if (limited) return limited;
-                return Response.json(await fillFormWithAi(env, type, description));
+                return await withAiQuota(env, user, () => fillFormWithAi(env, type, description));
             }
 
             if (path === '/api/forms' && ['GET', 'POST'].includes(method)) {
                 const user = await sessionUser(request, env);
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-                const records = parseFinanceList(await env.DRONE_DB.get(FORM_RECORDS_KEY));
                 if (method === 'GET') {
                     const type = url.searchParams.get('type');
+                    const records = (await formStore(env, '/list')).body;
                     const visible = records.filter(record => canSeeForm(user, record) && (!type || record.type === type));
                     return Response.json(visible.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(formRecordView));
                 }
                 const body = await readJsonLimited(request, 64 * 1024);
                 const type = String(body?.type || '');
                 if (!Object.hasOwn(FORM_TYPES, type)) return Response.json({ error: '表單類型無效' }, { status: 400 });
-                if (records.length >= MAX_FORM_RECORDS) return Response.json({ error: `表單紀錄已達 ${MAX_FORM_RECORDS} 筆上限，請先刪除舊紀錄` }, { status: 409 });
                 const data = normalizeFormData(type, body.data);
                 const now = new Date().toISOString();
-                const record = { id: crypto.randomUUID(), type, number: nextFormNumber(type, records, now), title: formTitle(type, data), data, createdBy: user.username, createdAt: now, updatedBy: user.username, updatedAt: now };
-                records.push(record);
-                await env.DRONE_DB.put(FORM_RECORDS_KEY, JSON.stringify(records));
-                return Response.json(record, { status: 201 });
+                const created = await formStore(env, '/create', {
+                    numberPrefix: formNumberPrefix(type, now),
+                    cap: { limit: MAX_FORM_RECORDS, message: `表單紀錄已達 ${MAX_FORM_RECORDS} 筆上限，請先刪除舊紀錄` },
+                    record: { id: crypto.randomUUID(), type, title: formTitle(type, data), data, createdBy: user.username, createdAt: now, updatedBy: user.username, updatedAt: now }
+                });
+                return Response.json(created.body, { status: created.status });
             }
 
             if (path.startsWith('/api/forms/') && ['GET', 'PUT', 'DELETE'].includes(method)) {
                 const user = await sessionUser(request, env);
                 if (!user) return Response.json({ error: '未授權' }, { status: 401 });
                 const id = path.slice('/api/forms/'.length);
-                const records = parseFinanceList(await env.DRONE_DB.get(FORM_RECORDS_KEY));
-                const record = records.find(item => item.id === id);
+                const found = await formStore(env, '/get', { id });
+                const record = found.status === 200 ? found.body : null;
                 if (!record || !canSeeForm(user, record)) return Response.json({ error: '表單不存在' }, { status: 404 });
                 if (method === 'GET') return Response.json(formRecordView(record));
                 if (!canChangeForm(user, record)) return Response.json({ error: '只有填表人或社長可以修改或刪除此表單' }, { status: 403 });
                 if (method === 'DELETE') {
-                    await env.DRONE_DB.put(FORM_RECORDS_KEY, JSON.stringify(records.filter(item => item.id !== id)));
-                    return Response.json({ success: true });
+                    const deleted = await formStore(env, '/delete', { id });
+                    return Response.json(deleted.body, { status: deleted.status });
                 }
                 const body = await readJsonLimited(request, 64 * 1024);
                 const data = normalizeFormData(record.type, body?.data);
-                Object.assign(record, { data, title: formTitle(record.type, data), updatedBy: user.username, updatedAt: new Date().toISOString() });
-                await env.DRONE_DB.put(FORM_RECORDS_KEY, JSON.stringify(records));
-                return Response.json(formRecordView(record));
+                const updated = await formStore(env, '/update', { id, fields: { data, title: formTitle(record.type, data), updatedBy: user.username, updatedAt: new Date().toISOString() } });
+                return Response.json(updated.status === 200 ? formRecordView(updated.body) : updated.body, { status: updated.status });
             }
 
             if (path.startsWith('/admin/forms/') && method === 'GET') {
@@ -1197,9 +1198,9 @@ async function handleRequest(request, env, ctx) {
                 }
                 const print = /^\/admin\/forms\/print\/([\w-]{1,80})$/.exec(path);
                 if (print) {
-                    const record = parseFinanceList(await env.DRONE_DB.get(FORM_RECORDS_KEY)).find(item => item.id === print[1]);
-                    if (!record || !canSeeForm(user, record)) return new Response('表單不存在', { status: 404 });
-                    return new Response(renderFormPrint(record, settings), { headers: htmlHeaders });
+                    const found = await formStore(env, '/get', { id: print[1] });
+                    if (found.status !== 200 || !canSeeForm(user, found.body)) return new Response('表單不存在', { status: 404 });
+                    return new Response(renderFormPrint(found.body, settings), { headers: htmlHeaders });
                 }
             }
 

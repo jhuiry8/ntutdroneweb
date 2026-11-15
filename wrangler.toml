@@ -14,6 +14,14 @@ id = "YOUR_KV_NAMESPACE_ID" # Replace with your Cloudflare KV Namespace ID after
 name = "EQUIPMENT_STORE"
 class_name = "EquipmentStore"
 
+[[durable_objects.bindings]]
+name = "FORM_STORE"
+class_name = "FormStore"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["EquipmentStore"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["FormStore"]

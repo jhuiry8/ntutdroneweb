@@ -101,7 +101,7 @@
             if (!response.ok) throw new Error(result.error || '送出失敗，請稍後再試');
             writeProfile({ name: data.borrower, studentId: data.studentId, department: data.department, phone: data.phone });
             $('pl-number').textContent = result.number;
-            $('pl-days').textContent = result.printDays || 30;
+            $('pl-days').textContent = result.printDays || 3;
             $('pl-print').href = result.printUrl;
             form.hidden = true;
             $('pl-done').hidden = false;

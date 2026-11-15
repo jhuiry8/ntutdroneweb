@@ -1,5 +1,6 @@
 // Paper forms: validation, numbering, printable A4 rendering and AI official-letter drafts.
 // Review and signatures stay on paper; the site only fills in and prints the forms.
+import { escapeHtml } from './html.js';
 
 export const FORM_TYPES = {
     'expense-request': { label: '社費支出事前申請單', prefix: '申' },
@@ -24,6 +25,10 @@ export const SDGS = ['愛護環境', '接納包容', '公平正義', '消除貧�
 export const LOCATION_TYPES = { campus: '校內', offcampus: '校外', online: '線上' };
 export const DEFAULT_FORM_SETTINGS = { clubName: '國立臺北科技大學 無人機社', clubShortName: '無人機社', presidentName: '', propertyManager: '', advisorName: '' };
 export const MAX_FORM_RECORDS = 3000;
+// Anonymous slips have their own cap so spam can never block officers' forms.
+export const MAX_PUBLIC_FORM_RECORDS = 1000;
+const MAX_LOAN_DAYS = 180;
+const MAX_PUBLIC_LOAN_DAYS = 30;
 const MAX_EXPENSE_ITEMS = 15;
 const MAX_LOAN_ITEMS = 6;
 
@@ -116,6 +121,7 @@ function normalizeLoan(data) {
     const startDate = isoDate(data?.startDate, '借用起日', true);
     const endDate = isoDate(data?.endDate, '借用迄日', true);
     if (endDate < startDate) throw new FormValidationError('歸還日期不可早於借用日期');
+    if (inclusiveDays(startDate, endDate) > MAX_LOAN_DAYS) throw new FormValidationError(`借用期間不可超過 ${MAX_LOAN_DAYS} 天`);
     return {
         borrower: text(data?.borrower, '借用人姓名', 50, true),
         studentId: text(data?.studentId, '學號', 30).toUpperCase(),
@@ -242,9 +248,12 @@ export function normalizeFormData(type, data) {
     }
 }
 
-// Public (not signed in) equipment loans: same fields, but student ID and phone are required.
-export function normalizePublicLoan(data) {
-    const result = normalizeFormData('equipment-loan', data);
+// Public (not signed in) equipment loans: same fields, but student ID and phone are required,
+// the loan cannot start in the past or run longer than 30 days, and the fill date is the server's today.
+export function normalizePublicLoan(data, today = taipeiToday()) {
+    const result = normalizeFormData('equipment-loan', { ...data, fillDate: today });
+    if (result.startDate < today) throw new FormValidationError('借用日期不可早於今天');
+    if (inclusiveDays(result.startDate, result.endDate) > MAX_PUBLIC_LOAN_DAYS) throw new FormValidationError(`線上借用期間不可超過 ${MAX_PUBLIC_LOAN_DAYS} 天，更長請洽幹部`);
     if (!/^[A-Z0-9]{5,15}$/.test(result.studentId)) throw new FormValidationError('請填寫正確的學號（5–15 位英數字）');
     if (!/^[0-9+\-()#\s]{8,20}$/.test(result.phone)) throw new FormValidationError('請填寫可聯絡的電話號碼');
     return result;
@@ -273,20 +282,12 @@ export function formTitle(type, data) {
 
 function rocYear(isoString) { return Number(String(isoString).slice(0, 4)) - 1911; }
 
-export function nextFormNumber(type, records, isoString = new Date().toISOString()) {
-    const prefix = `${FORM_TYPES[type].prefix}${rocYear(isoString)}-`;
-    const used = records
-        .filter(record => typeof record.number === 'string' && record.number.startsWith(prefix))
-        .map(record => Number(record.number.slice(prefix.length)))
-        .filter(Number.isSafeInteger);
-    return `${prefix}${String((used.length ? Math.max(...used) : 0) + 1).padStart(3, '0')}`;
+// The form store appends a never-reused sequence: 借115 → 借115-001, 借115-002, ...
+export function formNumberPrefix(type, isoString = new Date().toISOString()) {
+    return `${FORM_TYPES[type].prefix}${rocYear(isoString)}`;
 }
 
 // ───────────────────────── print helpers ─────────────────────────
-
-export function escapeHtml(value) {
-    return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-}
 
 const BLANK_YEAR = '＿＿＿', BLANK_PART = '＿＿';
 
@@ -804,7 +805,7 @@ export async function requestAiJson(env, systemPrompt, userPrompt, fetchImpl = f
     return parseJsonObject(raw);
 }
 
-function taipeiToday(now = new Date()) {
+export function taipeiToday(now = new Date()) {
     return new Date(now.getTime() + 8 * 3600000).toISOString().slice(0, 10);
 }
 
