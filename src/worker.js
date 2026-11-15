@@ -10,6 +10,20 @@ import {
     renderLogin,
     renderAdminDashboard
 } from './templates.js';
+import {
+    FORM_TYPES,
+    LETTER_TYPES,
+    MAX_FORM_RECORDS,
+    DEFAULT_FORM_SETTINGS,
+    FormValidationError,
+    FormServiceError,
+    normalizeFormData,
+    normalizeFormSettings,
+    nextFormNumber,
+    formTitle,
+    renderFormPrint,
+    draftOfficialLetter
+} from './forms.js';
 
 // Configuration Defaults
 const DEFAULT_PASS = 'admin123';
@@ -52,6 +66,19 @@ const MEMBERSHIP_RECEIPTS_KEY = 'members:fee-receipts';
 const NOTES_KEY = 'club:class-notes';
 const EQUIPMENT_KEY = 'equipment:assets';
 const EQUIPMENT_MIGRATION_KEY = 'equipment:durable-object-migrated';
+const FORM_RECORDS_KEY = 'forms:records';
+const FORM_SETTINGS_KEY = 'forms:settings';
+const AI_LETTER_DAILY_LIMIT = 30;
+
+// Every signed-in account can fill in forms. Officers see everyone's forms;
+// members see only their own. Only the author or the president may change one.
+function canSeeForm(user, record) { return canViewCms(user) || record.createdBy === user.username; }
+function canChangeForm(user, record) { return canManageUsers(user) || record.createdBy === user.username; }
+
+async function readFormSettings(env) {
+    const stored = await env.DRONE_DB.get(FORM_SETTINGS_KEY);
+    return { ...DEFAULT_FORM_SETTINGS, ...(stored ? JSON.parse(stored) : {}) };
+}
 
 class FinanceValidationError extends Error {}
 class PayloadTooLargeError extends Error {}
@@ -986,6 +1013,91 @@ async function handleRequest(request, env, ctx) {
                 return Response.json({ success: true });
             }
 
+            // ==================== Paper forms (fill in online, review on paper) ====================
+            if (path === '/api/forms/settings' && ['GET', 'PUT'].includes(method)) {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (method === 'GET') return Response.json(await readFormSettings(env));
+                if (!canManageUsers(user)) return Response.json({ error: '只有社長可以修改表單設定' }, { status: 403 });
+                const settings = normalizeFormSettings(await readJsonLimited(request, 16 * 1024));
+                await env.DRONE_DB.put(FORM_SETTINGS_KEY, JSON.stringify(settings));
+                return Response.json(settings);
+            }
+
+            if (path === '/api/forms/ai-letter' && method === 'POST') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canViewCms(user)) return Response.json({ error: '只有幹部可以使用 AI 公文產生' }, { status: 403 });
+                const body = await readJsonLimited(request, 32 * 1024);
+                const plainText = String(body?.text ?? '').trim();
+                if (!plainText || plainText.length > 4000) return Response.json({ error: '請輸入 1 至 4000 字的白話內容' }, { status: 400 });
+                const docType = LETTER_TYPES.includes(body?.docType) ? body.docType : '函';
+                const usageKey = `forms:ai-usage:${user.username}:${new Date().toISOString().slice(0, 10)}`;
+                const used = Number(await env.DRONE_DB.get(usageKey) || 0);
+                if (used >= AI_LETTER_DAILY_LIMIT) return Response.json({ error: `今日 AI 公文產生已達 ${AI_LETTER_DAILY_LIMIT} 次上限，請明天再試` }, { status: 429 });
+                await env.DRONE_DB.put(usageKey, String(used + 1), { expirationTtl: 172800 });
+                return Response.json(await draftOfficialLetter(env, plainText, docType));
+            }
+
+            if (path === '/api/forms' && ['GET', 'POST'].includes(method)) {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                const records = parseFinanceList(await env.DRONE_DB.get(FORM_RECORDS_KEY));
+                if (method === 'GET') {
+                    const type = url.searchParams.get('type');
+                    const visible = records.filter(record => canSeeForm(user, record) && (!type || record.type === type));
+                    return Response.json(visible.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+                }
+                const body = await readJsonLimited(request, 64 * 1024);
+                const type = String(body?.type || '');
+                if (!Object.hasOwn(FORM_TYPES, type)) return Response.json({ error: '表單類型無效' }, { status: 400 });
+                if (records.length >= MAX_FORM_RECORDS) return Response.json({ error: `表單紀錄已達 ${MAX_FORM_RECORDS} 筆上限，請先刪除舊紀錄` }, { status: 409 });
+                const data = normalizeFormData(type, body.data);
+                const now = new Date().toISOString();
+                const record = { id: crypto.randomUUID(), type, number: nextFormNumber(type, records, now), title: formTitle(type, data), data, createdBy: user.username, createdAt: now, updatedBy: user.username, updatedAt: now };
+                records.push(record);
+                await env.DRONE_DB.put(FORM_RECORDS_KEY, JSON.stringify(records));
+                return Response.json(record, { status: 201 });
+            }
+
+            if (path.startsWith('/api/forms/') && ['GET', 'PUT', 'DELETE'].includes(method)) {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                const id = path.slice('/api/forms/'.length);
+                const records = parseFinanceList(await env.DRONE_DB.get(FORM_RECORDS_KEY));
+                const record = records.find(item => item.id === id);
+                if (!record || !canSeeForm(user, record)) return Response.json({ error: '表單不存在' }, { status: 404 });
+                if (method === 'GET') return Response.json(record);
+                if (!canChangeForm(user, record)) return Response.json({ error: '只有填表人或社長可以修改或刪除此表單' }, { status: 403 });
+                if (method === 'DELETE') {
+                    await env.DRONE_DB.put(FORM_RECORDS_KEY, JSON.stringify(records.filter(item => item.id !== id)));
+                    return Response.json({ success: true });
+                }
+                const body = await readJsonLimited(request, 64 * 1024);
+                const data = normalizeFormData(record.type, body?.data);
+                Object.assign(record, { data, title: formTitle(record.type, data), updatedBy: user.username, updatedAt: new Date().toISOString() });
+                await env.DRONE_DB.put(FORM_RECORDS_KEY, JSON.stringify(records));
+                return Response.json(record);
+            }
+
+            if (path.startsWith('/admin/forms/') && method === 'GET') {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.redirect(`${url.origin}/admin`, 302);
+                const settings = await readFormSettings(env);
+                const htmlHeaders = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store' };
+                const blank = /^\/admin\/forms\/blank\/([\w-]+)$/.exec(path);
+                if (blank) {
+                    if (!Object.hasOwn(FORM_TYPES, blank[1])) return new Response('表單類型不存在', { status: 404 });
+                    return new Response(renderFormPrint({ type: blank[1], data: {} }, settings), { headers: htmlHeaders });
+                }
+                const print = /^\/admin\/forms\/print\/([\w-]{1,80})$/.exec(path);
+                if (print) {
+                    const record = parseFinanceList(await env.DRONE_DB.get(FORM_RECORDS_KEY)).find(item => item.id === print[1]);
+                    if (!record || !canSeeForm(user, record)) return new Response('表單不存在', { status: 404 });
+                    return new Response(renderFormPrint(record, settings), { headers: htmlHeaders });
+                }
+            }
+
             // ==================== API: Upload Image to GitHub ====================
             if (path === '/api/upload' && method === 'POST') {
                 const user = await sessionUser(request, env);
@@ -1088,7 +1200,8 @@ async function handleRequest(request, env, ctx) {
 
         } catch (e) {
             if (e instanceof PayloadTooLargeError) return Response.json({ error: '匯入資料不可超過 1 MB' }, { status: 413 });
-            if (e instanceof FinanceValidationError) return Response.json({ error: e.message }, { status: 400 });
+            if (e instanceof FinanceValidationError || e instanceof FormValidationError) return Response.json({ error: e.message }, { status: 400 });
+            if (e instanceof FormServiceError) return Response.json({ error: e.message }, { status: e.status });
             if (e instanceof PasswordResetRequiredError) {
                 if (path === '/api/login') {
                     return new Response(renderLogin(e.message, env.TURNSTILE_SITE_KEY), {

@@ -1012,10 +1012,10 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 toastText.innerText = text;
                 if (isError) {
                     toast.style.borderColor = '#ef4444';
-                    toast.innerHTML = '<i data-lucide="alert-circle" style="color:#ef4444; width:20px; height:20px;"></i> <span></span>';
+                    toast.innerHTML = '<i data-lucide="alert-circle" style="color:#ef4444; width:20px; height:20px;"></i> <span id="toast-text"></span>';
                 } else {
                     toast.style.borderColor = 'var(--color-cyan)';
-                    toast.innerHTML = '<i data-lucide="check-circle" style="color:var(--color-cyan); width:20px; height:20px;"></i> <span></span>';
+                    toast.innerHTML = '<i data-lucide="check-circle" style="color:var(--color-cyan); width:20px; height:20px;"></i> <span id="toast-text"></span>';
                 }
                 if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
                 toast.querySelector('span').textContent = text;
@@ -1212,6 +1212,32 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 font-size: 1.85rem;
                 font-weight: 800;
             }
+            .forms-tabs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
+            .forms-type-tab { padding:9px 14px; border-radius:999px; border:1px solid var(--border-glass); background:transparent; color:var(--text-secondary); font:inherit; cursor:pointer; }
+            .forms-type-tab.active { background:var(--color-cyan); border-color:var(--color-cyan); color:#fff; font-weight:600; }
+            .forms-card { padding:18px; border:1px solid var(--border-glass); border-radius:12px; background:rgba(255,255,255,.02); }
+            .forms-editor-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+            .forms-muted { color:var(--text-muted); font-size:.88rem; margin-top:4px; }
+            .forms-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; margin-bottom:12px; }
+            .forms-grid:empty { display:none; }
+            .forms-field { display:flex; flex-direction:column; gap:6px; font-size:.88rem; color:var(--text-secondary); }
+            .forms-span { grid-column:1 / -1; }
+            .forms-check { display:inline-flex; align-items:center; gap:6px; font-size:.9rem; color:var(--text-primary); min-height:40px; }
+            .forms-options { border:1px solid var(--border-glass); border-radius:10px; padding:10px 14px; display:flex; flex-wrap:wrap; gap:4px 16px; }
+            .forms-options legend { padding:0 6px; font-size:.88rem; color:var(--text-secondary); }
+            .forms-items-head { display:flex; gap:10px; align-items:baseline; margin-bottom:8px; }
+            .forms-items td { padding:6px; }
+            .forms-items .form-control { min-width:70px; }
+            .forms-subtotal { text-align:right; font-variant-numeric:tabular-nums; }
+            .forms-items-actions { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:8px; flex-wrap:wrap; }
+            .forms-total b { color:var(--color-cyan); font-size:1.1rem; }
+            .forms-ai { display:grid; gap:8px; justify-items:start; padding:12px; border:1px dashed var(--border-glass); border-radius:10px; }
+            .forms-ai .forms-field { width:100%; }
+            .forms-buttons { display:flex; gap:10px; flex-wrap:wrap; }
+            .forms-actions { white-space:nowrap; }
+            #panel-forms [hidden] { display:none !important; }
+            .forms-items .btn { white-space:nowrap; }
+            @media (max-width: 768px) { .forms-grid { grid-template-columns:minmax(0, 1fr); } .forms-actions { white-space:normal; } }
             .finance-summary { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin:20px 0; }
             .finance-card { padding:16px; border:1px solid var(--border-glass); border-radius:12px; background:rgba(255,255,255,.03); display:grid; gap:6px; }
             .finance-card span { color:var(--text-muted); font-size:.85rem; }
@@ -1529,12 +1555,13 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                         <button class="nav-item" onclick="showPanel('media')"><i data-lucide="image"></i> 媒體庫上傳</button>
                         <button class="nav-item" onclick="showPanel('homepage')"><i data-lucide="home"></i> 首頁設定</button>
                     </div>` : ''}
-                    ${(manageFinance || manageMembers || manageEquipment || viewCms) ? `<div class="nav-group"><p class="nav-group-label">社務管理</p>
+                    <div class="nav-group"><p class="nav-group-label">社務管理</p>
+                        <button class="nav-item" onclick="showPanel('forms'); loadForms()"><i data-lucide="file-pen-line"></i> 表單申請</button>
                         ${manageMembers ? `<button class="nav-item" onclick="showPanel('members'); loadMembers()"><i data-lucide="contact-round"></i> 社員管理</button>` : ''}
                         ${manageFinance ? `<button class="nav-item" onclick="showPanel('finance'); loadFinance()"><i data-lucide="wallet-cards"></i> 財務管理</button>` : ''}
                         ${manageEquipment ? `<button class="nav-item" onclick="showPanel('equipment'); loadEquipment()"><i data-lucide="package-check"></i> 設備管理</button>` : ''}
                         ${viewCms ? `<button class="nav-item" onclick="showPanel('notes'); loadNotes()"><i data-lucide="sticky-note"></i> 社課備忘錄</button>` : ''}
-                    </div>` : ''}
+                    </div>
                     <div class="nav-group"><p class="nav-group-label">系統管理</p>
                         <button class="nav-item" onclick="showPanel('settings')"><i data-lucide="settings"></i> 系統設定</button>
                         ${user?.role === 'president' ? `<button class="nav-item" onclick="showPanel('users'); loadUsers()"><i data-lucide="users"></i> 帳號與權限</button>` : ''}
@@ -2101,6 +2128,34 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 </form>` : ''}
                 <div id="notes-list" style="display:grid; gap:14px;"><p style="color:var(--text-muted);">載入社課紀錄中…</p></div>
             </div>` : ''}
+            <div id="panel-forms" class="panel" data-username="${escapeHtml(user?.username || '')}" data-role="${escapeHtml(user?.role || 'member')}">
+                <div class="content-header"><div><h1>表單申請</h1><p style="color:var(--text-muted); margin-top:6px;">線上填寫並自動帶入資料，列印成紙本後交由財務長、社長及學校單位簽核；審核以紙本為準。</p></div></div>
+                <div class="forms-tabs" role="tablist" aria-label="表單類型">
+                    <button type="button" class="forms-type-tab active" data-type="expense-request">社費事前申請</button>
+                    <button type="button" class="forms-type-tab" data-type="expense-report">社費事後報銷</button>
+                    <button type="button" class="forms-type-tab" data-type="equipment-loan">設備借據</button>
+                    <button type="button" class="forms-type-tab" data-type="activity-application">學生活動申請表</button>
+                    <button type="button" class="forms-type-tab" data-type="activity-report">學生活動報告表</button>
+                    <button type="button" class="forms-type-tab" data-type="official-letter">公文${viewCms ? '（AI）' : ''}</button>
+                </div>
+                <form id="forms-editor" class="forms-card" novalidate>
+                    <div class="forms-editor-head"><div><h2 id="forms-editor-title" style="font-size:1.15rem;">新增表單</h2><p id="forms-hint" class="forms-muted"></p></div><a id="forms-blank-link" class="btn btn-secondary" href="/admin/forms/blank/expense-request" target="_blank" rel="noopener">列印空白表單</a></div>
+                    <div id="forms-tools" class="forms-grid"></div>
+                    <div id="forms-fields" class="forms-grid"></div>
+                    <div class="forms-buttons"><button id="forms-save-print" type="button" class="btn btn-primary">儲存並列印</button><button id="forms-save" type="button" class="btn btn-secondary">只儲存</button><button id="forms-reset" type="button" class="btn btn-secondary">清空重填</button><button id="forms-cancel-edit" type="button" class="btn btn-secondary" hidden>取消編輯</button></div>
+                    <p class="forms-muted" style="margin-top:10px;">填表人、學號、系級、職稱與電話會記在這台裝置，下次自動帶入。列印時請選 A4、縮放 100%，並取消「頁首及頁尾」。</p>
+                </form>
+                <div class="forms-editor-head" style="margin-top:28px;"><h2 style="font-size:1.15rem;">${viewCms ? '表單紀錄' : '我的表單'}</h2><select id="forms-filter" class="form-control" style="max-width:220px;" aria-label="依表單類型篩選"><option value="">全部類型</option><option value="expense-request">社費事前申請</option><option value="expense-report">社費事後報銷</option><option value="equipment-loan">設備借據</option><option value="activity-application">學生活動申請表</option><option value="activity-report">學生活動報告表</option><option value="official-letter">公文</option></select></div>
+                <div class="table-container"><table><thead><tr><th>編號</th><th>表單</th><th>內容</th><th>填表人</th><th>更新日期</th><th>操作</th></tr></thead><tbody id="forms-records"><tr><td colspan="6" style="text-align:center; color:var(--text-muted)">載入中…</td></tr></tbody></table></div>
+                ${user?.role === 'president' ? `<details class="forms-card" style="margin-top:24px;"><summary style="cursor:pointer; font-weight:600;">表單設定（列印抬頭與簽核人姓名）</summary><form id="forms-settings" class="forms-grid" style="margin-top:14px;">
+                    <label class="forms-field"><span>表單抬頭</span><input class="form-control" name="clubName" maxlength="50" placeholder="國立臺北科技大學 無人機社"></label>
+                    <label class="forms-field"><span>社團簡稱（學校表單用）</span><input class="form-control" name="clubShortName" maxlength="50" placeholder="無人機社"></label>
+                    <label class="forms-field"><span>社長姓名（借據、公文署名）</span><input class="form-control" name="presidentName" maxlength="50"></label>
+                    <label class="forms-field"><span>財產管理人姓名</span><input class="form-control" name="propertyManager" maxlength="50"></label>
+                    <label class="forms-field"><span>指導老師</span><input class="form-control" name="advisorName" maxlength="50"></label>
+                    <div class="forms-field" style="justify-content:flex-end;"><button class="btn btn-primary" type="submit">儲存設定</button></div>
+                </form></details>` : ''}
+            </div>
             <!-- Settings Panel -->
             <div id="panel-settings" class="panel ${!viewCms ? 'active' : ''}">
                 <div class="content-header">
@@ -2149,15 +2204,12 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
 
             function showToast(text, isError = false) {
                 const toast = document.getElementById('toast');
-                const toastText = document.getElementById('toast-text');
-                toastText.innerText = text;
-                
                 if (isError) {
                     toast.style.borderColor = '#ef4444';
-                    toast.innerHTML = '<i data-lucide="alert-circle" style="color:#ef4444; width:20px; height:20px;"></i> <span></span>';
+                    toast.innerHTML = '<i data-lucide="alert-circle" style="color:#ef4444; width:20px; height:20px;"></i> <span id="toast-text"></span>';
                 } else {
                     toast.style.borderColor = 'var(--color-cyan)';
-                    toast.innerHTML = '<i data-lucide="check-circle" style="color:var(--color-cyan); width:20px; height:20px;"></i> <span></span>';
+                    toast.innerHTML = '<i data-lucide="check-circle" style="color:var(--color-cyan); width:20px; height:20px;"></i> <span id="toast-text"></span>';
                 }
                 if (typeof lucide !== 'undefined' && lucide.createIcons) { lucide.createIcons(); }
                 
@@ -2851,6 +2903,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 location.href = '/admin';
             }
         </script>
+        <script src="/admin-forms.js" defer></script>
     </body>
     </html>
     `;
