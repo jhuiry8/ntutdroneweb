@@ -3281,6 +3281,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             }
         </script>
         <script src="/admin-forms.js" defer></script>
+        <script src="/admin-ai.js" defer></script>
     </body>
     </html>
     `;

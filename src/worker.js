@@ -34,6 +34,7 @@ import {
     fillFormWithAi,
     aiProvider
 } from './forms.js';
+import { handleAiRequest, generateClubReport } from './ai-routes.js';
 export { FormStore } from './form-store.js';
 export { SiteStore } from './site-store.js';
 
@@ -129,6 +130,11 @@ const EQUIPMENT_KEY = 'equipment:assets';
 const EQUIPMENT_MIGRATION_KEY = 'equipment:durable-object-migrated';
 const FORM_SETTINGS_KEY = 'forms:settings';
 const AI_DAILY_LIMIT = 30;
+// The shared per-account daily AI quota; AI_DAILY_LIMIT in the environment overrides the default.
+function aiDailyLimit(env) {
+    const limit = Number(env?.AI_DAILY_LIMIT);
+    return Number.isInteger(limit) && limit >= 1 && limit <= 1000 ? limit : AI_DAILY_LIMIT;
+}
 
 // Every signed-in account can fill in forms. Officers see everyone's forms;
 // members see only their own. Only the author or the president may change one.
@@ -172,9 +178,9 @@ async function formStore(env, path, payload = {}) {
 
 // One shared daily AI quota per account, taken atomically and refunded if the AI call fails.
 async function withAiQuota(env, user, run) {
-    const quota = { key: `ai:${user.username}`, limit: AI_DAILY_LIMIT, day: taipeiToday() };
+    const quota = { key: `ai:${user.username}`, limit: aiDailyLimit(env), day: taipeiToday() };
     const taken = await formStore(env, '/quota', quota);
-    if (taken.status === 429) return Response.json({ error: `今日 AI 使用已達 ${AI_DAILY_LIMIT} 次上限，請明天再試` }, { status: 429 });
+    if (taken.status === 429) return Response.json({ error: `今日 AI 使用已達 ${quota.limit} 次上限，請明天再試` }, { status: 429 });
     try {
         return Response.json(await run());
     } catch (error) {
@@ -494,10 +500,20 @@ function addSecurityHeaders(response, request) {
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
+// What the AI routes and the weekly report need from this module.
+const aiDeps = {
+    sessionUser, readJsonLimited, withAiQuota, formStore, equipmentStoreRequest, aiDailyLimit,
+    readRegulations: async env => parseRegulations(await env.DRONE_DB.get(REGULATIONS_KEY))
+};
+
 export default {
     async fetch(request, env, ctx) {
         const response = await handleRequest(request, env, ctx);
         return addSecurityHeaders(response, request);
+    },
+    // Cron trigger (wrangler.toml): builds the weekly club report and posts it to REPORT_WEBHOOK_URL.
+    async scheduled(controller, env, ctx) {
+        ctx.waitUntil(generateClubReport(env, aiDeps, { trigger: 'cron' }).catch(error => console.error('Weekly report failed', error?.message || String(error))));
     }
 };
 
@@ -754,6 +770,10 @@ async function handleRequest(request, env, ctx) {
                     }
                 });
             }
+
+            // ==================== API: AI tools, assistant and weekly report ====================
+            const aiResponse = await handleAiRequest(request, env, aiDeps);
+            if (aiResponse) return aiResponse;
 
             // ==================== API: Posts CRUD (Admin Auth required) ====================
             if (path.startsWith('/api/posts') && ['POST', 'DELETE', 'GET'].includes(method)) {

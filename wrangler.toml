@@ -33,3 +33,7 @@ new_sqlite_classes = ["FormStore"]
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["SiteStore"]
+
+# Weekly club report: every Monday 01:00 UTC (09:00 Taipei). See README「AI 功能」.
+[triggers]
+crons = ["0 1 * * 1"]
