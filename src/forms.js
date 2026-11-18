@@ -758,8 +758,12 @@ function parseJsonObject(rawText) {
     throw new FormServiceError('AI 回傳格式無法解析，請重試');
 }
 
-// Sends one system + user prompt and returns the model's JSON object.
-export async function requestAiJson(env, systemPrompt, userPrompt, fetchImpl = fetch) {
+// Sends a system prompt plus one user prompt (or a [{role: 'user'|'assistant', content}]
+// conversation) and returns the model's JSON object.
+export async function requestAiJson(env, systemPrompt, userPrompt, fetchImpl = fetch, options = {}) {
+    const turns = (Array.isArray(userPrompt) ? userPrompt : [{ role: 'user', content: userPrompt }])
+        .map(turn => ({ role: turn.role === 'assistant' ? 'assistant' : 'user', content: String(turn.content ?? '') }));
+    const maxTokens = Number.isInteger(options.maxTokens) ? options.maxTokens : 4096;
     const provider = aiProvider(env);
     if (!provider) throw new FormServiceError('尚未設定 GROQ_API_KEY（或 GEMINI_API_KEY），無法使用 AI 功能', 503);
     if (!/^[\w./-]{1,100}$/.test(provider.model)) throw new FormServiceError('AI 模型名稱設定無效', 500);
@@ -770,9 +774,9 @@ export async function requestAiJson(env, systemPrompt, userPrompt, fetchImpl = f
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.GROQ_API_KEY}` },
             body: {
                 model: provider.model,
-                messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+                messages: [{ role: 'system', content: systemPrompt }, ...turns],
                 temperature: 0.2,
-                max_completion_tokens: 4096,
+                max_completion_tokens: maxTokens,
                 ...(/gpt-oss/.test(provider.model) ? { reasoning_effort: 'low' } : {}),
                 response_format: { type: 'json_object' }
             }
@@ -783,14 +787,14 @@ export async function requestAiJson(env, systemPrompt, userPrompt, fetchImpl = f
             headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
             body: {
                 systemInstruction: { parts: [{ text: systemPrompt }] },
-                contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-                generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+                contents: turns.map(turn => ({ role: turn.role === 'assistant' ? 'model' : 'user', parts: [{ text: turn.content }] })),
+                generationConfig: { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: maxTokens }
             }
         };
     }
     let response;
     try {
-        response = await fetchImpl(url, { method: 'POST', headers: init.headers, body: JSON.stringify(init.body), signal: AbortSignal.timeout(45000) });
+        response = await fetchImpl(url, { method: 'POST', headers: init.headers, body: JSON.stringify(init.body), signal: AbortSignal.timeout(options.timeoutMs || 45000) });
     } catch {
         throw new FormServiceError('無法連線至 AI 服務，請稍後再試');
     }
@@ -809,7 +813,7 @@ export function taipeiToday(now = new Date()) {
     return new Date(now.getTime() + 8 * 3600000).toISOString().slice(0, 10);
 }
 
-function dateContext(now) {
+export function dateContext(now = new Date()) {
     const today = taipeiToday(now);
     const weekday = '日一二三四五六'[new Date(`${today}T00:00:00Z`).getUTCDay()];
     return `今天是 ${today}（星期${weekday}，民國 ${Number(today.slice(0, 4)) - 1911} 年，臺灣時間）。`;

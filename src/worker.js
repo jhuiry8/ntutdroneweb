@@ -34,7 +34,11 @@ import {
     fillFormWithAi,
     aiProvider
 } from './forms.js';
+import { handleAiRequest, generateClubReport } from './ai-routes.js';
+import { handleMeetingRequest } from './meeting-routes.js';
+import { MeetingError } from './meetings.js';
 export { FormStore } from './form-store.js';
+export { MeetingStore } from './meetings.js';
 export { SiteStore } from './site-store.js';
 
 // Legacy unsalted admin hash format (migrated to PBKDF2 on first login)
@@ -130,6 +134,11 @@ const EQUIPMENT_MIGRATION_KEY = 'equipment:durable-object-migrated';
 const FORM_SETTINGS_KEY = 'forms:settings';
 const DESKTOP_RELEASE_KEY = 'desktop:release';
 const AI_DAILY_LIMIT = 30;
+// The shared per-account daily AI quota; AI_DAILY_LIMIT in the environment overrides the default.
+function aiDailyLimit(env) {
+    const limit = Number(env?.AI_DAILY_LIMIT);
+    return Number.isInteger(limit) && limit >= 1 && limit <= 1000 ? limit : AI_DAILY_LIMIT;
+}
 
 // Every signed-in account can fill in forms. Officers see everyone's forms;
 // members see only their own. Only the author or the president may change one.
@@ -173,9 +182,9 @@ async function formStore(env, path, payload = {}) {
 
 // One shared daily AI quota per account, taken atomically and refunded if the AI call fails.
 async function withAiQuota(env, user, run) {
-    const quota = { key: `ai:${user.username}`, limit: AI_DAILY_LIMIT, day: taipeiToday() };
+    const quota = { key: `ai:${user.username}`, limit: aiDailyLimit(env), day: taipeiToday() };
     const taken = await formStore(env, '/quota', quota);
-    if (taken.status === 429) return Response.json({ error: `今日 AI 使用已達 ${AI_DAILY_LIMIT} 次上限，請明天再試` }, { status: 429 });
+    if (taken.status === 429) return Response.json({ error: `今日 AI 使用已達 ${quota.limit} 次上限，請明天再試` }, { status: 429 });
     try {
         return Response.json(await run());
     } catch (error) {
@@ -476,6 +485,17 @@ function transactionTotals(transactions) {
     };
 }
 
+// Site-wide switches the president controls. memberLogin: whether 'member' accounts may sign in
+// (members without accounts use the 學號＋姓名 meeting page instead).
+const SITE_SETTINGS_KEY = 'site:settings';
+const DEFAULT_SITE_SETTINGS = { memberLogin: true };
+async function readSiteSettings(env) {
+    const stored = await env.DRONE_DB.get(SITE_SETTINGS_KEY);
+    try { return { ...DEFAULT_SITE_SETTINGS, ...(stored ? JSON.parse(stored) : {}) }; }
+    catch { return { ...DEFAULT_SITE_SETTINGS }; }
+}
+const MEMBER_LOGIN_CLOSED = '目前未開放社員帳號登入。開會時請使用主席提供的會議連結，以學號與姓名簽到。';
+
 async function sessionUser(request, env) {
     const cookies = parseCookies(request);
     const sessionToken = cookies.session;
@@ -487,7 +507,9 @@ async function sessionUser(request, env) {
     const session = JSON.parse(sessionUser);
     const userJson = await env.DRONE_DB.get(`user:${session.username}`);
     const user = userJson ? JSON.parse(userJson) : null;
-    return user?.active !== false && user?.version === session.version ? user : null;
+    if (!user || user.active === false || user.version !== session.version) return null;
+    if (user.role === 'member' && !(await readSiteSettings(env)).memberLogin) return null;
+    return user;
 }
 
 // The pages still use inline scripts and onclick handlers, so 'unsafe-inline'
@@ -519,10 +541,20 @@ function addSecurityHeaders(response, request) {
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
+// What the AI routes and the weekly report need from this module.
+const aiDeps = {
+    sessionUser, readJsonLimited, withAiQuota, formStore, equipmentStoreRequest, aiDailyLimit, takeAttempt, giveBackAttempt,
+    readRegulations: async env => parseRegulations(await env.DRONE_DB.get(REGULATIONS_KEY))
+};
+
 export default {
     async fetch(request, env, ctx) {
         const response = await handleRequest(request, env, ctx);
         return addSecurityHeaders(response, request);
+    },
+    // Cron trigger (wrangler.toml): builds the weekly club report and posts it to REPORT_WEBHOOK_URL.
+    async scheduled(controller, env, ctx) {
+        ctx.waitUntil(generateClubReport(env, aiDeps, { trigger: 'cron' }).catch(error => console.error('Weekly report failed', error?.message || String(error))));
     }
 };
 
@@ -746,6 +778,10 @@ async function handleRequest(request, env, ctx) {
                 }
                 // Always run one PBKDF2 derivation so unknown usernames are not faster.
                 const passwordOk = await verifyPassword(password, user ? user.passwordHash : await dummyHash());
+                if (user && user.active !== false && passwordOk && user.role === 'member' && !(await readSiteSettings(env)).memberLogin) {
+                    await giveBackAttempt(env, [attemptsKey, ipAttemptsKey]);
+                    return loginPageResponse(env, MEMBER_LOGIN_CLOSED, 403);
+                }
                 if (user && user.active !== false && passwordOk) {
                     await siteStore(env, '/limit/clear', { key: attemptsKey });
                     await giveBackAttempt(env, [ipAttemptsKey]);
@@ -779,6 +815,27 @@ async function handleRequest(request, env, ctx) {
                     }
                 });
             }
+
+            // ==================== API: Site settings (president) ====================
+            if (path === '/api/site-settings' && ['GET', 'PUT'].includes(method)) {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (method === 'GET') return Response.json(await readSiteSettings(env));
+                if (!canManageUsers(user)) return Response.json({ error: '只有社長可以修改網站設定' }, { status: 403 });
+                const body = await readJsonObject(request);
+                const settings = await readSiteSettings(env);
+                if (typeof body.memberLogin === 'boolean') settings.memberLogin = body.memberLogin;
+                await env.DRONE_DB.put(SITE_SETTINGS_KEY, JSON.stringify(settings));
+                return Response.json(settings);
+            }
+
+            // ==================== API: AI tools, assistant and weekly report ====================
+            const aiResponse = await handleAiRequest(request, env, aiDeps);
+            if (aiResponse) return aiResponse;
+
+            // ==================== API: Meetings (社員大會、幹部會議、委員會) ====================
+            const meetingResponse = await handleMeetingRequest(request, env, aiDeps);
+            if (meetingResponse) return meetingResponse;
 
             // ==================== API: Posts CRUD (Admin Auth required) ====================
             if (path.startsWith('/api/posts') && ['POST', 'DELETE', 'GET'].includes(method)) {
@@ -1663,6 +1720,7 @@ async function handleRequest(request, env, ctx) {
             if (e instanceof PayloadTooLargeError) return Response.json({ error: e.message }, { status: 413 });
             if (e instanceof FinanceValidationError || e instanceof FormValidationError || e instanceof RegulationRuleError) return Response.json({ error: e.message }, { status: 400 });
             if (e instanceof FormServiceError) return Response.json({ error: e.message }, { status: e.status });
+            if (e instanceof MeetingError) return Response.json({ error: e.message }, { status: e.status });
             if (e instanceof PasswordResetRequiredError) {
                 if (path === '/api/login') {
                     return loginPageResponse(env, e.message, 409);

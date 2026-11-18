@@ -22,6 +22,10 @@ class_name = "FormStore"
 name = "SITE_STORE"
 class_name = "SiteStore"
 
+[[durable_objects.bindings]]
+name = "MEETING_STORE"
+class_name = "MeetingStore"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["EquipmentStore"]
@@ -33,3 +37,11 @@ new_sqlite_classes = ["FormStore"]
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["SiteStore"]
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["MeetingStore"]
+
+# Weekly club report: every Monday 01:00 UTC (09:00 Taipei). See README「AI 功能」.
+[triggers]
+crons = ["0 1 * * 1"]

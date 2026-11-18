@@ -2442,8 +2442,9 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             }
 
             function closePostForm() {
-                document.getElementById('posts-list-view').style.display = 'block';
-                document.getElementById('posts-form-view').style.display = 'none';
+                const listView = document.getElementById('posts-list-view'), formView = document.getElementById('posts-form-view');
+                if (listView) listView.style.display = 'block';
+                if (formView) formView.style.display = 'none';
             }
 
             async function savePost(e) {
@@ -2534,8 +2535,9 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             }
 
             function closePageForm() {
-                document.getElementById('pages-list-view').style.display = 'block';
-                document.getElementById('pages-form-view').style.display = 'none';
+                const listView = document.getElementById('pages-list-view'), formView = document.getElementById('pages-form-view');
+                if (listView) listView.style.display = 'block';
+                if (formView) formView.style.display = 'none';
             }
 
             async function savePage(e) {
@@ -3281,6 +3283,8 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             }
         </script>
         <script src="/admin-forms.js" defer></script>
+        <script src="/admin-meetings.js" defer></script>
+        <script src="/admin-ai.js" defer></script>
     </body>
     </html>
     `;
