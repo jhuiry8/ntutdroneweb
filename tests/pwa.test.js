@@ -98,6 +98,22 @@ test('PWA & Mobile Ready test suite', async (t) => {
             assert.ok(existsSync(`android/app/src/main/res/mipmap-${density}/ic_launcher.png`), `ic_launcher for ${density} must exist`);
             assert.ok(existsSync(`android/app/src/main/res/mipmap-${density}/ic_launcher_round.png`), `ic_launcher_round for ${density} must exist`);
         }
+
+        // Verify Native Android Architecture (No WebView!)
+        const mainActivity = readFileSync('android/app/src/main/java/club/ntut/drone/MainActivity.java', 'utf8');
+        assert.match(mainActivity, /BottomNavigationView/, 'MainActivity must use native BottomNavigationView');
+        assert.ok(!mainActivity.includes('android.webkit.WebView'), 'MainActivity must NOT use WebView browser');
+        assert.ok(!mainActivity.includes('loadUrl'), 'MainActivity must NOT use loadUrl');
+
+        // Verify native API client, models, and fragments
+        assert.ok(existsSync('android/app/src/main/java/club/ntut/drone/api/ApiClient.java'), 'ApiClient.java must exist');
+        assert.ok(existsSync('android/app/src/main/java/club/ntut/drone/ui/HomeFragment.java'), 'HomeFragment.java must exist');
+        assert.ok(existsSync('android/app/src/main/java/club/ntut/drone/ui/NewsFragment.java'), 'NewsFragment.java must exist');
+        assert.ok(existsSync('android/app/src/main/java/club/ntut/drone/ui/EquipmentFragment.java'), 'EquipmentFragment.java must exist');
+        assert.ok(existsSync('android/app/src/main/java/club/ntut/drone/ui/MeetingsFragment.java'), 'MeetingsFragment.java must exist');
+        assert.ok(existsSync('android/app/src/main/java/club/ntut/drone/ui/ProfileFragment.java'), 'ProfileFragment.java must exist');
+        assert.ok(existsSync('android/app/src/main/res/menu/bottom_nav_menu.xml'), 'bottom_nav_menu.xml must exist');
     });
 });
+
 
