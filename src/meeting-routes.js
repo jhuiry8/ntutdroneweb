@@ -6,7 +6,7 @@ import { membershipStatus } from './membership.js';
 import { sanitizeContent, escapeHtml } from './html.js';
 import { aiProvider } from './forms.js';
 import { draftMeetingNotice, draftMinutes } from './ai.js';
-import { MEETING_TYPES, AGENDA_KINDS, THRESHOLDS, MEETING_STATUSES, meetingView, canSeeMeeting, minutesFacts } from './meetings.js';
+import { MEETING_TYPES, AGENDA_KINDS, THRESHOLDS, MEETING_STATUSES, meetingView, canSeeMeeting, minutesFacts, publicMeetingView, findMemberByIdentity, ipAllowed } from './meetings.js';
 
 const MEMBERS_KEY = 'members:list';
 
@@ -65,11 +65,80 @@ h1 { font-size: 20pt; text-align: center; } h2 { font-size: 14pt; margin-top: 18
 <p class="no-print" style="text-align:center; margin-top:24px;"><button onclick="window.print()">列印／另存 PDF</button></p></body></html>`;
 }
 
+const GUEST_ATTEMPTS_PER_IP = 30;
+const GUEST_WINDOW_SECONDS = 900;
+const GUEST_COOKIE_SECONDS = 12 * 3600;
+
+async function sha256(value) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+    return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+function cookie(request, name) {
+    for (const part of (request.headers.get('Cookie') || '').split(';')) {
+        const [key, ...rest] = part.trim().split('=');
+        if (key === name) return rest.join('=');
+    }
+    return '';
+}
+const guestCookieName = id => `mtg_${id.replace(/-/g, '').slice(0, 24)}`;
+
+function guestPage(id) {
+    return `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>會議簽到與投票 | 北科無人機社</title>
+<style>:root { color-scheme: dark; } * { box-sizing: border-box; } body { margin: 0; font-family: "Noto Sans TC", system-ui, sans-serif; background: #0b1120; color: #e2e8f0; line-height: 1.7; }
+main { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; } h1 { font-size: 1.4rem; margin: 0 0 4px; } h2 { font-size: 1.1rem; margin: 0 0 8px; }
+.card { background: #111a2e; border: 1px solid #23324d; border-radius: 14px; padding: 16px; margin-top: 14px; } .muted { color: #94a3b8; font-size: .9rem; }
+input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 1rem; margin-top: 6px; }
+label { display: block; margin-top: 10px; font-size: .9rem; color: #cbd5e1; } button { padding: 12px 18px; border-radius: 10px; border: 0; font-size: 1rem; font-weight: 700; cursor: pointer; }
+.primary { background: #3b82f6; color: #fff; } .danger { background: #ef4444; color: #fff; } .secondary { background: #334155; color: #e2e8f0; } button:disabled { opacity: .5; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; } .row button { flex: 1; min-width: 90px; } .ok { color: #34d399; font-weight: 700; } .bad { color: #f87171; font-weight: 700; } .warn { color: #fbbf24; }
+.error { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.4); color: #fecaca; padding: 10px 12px; border-radius: 10px; margin-top: 12px; } .pre { white-space: pre-wrap; }</style></head>
+<body><main id="app" data-meeting="${escapeHtml(id)}"><p class="muted">載入中…</p></main><script src="/meeting.js"></script></body></html>`;
+}
+
+// Public pages for members without accounts: check in with 學號＋姓名, then vote.
+async function handlePublicMeeting(request, env, deps, path, method) {
+    const pageMatch = /^\/meeting\/([\w-]{1,80})$/.exec(path);
+    if (pageMatch && method === 'GET') return new Response(guestPage(pageMatch[1]), { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+    const match = /^\/api\/public\/meetings\/([\w-]{1,80})(?:\/(checkin|ballot))?$/.exec(path);
+    if (!match) return json({ error: 'Not Found' }, 404);
+    const [, id, action] = match;
+    const found = env.MEETING_STORE ? await meetingStore(env, '/get', { id }) : { status: 404 };
+    const meeting = found.body;
+    if (found.status !== 200 || !meeting.guestAccess || meeting.status === 'draft') return json({ error: '找不到開放簽到的會議' }, 404);
+    const token = cookie(request, guestCookieName(id));
+    const tokenHash = /^[a-f0-9]{64}$/.test(token) ? await sha256(token) : '';
+    const guest = tokenHash ? (meeting.guests || []).find(entry => entry.tokenHash === tokenHash) : null;
+    const ip = request.headers.get('CF-Connecting-IP') || '';
+
+    if (!action && method === 'GET') return json(publicMeetingView(meeting, guest?.memberId || ''), 200);
+    if (method !== 'POST') return json({ error: '方法不允許' }, 405);
+    const body = await deps.readJsonLimited(request, 8 * 1024);
+
+    if (action === 'checkin') {
+        // Every attempt counts per IP, so student IDs cannot be guessed in bulk.
+        if (!(await deps.takeAttempt(env, [{ key: `meeting-guest:${ip || 'unknown'}`, max: GUEST_ATTEMPTS_PER_IP, windowSeconds: GUEST_WINDOW_SECONDS }]))) return json({ error: '嘗試次數過多，請 15 分鐘後再試' }, 429);
+        const member = findMemberByIdentity(await roster(env), body?.studentId, body?.name);
+        if (!member) return json({ error: '學號或姓名與社員名冊不符，請確認後再試，或洽主席協助' }, 400);
+        const newToken = guest ? token : Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('');
+        const result = await meetingStore(env, '/op', { id, op: 'guest-checkin', actor: { username: 'guest' }, attendee: attendeeFor(member), tokenHash: await sha256(newToken), deviceHash: tokenHash, ip, code: body?.code });
+        if (result.status !== 200) return json(result.body, result.status);
+        return new Response(JSON.stringify(publicMeetingView(result.body, member.id)), { headers: { 'Content-Type': 'application/json', 'Set-Cookie': `${guestCookieName(id)}=${newToken}; Path=/; HttpOnly; Max-Age=${GUEST_COOKIE_SECONDS}; Secure; SameSite=Strict` } });
+    }
+    if (action === 'ballot') {
+        if (!guest) return json({ error: '請先簽到' }, 403);
+        if (!ipAllowed(ip, meeting.allowedIps)) return json({ error: '請連上會場網路後再投票' }, 403);
+        const result = await meetingStore(env, '/op', { id, op: 'ballot', actor: { username: 'guest', memberId: guest.memberId }, itemId: String(body?.itemId || ''), choice: body?.choice });
+        return json(result.status === 200 ? publicMeetingView(result.body, guest.memberId) : result.body, result.status);
+    }
+    return json({ error: 'Not Found' }, 404);
+}
+
 // Returns a Response for meeting routes, or null when the path is not one of them.
 export async function handleMeetingRequest(request, env, deps) {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
+    if (path.startsWith('/api/public/meetings/') || /^\/meeting\/[\w-]{1,80}$/.test(path)) return handlePublicMeeting(request, env, deps, path, method);
     const printMatch = /^\/admin\/meetings\/([\w-]{1,80})\/minutes$/.exec(path);
     if (!path.startsWith('/api/meetings') && !printMatch) return null;
 
@@ -94,7 +163,8 @@ export async function handleMeetingRequest(request, env, deps) {
             me: { officer: actor.officer, president: actor.president, memberId: actor.memberId, voting: member ? membershipStatus(member).voting : false, name: member?.name || '' },
             options: { types: Object.fromEntries(Object.entries(MEETING_TYPES).map(([key, value]) => [key, value.label])), kinds: AGENDA_KINDS, thresholds: Object.fromEntries(Object.entries(THRESHOLDS).map(([key, value]) => [key, value.label])), statuses: MEETING_STATUSES },
             roster: actor.officer ? members.map(entry => ({ id: entry.id, name: entry.name, studentId: entry.studentId, voting: membershipStatus(entry).voting })) : [],
-            ai: Boolean(aiProvider(env))
+            ai: Boolean(aiProvider(env)),
+            myIp: actor.officer ? (request.headers.get('CF-Connecting-IP') || '') : ''
         });
     }
     if (path === '/api/meetings' && method === 'POST') {

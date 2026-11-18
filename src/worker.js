@@ -460,6 +460,17 @@ function transactionTotals(transactions) {
     };
 }
 
+// Site-wide switches the president controls. memberLogin: whether 'member' accounts may sign in
+// (members without accounts use the 學號＋姓名 meeting page instead).
+const SITE_SETTINGS_KEY = 'site:settings';
+const DEFAULT_SITE_SETTINGS = { memberLogin: true };
+async function readSiteSettings(env) {
+    const stored = await env.DRONE_DB.get(SITE_SETTINGS_KEY);
+    try { return { ...DEFAULT_SITE_SETTINGS, ...(stored ? JSON.parse(stored) : {}) }; }
+    catch { return { ...DEFAULT_SITE_SETTINGS }; }
+}
+const MEMBER_LOGIN_CLOSED = '目前未開放社員帳號登入。開會時請使用主席提供的會議連結，以學號與姓名簽到。';
+
 async function sessionUser(request, env) {
     const cookies = parseCookies(request);
     const sessionToken = cookies.session;
@@ -471,7 +482,9 @@ async function sessionUser(request, env) {
     const session = JSON.parse(sessionUser);
     const userJson = await env.DRONE_DB.get(`user:${session.username}`);
     const user = userJson ? JSON.parse(userJson) : null;
-    return user?.active !== false && user?.version === session.version ? user : null;
+    if (!user || user.active === false || user.version !== session.version) return null;
+    if (user.role === 'member' && !(await readSiteSettings(env)).memberLogin) return null;
+    return user;
 }
 
 // The pages still use inline scripts and onclick handlers, so 'unsafe-inline'
@@ -505,7 +518,7 @@ function addSecurityHeaders(response, request) {
 
 // What the AI routes and the weekly report need from this module.
 const aiDeps = {
-    sessionUser, readJsonLimited, withAiQuota, formStore, equipmentStoreRequest, aiDailyLimit,
+    sessionUser, readJsonLimited, withAiQuota, formStore, equipmentStoreRequest, aiDailyLimit, takeAttempt,
     readRegulations: async env => parseRegulations(await env.DRONE_DB.get(REGULATIONS_KEY))
 };
 
@@ -740,6 +753,10 @@ async function handleRequest(request, env, ctx) {
                 }
                 // Always run one PBKDF2 derivation so unknown usernames are not faster.
                 const passwordOk = await verifyPassword(password, user ? user.passwordHash : await dummyHash());
+                if (user && user.active !== false && passwordOk && user.role === 'member' && !(await readSiteSettings(env)).memberLogin) {
+                    await giveBackAttempt(env, [attemptsKey, ipAttemptsKey]);
+                    return loginPageResponse(env, MEMBER_LOGIN_CLOSED, 403);
+                }
                 if (user && user.active !== false && passwordOk) {
                     await siteStore(env, '/limit/clear', { key: attemptsKey });
                     await giveBackAttempt(env, [ipAttemptsKey]);
@@ -772,6 +789,19 @@ async function handleRequest(request, env, ctx) {
                         'Set-Cookie': 'session=; Path=/; HttpOnly; Max-Age=0; Secure; SameSite=Lax'
                     }
                 });
+            }
+
+            // ==================== API: Site settings (president) ====================
+            if (path === '/api/site-settings' && ['GET', 'PUT'].includes(method)) {
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (method === 'GET') return Response.json(await readSiteSettings(env));
+                if (!canManageUsers(user)) return Response.json({ error: '只有社長可以修改網站設定' }, { status: 403 });
+                const body = await readJsonObject(request);
+                const settings = await readSiteSettings(env);
+                if (typeof body.memberLogin === 'boolean') settings.memberLogin = body.memberLogin;
+                await env.DRONE_DB.put(SITE_SETTINGS_KEY, JSON.stringify(settings));
+                return Response.json(settings);
             }
 
             // ==================== API: AI tools, assistant and weekly report ====================

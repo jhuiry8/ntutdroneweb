@@ -215,3 +215,142 @@ test('meeting input is validated', async () => {
     assert.equal((await request('/api/meetings', null)).status, 401);
     assert.equal((await request('/api/meetings/nope', 'cadre')).status, 404);
 });
+
+// Public 學號＋姓名 page: one browser (cookie) per member, optional IP limits.
+function guestClient(env, ip = '140.124.10.20') {
+    let jar = '';
+    return {
+        setIp(value) { ip = value; },
+        async call(path, body) {
+            const response = await worker.fetch(new Request(`https://example.com${path}`, {
+                method: body ? 'POST' : 'GET',
+                headers: { 'CF-Connecting-IP': ip, ...(jar ? { Cookie: jar } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+                ...(body ? { body: JSON.stringify(body) } : {})
+            }), env);
+            const set = response.headers.get('Set-Cookie');
+            if (set) jar = set.split(';')[0];
+            return response;
+        },
+        get cookie() { return jar; }
+    };
+}
+
+async function openAssembly(request, fields = {}) {
+    const meeting = await (await request('/api/meetings', 'cadre', 'POST', { type: 'assembly', title: '期初大會', date: '2026-09-15', agenda: [{ title: '預算案' }], ...fields })).json();
+    await request(`/api/meetings/${meeting.id}/status`, 'cadre', 'POST', { status: 'announced' });
+    return (await request(`/api/meetings/${meeting.id}/status`, 'cadre', 'POST', { status: 'open' })).json();
+}
+
+test('members without accounts check in with 學號＋姓名 and vote from one device', async () => {
+    const { request, store, env } = fixture();
+    store.set('members:list', JSON.stringify(roster.map((member, index) => ({ ...member, studentId: `B1100000${index + 1}` }))));
+    const meeting = await openAssembly(request, { checkInCode: 'FLY123' });
+    assert.equal(meeting.guestAccess, true);
+    const page = await worker.fetch(new Request(`https://example.com/meeting/${meeting.id}`), env);
+    assert.match(await page.text(), /meeting\.js/);
+
+    const phone = guestClient(env);
+    const view = await (await phone.call(`/api/public/meetings/${meeting.id}`)).json();
+    assert.equal(view.me, null);
+    assert.equal(view.requiresCode, true);
+    assert.equal(JSON.stringify(view).includes('FLY123'), false);
+    assert.equal((await phone.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'b11000001', name: '社員一', code: 'nope' })).status, 400);
+    assert.equal((await phone.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'b11000001', name: '別人', code: 'FLY123' })).status, 400);
+    const checked = await phone.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: ' b11000001 ', name: '社 員一', code: 'fly123' });
+    assert.equal(checked.status, 200);
+    assert.match(phone.cookie, /^mtg_/);
+    assert.deepEqual((await checked.json()).me, { name: '社員一', voting: true, canVote: true });
+    // Signing in again on the same phone is fine; the same phone cannot sign for someone else.
+    assert.equal((await phone.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'B11000001', name: '社員一', code: 'FLY123' })).status, 200);
+    assert.equal((await phone.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'B11000002', name: '社員二', code: 'FLY123' })).status, 409);
+    // Another phone cannot take over a member who already checked in.
+    const other = guestClient(env, '140.124.10.21');
+    assert.equal((await other.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'B11000001', name: '社員一', code: 'FLY123' })).status, 409);
+
+    const itemId = meeting.agenda[0].id;
+    assert.equal((await phone.call(`/api/public/meetings/${meeting.id}/ballot`, { itemId, choice: 'agree' })).status, 400);
+    await request(`/api/meetings/${meeting.id}/agenda/${itemId}/vote`, 'cadre', 'POST', { action: 'open' });
+    assert.equal((await other.call(`/api/public/meetings/${meeting.id}/ballot`, { itemId, choice: 'agree' })).status, 403);
+    const voted = await (await phone.call(`/api/public/meetings/${meeting.id}/ballot`, { itemId, choice: 'agree' })).json();
+    assert.equal(voted.agenda[0].voted, true);
+    assert.equal(voted.agenda[0].vote.agree, undefined);
+    assert.equal((await phone.call(`/api/public/meetings/${meeting.id}/ballot`, { itemId, choice: 'oppose' })).status, 409);
+    // A forged cookie gets nothing.
+    const forged = guestClient(env);
+    await forged.call(`/api/public/meetings/${meeting.id}`);
+    assert.equal((await worker.fetch(new Request(`https://example.com/api/public/meetings/${meeting.id}/ballot`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: `mtg_${meeting.id.replace(/-/g, '').slice(0, 24)}=${'a'.repeat(64)}` }, body: JSON.stringify({ itemId, choice: 'agree' }) }), env)).status, 403);
+
+    // Officers see how each person checked in; removing the entry frees the member to re-check-in elsewhere.
+    const officerView = await (await request(`/api/meetings/${meeting.id}`, 'cadre')).json();
+    assert.deepEqual(officerView.attendance.map(a => [a.by, a.ip]), [['guest', '140.124.10.20']]);
+    assert.equal(officerView.guests, undefined);
+    await request(`/api/meetings/${meeting.id}/agenda/${itemId}/vote`, 'cadre', 'POST', { action: 'close' });
+    await request(`/api/meetings/${meeting.id}/attendance`, 'cadre', 'POST', { memberId: 'm1', remove: true });
+    assert.equal((await other.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'B11000001', name: '社員一', code: 'FLY123' })).status, 200);
+});
+
+test('guest check-in can be limited to the venue network and per IP', async () => {
+    const { request, store, env } = fixture();
+    store.set('members:list', JSON.stringify(roster.map((member, index) => ({ ...member, studentId: `B1100000${index + 1}` }))));
+    assert.equal((await request('/api/meetings', 'cadre', 'POST', { title: 'x', date: '2026-09-15', allowedIps: '999.1.1.1' })).status, 400);
+    const meeting = await openAssembly(request, { allowedIps: '140.124.0.0/16\n2001:db8::/32', maxPerIp: 1 });
+    const outside = guestClient(env, '8.8.8.8');
+    assert.equal((await outside.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'B11000001', name: '社員一' })).status, 403);
+    const first = guestClient(env, '140.124.1.1');
+    assert.equal((await first.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'B11000001', name: '社員一' })).status, 200);
+    const second = guestClient(env, '140.124.1.1');
+    assert.equal((await second.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'B11000002', name: '社員二' })).status, 429);
+    const v6 = guestClient(env, '2001:db8:5::9');
+    assert.equal((await v6.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'B11000002', name: '社員二' })).status, 200);
+    // Leaving the network blocks voting too.
+    first.setIp('8.8.4.4');
+    await request(`/api/meetings/${meeting.id}/agenda/${meeting.agenda[0].id}/vote`, 'cadre', 'POST', { action: 'open' });
+    assert.equal((await first.call(`/api/public/meetings/${meeting.id}/ballot`, { itemId: meeting.agenda[0].id, choice: 'agree' })).status, 403);
+    // Guessing student IDs is rate limited per IP.
+    const guesser = guestClient(env, '140.124.9.9');
+    let last;
+    for (let i = 0; i < 31; i++) last = await guesser.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: `X${i}`, name: '猜' });
+    assert.equal(last.status, 429);
+});
+
+test('guest access can be turned off per meeting, and drafts are never public', async () => {
+    const { request, env } = fixture();
+    const draft = await (await request('/api/meetings', 'cadre', 'POST', { title: '草稿', date: '2026-09-15' })).json();
+    assert.equal((await guestClient(env).call(`/api/public/meetings/${draft.id}`)).status, 404);
+    const closedDoor = await openAssembly(request, { guestAccess: false });
+    assert.equal((await guestClient(env).call(`/api/public/meetings/${closedDoor.id}`)).status, 404);
+    const officers = await (await request('/api/meetings', 'cadre', 'POST', { type: 'officers', title: '幹部會議', date: '2026-09-15' })).json();
+    assert.equal(officers.guestAccess, false);
+});
+
+test('the president can close member-account login without affecting officers', async () => {
+    const { request, env } = fixture();
+    assert.equal((await request('/api/site-settings', 'u1')).status, 200);
+    assert.equal((await request('/api/site-settings', 'cadre', 'PUT', { memberLogin: false })).status, 403);
+    assert.deepEqual(await (await request('/api/site-settings', 'president', 'PUT', { memberLogin: false })).json(), { memberLogin: false });
+    // Existing member sessions stop working; officers keep theirs.
+    assert.equal((await request('/api/meetings', 'u1')).status, 401);
+    assert.equal((await request('/api/meetings', 'cadre')).status, 200);
+    assert.equal((await request('/api/site-settings', 'president', 'PUT', { memberLogin: true })).status, 200);
+    assert.equal((await request('/api/meetings', 'u1')).status, 200);
+    assert.ok(env);
+});
+
+test('login refuses member accounts while member login is closed', async () => {
+    const { passwordHash } = await import('../src/auth.js');
+    const { store, env } = fixture();
+    const hash = await passwordHash('password123');
+    for (const [username, role] of [['alice', 'member'], ['bob', 'cadre']]) store.set(`user:${username}`, JSON.stringify({ username, role, active: true, version: 'v1', passwordHash: hash }));
+    store.set('site:settings', JSON.stringify({ memberLogin: false }));
+    const login = async username => {
+        const form = new FormData();
+        form.set('username', username); form.set('password', 'password123');
+        const { captchaId, captcha } = env.SITE_STORE.issueCaptcha();
+        form.set('captcha_id', captchaId); form.set('captcha', captcha);
+        return worker.fetch(new Request('https://example.com/api/login', { method: 'POST', body: form, headers: { 'CF-Connecting-IP': '198.51.100.1' } }), env);
+    };
+    const refused = await login('alice');
+    assert.equal(refused.status, 403);
+    assert.match(await refused.text(), /未開放社員帳號登入/);
+    assert.equal((await login('bob')).status, 302);
+});

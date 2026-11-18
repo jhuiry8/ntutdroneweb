@@ -68,7 +68,7 @@
     async function load() {
         try {
             var data = await api('/api/meetings');
-            state.meetings = data.meetings; state.me = data.me; state.options = data.options; state.roster = data.roster; state.ai = data.ai;
+            state.meetings = data.meetings; state.me = data.me; state.options = data.options; state.roster = data.roster; state.ai = data.ai; state.myIp = data.myIp || '';
             if (state.me.officer && !state.amendments.length) {
                 try { state.amendments = (await api('/api/regulation-amendments')).filter(function (a) { return a.status === 'proposed'; }); } catch (e) { state.amendments = []; }
             }
@@ -86,16 +86,46 @@
 
     // ───────────── List ─────────────
 
+    // ROC academic term: Aug–Jan is term 1, Feb–Jul term 2 (same rule as the server).
+    function semester() {
+        var now = new Date(Date.now() + 8 * 3600000), year = now.getUTCFullYear(), month = now.getUTCMonth() + 1;
+        return month >= 8 ? (year - 1911) + '-1' : (year - 1912) + '-' + (month === 1 ? 1 : 2);
+    }
+    var TEMPLATES = {
+        opening: { name: '期初社員大會', agenda: [
+            { kind: 'report', title: '社長報告：本學期社務與活動規劃' },
+            { kind: 'report', title: '總務報告：本學期預算（章程第十一條第二款）' },
+            { kind: 'discussion', title: '本學期預算案', threshold: 'ordinary' },
+            { kind: 'discussion', title: '本學期社課與活動規劃案', threshold: 'ordinary' }
+        ] },
+        closing: { name: '期末社員大會', agenda: [
+            { kind: 'report', title: '社長報告：本學期社務成果' },
+            { kind: 'report', title: '總務報告：本學期決算（章程第十一條第二款）' },
+            { kind: 'report', title: '器材報告：財產清點與借用狀況' },
+            { kind: 'discussion', title: '本學期決算案', threshold: 'ordinary' },
+            { kind: 'election', title: '下屆幹部選舉／交接', threshold: 'ordinary' }
+        ] }
+    };
+    function quickCreate(kind) {
+        var term = semester(), template = TEMPLATES[kind];
+        var exists = state.meetings.some(function (m) { return m.title.indexOf(term) === 0 && m.title.indexOf(template.name) >= 0; });
+        if (exists && !confirm(term + ' 已經有' + template.name + '，還要再建立一場嗎？')) return;
+        renderEditor({ type: 'assembly', title: term + ' 學期' + template.name, date: new Date(Date.now() + 8 * 3600000 + 14 * 86400000).toISOString().slice(0, 10), time: '19:00', location: '', onlineUrl: '', convener: '', chair: '', recorder: '', checkInCode: '', keywords: '', guestAccess: true, allowedIps: [], maxPerIp: 0, agenda: template.agenda.concat([{ kind: 'motion', title: '臨時動議', threshold: 'none' }]) }, true);
+    }
+
     function renderList() {
         stopPolling();
         var body = document.getElementById('mt-body');
-        if (!state.meetings.length) { body.innerHTML = '<p class="mt-muted">目前沒有會議。' + (state.me.officer ? '按右上角「召開新會議」建立第一場社員大會。' : '') + '</p>'; return; }
-        body.innerHTML = state.meetings.map(function (m) {
+        var quick = state.me.officer ? '<div class="mt-card"><h2>定期社員大會</h2><p class="mt-muted">章程規定每學期至少召開一次定期大會。本社於學期初、學期末各開一次，可一鍵建立並帶入常用議程（預算／決算報告、選舉等），再依需要修改。</p><div class="mt-row"><button type="button" class="btn btn-secondary" data-quick="opening">建立 ' + esc(semester()) + ' 期初社員大會</button><button type="button" class="btn btn-secondary" data-quick="closing">建立 ' + esc(semester()) + ' 期末社員大會</button></div></div>' : '';
+        if (!state.meetings.length) { body.innerHTML = quick + '<p class="mt-muted">目前沒有會議。' + (state.me.officer ? '' : '') + '</p>'; bindQuick(body); return; }
+        body.innerHTML = quick + state.meetings.map(function (m) {
             var votes = m.agenda.filter(function (item) { return item.vote.state === 'open'; }).length;
             return '<div class="mt-card"><div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center;"><div><h2 style="margin:0;">' + esc(m.title) + '</h2><p class="mt-muted">' + esc(m.typeLabel + '・' + m.date + (m.time ? ' ' + m.time : '') + (m.location ? '・' + m.location : '')) + '</p></div><div style="display:flex; gap:8px; align-items:center;">' + badge(m.statusLabel, statusColors[m.status]) + (votes ? badge('投票中', '#fbbf24') : '') + (m.minutes && m.minutes.finalizedAt ? badge('紀錄已定稿', '#a78bfa') : '') + '<button type="button" class="btn btn-secondary" data-open="' + esc(m.id) + '">' + (m.status === 'open' ? '進入會議' : '查看') + '</button></div></div></div>';
         }).join('');
         body.querySelectorAll('[data-open]').forEach(function (button) { button.onclick = function () { state.currentId = button.dataset.open; render(); }; });
+        bindQuick(body);
     }
+    function bindQuick(body) { body.querySelectorAll('[data-quick]').forEach(function (button) { button.onclick = function () { quickCreate(button.dataset.quick); }; }); }
 
     // ───────────── Editor ─────────────
 
@@ -112,9 +142,10 @@
             return { id: row.dataset.id || undefined, kind: row.querySelector('.mt-kind').value, title: row.querySelector('.mt-title').value, threshold: row.querySelector('.mt-threshold').value, description: row.querySelector('.mt-desc').value, amendmentId: amendment ? amendment.value : '' };
         });
     }
-    function renderEditor(meeting) {
+    function renderEditor(meeting, isTemplate) {
         stopPolling();
-        var m = meeting || { type: 'assembly', title: '', date: new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10), time: '19:00', location: '', onlineUrl: '', convener: '', chair: '', recorder: '', checkInCode: '', keywords: '', agenda: [] };
+        var m = meeting || { type: 'assembly', title: '', date: new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10), time: '19:00', location: '', onlineUrl: '', convener: '', chair: '', recorder: '', checkInCode: '', keywords: '', guestAccess: true, allowedIps: [], maxPerIp: 0, agenda: [] };
+        if (isTemplate) meeting = null;
         var locked = meeting && (meeting.status === 'open' || meeting.status === 'closed');
         document.getElementById('mt-header-actions').innerHTML = '<button type="button" class="btn btn-secondary" id="mt-cancel">取消</button>';
         document.getElementById('mt-cancel').onclick = function () { render(); };
@@ -125,9 +156,19 @@
             '<label>日期<input class="form-control" type="date" name="date" required value="' + esc(m.date) + '"' + (locked ? ' disabled' : '') + '></label><label>時間<input class="form-control" type="time" name="time" value="' + esc(m.time) + '"' + (locked ? ' disabled' : '') + '></label><label>地點<input class="form-control" name="location" maxlength="200" value="' + esc(m.location) + '" placeholder="例如：綜合科館 B1"' + (locked ? ' disabled' : '') + '></label>' +
             '<label style="grid-column:span 2;">線上會議連結（選填，https://）<input class="form-control" name="onlineUrl" maxlength="500" value="' + esc(m.onlineUrl) + '" placeholder="Google Meet／Teams 連結"' + (locked ? ' disabled' : '') + '></label><label>簽到碼（選填，4–12 位英數字）<input class="form-control" name="checkInCode" maxlength="12" value="' + esc(m.checkInCode || '') + '" placeholder="現場公布，防止遠端代簽"></label>' +
             '<label>召集人<input class="form-control" name="convener" maxlength="50" value="' + esc(m.convener) + '"></label><label>主席<input class="form-control" name="chair" maxlength="50" value="' + esc(m.chair) + '"></label><label>紀錄<input class="form-control" name="recorder" maxlength="50" value="' + esc(m.recorder) + '"></label></div>' +
+            '<div class="mt-card" style="margin:14px 0 0;"><h3>免帳號簽到（學號＋姓名）</h3><p class="mt-muted">沒有後台帳號的社員可用會議連結，輸入學號與姓名（須與社員名冊相符）簽到並投票。每台裝置只能替一位社員簽到；可再限定會場網路與每個 IP 的人數，並搭配簽到碼。</p>' +
+            '<label style="display:flex; gap:8px; align-items:center; margin-top:8px;"><input type="checkbox" name="guestAccess"' + (m.guestAccess ? ' checked' : '') + '> 開放學號＋姓名簽到與投票</label>' +
+            '<div class="mt-grid" style="margin-top:8px;"><label style="grid-column:span 2;">只允許這些網路（IP 或網段，空白＝不限制）<textarea class="form-control" name="allowedIps" rows="2" placeholder="例如 140.124.0.0/16（學校網路）">' + esc((m.allowedIps || []).join('\n')) + '</textarea></label><label>每個 IP 最多簽到人數（0＝不限）<input class="form-control" type="number" min="0" name="maxPerIp" value="' + esc(m.maxPerIp || 0) + '"></label></div>' +
+            (state.myIp ? '<div class="mt-row"><button type="button" class="btn btn-secondary" id="mt-add-ip">加入我目前的網路（' + esc(state.myIp) + '）</button><span class="mt-muted">在會場連上 Wi-Fi 後按此鈕，只有同一網路的人能簽到。</span></div>' : '') + '</div>' +
             '<label class="mt-field" style="margin-top:12px;">會議重點／關鍵字（AI 會用來寫開會通知與會議紀錄）<textarea class="form-control" name="keywords" rows="3" maxlength="3000" placeholder="例如：期末成果展分工、社費調漲到 600 元、選舉下屆社長、帶學生證">' + esc(m.keywords || '') + '</textarea></label>' +
             '<h3 style="margin:16px 0 8px;">議程</h3><div id="mt-agenda">' + m.agenda.map(agendaRow).join('') + '</div><button type="button" class="btn btn-secondary" id="mt-add-item">新增議案</button>' +
             '<div class="mt-row" style="margin-top:16px;"><button type="submit" class="btn btn-primary">儲存</button></div></form>';
+        var addIp = document.getElementById('mt-add-ip');
+        if (addIp) addIp.onclick = function () {
+            var box = document.querySelector('#mt-form [name=allowedIps]');
+            var rule = state.myIp.indexOf(':') >= 0 ? state.myIp.split(':').slice(0, 4).join(':') + '::/64' : state.myIp.split('.').slice(0, 3).join('.') + '.0/24';
+            if (box.value.split(/\s+/).indexOf(rule) < 0) box.value = (box.value.trim() ? box.value.trim() + '\n' : '') + rule;
+        };
         var agenda = document.getElementById('mt-agenda');
         function bindRemove() { agenda.querySelectorAll('.mt-remove').forEach(function (button) { button.onclick = function () { button.closest('.mt-agenda').remove(); }; }); }
         bindRemove();
@@ -138,6 +179,9 @@
             var form = event.target, button = form.querySelector('button[type="submit"]');
             var fields = {};
             ['type', 'title', 'date', 'time', 'location', 'onlineUrl', 'checkInCode', 'convener', 'chair', 'recorder', 'keywords'].forEach(function (name) { if (form.elements[name] && !form.elements[name].disabled) fields[name] = form.elements[name].value; });
+            fields.guestAccess = form.elements.guestAccess.checked;
+            fields.allowedIps = form.elements.allowedIps.value;
+            fields.maxPerIp = form.elements.maxPerIp.value || 0;
             fields.agenda = readAgenda(agenda).filter(function (item) { return item.title.trim(); });
             busy(button, true, '儲存中…');
             try {
@@ -167,7 +211,7 @@
     function voteBlock(m, item) {
         var html = '';
         var vote = item.vote;
-        if (item.threshold === 'none') return '<p class="mt-muted">報告事項，不表決。</p>';
+        if (item.threshold === 'none') return '<p class="mt-muted">' + (item.kind === 'report' ? '報告事項，不表決。' : '此項不表決；如有臨時提案，可按「新增臨時動議」另列議案表決。') + '</p>';
         if (vote.state === 'open') {
             html += '<p><strong style="color:#fbbf24;">🗳️ 投票中</strong>（第 ' + (vote.round || 1) + ' 次表決，已有 ' + vote.ballots + ' 人投票；結束前不顯示票數）</p>';
             if (item.voted) html += '<p class="mt-pass">您已投票。投票為無記名，系統只記錄誰投過，不記錄投給哪一方。</p>';
@@ -196,12 +240,16 @@
         var html = '<div class="mt-card"><div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;"><div><h2 style="font-size:1.3rem; margin:0;">' + esc(m.title) + '</h2><p class="mt-muted">' + esc(m.typeLabel + '・' + m.date + (m.time ? ' ' + m.time : '') + (m.location ? '・' + m.location : '')) + (m.onlineUrl ? '・<a href="' + esc(m.onlineUrl) + '" target="_blank" rel="noopener noreferrer">線上會議連結</a>' : '') + '</p><p class="mt-muted">' + esc([m.convener && '召集人 ' + m.convener, m.chair && '主席 ' + m.chair, m.recorder && '紀錄 ' + m.recorder].filter(Boolean).join('・')) + '</p></div><div>' + badge(m.statusLabel, statusColors[m.status]) + '</div></div>';
         if (officer) {
             var buttons = '';
-            if (m.status === 'draft' || m.status === 'announced') buttons += '<button type="button" class="btn btn-secondary" id="mt-edit">編輯會議與議程</button>';
+            if (m.status !== 'closed' || !(m.minutes && m.minutes.finalizedAt)) buttons += '<button type="button" class="btn btn-secondary" id="mt-edit">' + (m.status === 'open' || m.status === 'closed' ? '簽到設定與議程' : '編輯會議與議程') + '</button>';
             if (m.status === 'draft') buttons += '<button type="button" class="btn btn-primary" data-status="announced">公告會議</button><button type="button" class="btn btn-danger" id="mt-delete">刪除</button>';
             if (m.status === 'announced') buttons += '<button type="button" class="btn btn-secondary" data-status="draft">撤回公告</button><input id="mt-total" class="form-control" type="number" min="0" style="max-width:190px;" placeholder="應出席人數（留空自動）"><button type="button" class="btn btn-primary" data-status="open">開始開會</button>';
             if (m.status === 'open') buttons += '<button type="button" class="btn btn-secondary" id="mt-motion">新增臨時動議</button><button type="button" class="btn btn-danger" data-status="closed">宣布散會</button>';
             if (m.status === 'closed' && !(m.minutes && m.minutes.finalizedAt)) buttons += '<button type="button" class="btn btn-secondary" data-status="open">重新開會</button>';
             html += '<div class="mt-row">' + buttons + '</div>';
+            if (m.guestAccess && m.status !== 'draft') {
+                var link = location.origin + '/meeting/' + m.id;
+                html += '<div class="mt-row"><span class="mt-muted">免帳號簽到連結：</span><code style="overflow-wrap:anywhere;">' + esc(link) + '</code><button type="button" class="btn btn-secondary" id="mt-copy-link">複製連結</button></div><p class="mt-muted">' + esc((m.allowedIps && m.allowedIps.length ? '限定網路：' + m.allowedIps.join('、') : '未限定網路') + (m.maxPerIp ? '；每個 IP 最多 ' + m.maxPerIp + ' 人' : '')) + '</p>';
+            }
             if (m.checkInCode) html += '<p class="mt-muted" style="margin-top:8px;">簽到碼：<strong style="font-size:1.2rem; letter-spacing:.2em; color:var(--text-main, #fff);">' + esc(m.checkInCode) + '</strong>（請在現場公布）</p>';
         }
         html += '</div>';
@@ -219,7 +267,7 @@
             else if (!state.me.memberId) html += '<p class="mt-muted" style="margin-top:8px;">您的帳號尚未綁定社員資料，無法線上簽到與投票；請聯絡社長綁定。</p>';
             if (officer) html += '<div class="mt-row"><select id="mt-attendee" class="form-control" style="max-width:320px;" aria-label="登記出席社員"><option value="">選擇社員登記出席（現場簽到）</option>' + state.roster.filter(function (r) { return !m.attendance.some(function (a) { return a.memberId === r.id; }); }).map(function (r) { return '<option value="' + esc(r.id) + '">' + esc((r.name || '（未填姓名）') + (r.studentId ? '（' + r.studentId + '）' : '') + (r.voting ? '' : '・無表決權')) + '</option>'; }).join('') + '</select><button type="button" class="btn btn-secondary" id="mt-add-attendee">登記出席</button></div>';
         }
-        if (officer && m.attendance.length) html += '<details style="margin-top:10px;"><summary style="cursor:pointer;">簽到名單（' + m.attendance.length + ' 人）</summary><div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">' + m.attendance.map(function (a) { return '<span class="mt-stat" style="padding:4px 10px;">' + esc(a.name) + (a.voting ? '' : '（列席）') + (m.status === 'open' ? ' <button type="button" class="btn btn-danger" style="padding:0 6px; font-size:.75rem;" data-remove="' + esc(a.memberId) + '">×</button>' : '') + '</span>'; }).join('') + '</div></details>';
+        if (officer && m.attendance.length) html += '<details style="margin-top:10px;"><summary style="cursor:pointer;">簽到名單（' + m.attendance.length + ' 人）</summary><div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">' + m.attendance.map(function (a) { return '<span class="mt-stat" style="padding:4px 10px;">' + esc(a.name) + (a.voting ? '' : '（列席）') + (a.by === 'guest' ? '<small class="mt-muted">・學號簽到 ' + esc(a.ip || '') + '</small>' : '') + (m.status === 'open' ? ' <button type="button" class="btn btn-danger" style="padding:0 6px; font-size:.75rem;" data-remove="' + esc(a.memberId) + '">×</button>' : '') + '</span>'; }).join('') + '</div></details>';
         html += '</div>';
 
         // Agenda
@@ -259,6 +307,7 @@
         var $ = function (id) { return document.getElementById(id); };
         var on = function (id, handler) { var node = $(id); if (node) node.onclick = handler; };
         on('mt-edit', function () { renderEditor(m); });
+        on('mt-copy-link', function () { var link = location.origin + '/meeting/' + m.id; if (navigator.clipboard) navigator.clipboard.writeText(link).then(function () { toast('已複製，可以貼到社團群組'); }); });
         on('mt-delete', async function () { if (!confirm('確定刪除這場會議？')) return; try { await api(base(), 'DELETE'); state.meetings = state.meetings.filter(function (x) { return x.id !== m.id; }); state.currentId = ''; render(); } catch (error) { toast(error.message, true); } });
         panel.querySelectorAll('[data-status]').forEach(function (button) {
             button.onclick = function () {
@@ -342,6 +391,24 @@
         on('mt-finalize', function () { if (confirm('定稿後所有社員都能看到這份紀錄，且不能再修改。確定定稿？')) act(base() + '/minutes', 'PUT', { content: $('mt-minutes').value, finalize: true }, this); });
         on('mt-unfinalize', function () { if (confirm('取消定稿後可以再修改紀錄。確定？')) act(base() + '/minutes', 'PUT', { unfinalize: true }, this); });
         on('mt-publish-minutes', function () { openPostDraft(m.title + ' 會議紀錄', m.minutes.content); });
+    }
+
+    // Member login switch (president): members without accounts use the meeting link instead.
+    var usersPanel = document.getElementById('panel-users');
+    if (usersPanel) {
+        var card = document.createElement('div');
+        card.className = 'mt-card'; card.style.maxWidth = '720px';
+        card.innerHTML = '<h2>社員帳號登入</h2><p class="mt-muted">關閉時，角色為「社員」的帳號無法登入後台（已登入者也會被登出）；社長、財務、一般幹部不受影響。社員仍可用會議連結以學號＋姓名簽到與投票。</p><label style="display:flex; gap:8px; align-items:center; margin-top:8px;"><input type="checkbox" id="mt-member-login"> 開放社員帳號登入</label>';
+        var header = usersPanel.querySelector('.content-header');
+        if (header) header.insertAdjacentElement('afterend', card); else usersPanel.prepend(card);
+        var toggle = card.querySelector('#mt-member-login');
+        api('/api/site-settings').then(function (settings) { toggle.checked = settings.memberLogin !== false; }).catch(function () { toggle.disabled = true; });
+        toggle.onchange = async function () {
+            toggle.disabled = true;
+            try { var settings = await api('/api/site-settings', 'PUT', { memberLogin: toggle.checked }); toggle.checked = settings.memberLogin; toast(settings.memberLogin ? '已開放社員帳號登入' : '已關閉社員帳號登入'); }
+            catch (error) { toggle.checked = !toggle.checked; toast(error.message, true); }
+            finally { toggle.disabled = false; }
+        };
     }
 
     // While a meeting is open, refresh every 5 seconds so check-ins and vote state stay current.

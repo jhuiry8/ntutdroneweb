@@ -1,7 +1,7 @@
 // HTTP routes for the AI features, the read-only tools the assistant may call,
 // and the weekly club report (also run by the Cron trigger).
 import { canEditCms, canViewCms, canManageFinance, canManageMembers, canManageEquipment, canManageUsers } from './auth.js';
-import { membershipStatus, MEMBER_LEVELS } from './membership.js';
+import { membershipStatus, MEMBER_LEVELS, semesterOf } from './membership.js';
 import { REGULATION_KINDS, AMENDMENT_ACTIONS, requirementsFor } from './regulation-rules.js';
 import { aiProvider, taipeiToday, FORM_TYPES, formTitle, FormValidationError } from './forms.js';
 import { listMeetings } from './meeting-routes.js';
@@ -208,7 +208,10 @@ export async function clubStats(env, deps, viewer = null) {
     const meetings = await listMeetings(env);
     stats.meetings = {
         upcoming: meetings.filter(meeting => ['announced', 'open'].includes(meeting.status) && meeting.date >= today && meeting.date <= dayOffset(today, 14)).map(meeting => `${meeting.date} ${meeting.title}`),
-        minutesPending: meetings.filter(meeting => meeting.status === 'closed' && !meeting.minutes?.finalizedAt).map(meeting => `${meeting.date} ${meeting.title}`)
+        minutesPending: meetings.filter(meeting => meeting.status === 'closed' && !meeting.minutes?.finalizedAt).map(meeting => `${meeting.date} ${meeting.title}`),
+        // The club holds a regular assembly at the start and the end of every term.
+        assembliesThisTerm: meetings.filter(meeting => meeting.type === 'assembly' && semesterOf(meeting.date) === semesterOf(today)).length,
+        term: semesterOf(today)
     };
     const newForms = records.filter(record => record.createdAt.slice(0, 10) >= weekAgo);
     stats.forms = { thisWeek: newForms.length, byType: Object.fromEntries(Object.entries(FORM_TYPES).map(([type, config]) => [config.label, newForms.filter(record => record.type === type).length]).filter(([, count]) => count)) };
@@ -259,6 +262,7 @@ export function reportText(stats, summary) {
     if (stats.equipment) lines.push(`設備：共 ${stats.equipment.total} 件，維修中 ${stats.equipment.inRepair.length} 件；借用中 ${stats.equipment.activeLoans} 筆${stats.equipment.endedLoansToCheck.length ? `；請確認是否已歸還：${stats.equipment.endedLoansToCheck.join('；')}` : ''}`);
     lines.push(`表單：本週新增 ${stats.forms.thisWeek} 份；文章：本週發佈 ${stats.website.postsThisWeek} 篇`);
     if (stats.meetings?.upcoming.length) lines.push(`即將召開的會議：${stats.meetings.upcoming.join('、')}`);
+    if (stats.meetings && stats.meetings.assembliesThisTerm < 2) lines.push(`${stats.meetings.term} 學期定期社員大會已建立 ${stats.meetings.assembliesThisTerm} 場（期初、期末各一場），請記得安排。`);
     if (stats.meetings?.minutesPending.length) lines.push(`會議紀錄尚未定稿：${stats.meetings.minutesPending.join('、')}`);
     if (stats.amendments.length) lines.push(`法規修正案進行中：${stats.amendments.map(item => `「${item.title}」${item.status}`).join('、')}`);
     return lines.join('\n');

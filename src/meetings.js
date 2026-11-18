@@ -48,6 +48,69 @@ function count(value, field) {
 }
 const newId = () => crypto.randomUUID();
 
+// ── IP allow-list (CIDR, IPv4 and IPv6) ──
+function ipv4ToBigInt(ip) {
+    const parts = ip.split('.');
+    if (parts.length !== 4 || parts.some(part => !/^\d{1,3}$/.test(part) || Number(part) > 255)) return null;
+    return parts.reduce((value, part) => (value << 8n) + BigInt(part), 0n);
+}
+function ipv6ToBigInt(ip) {
+    if (!/^[0-9a-f:.]+$/i.test(ip) || (ip.match(/::/g) || []).length > 1) return null;
+    let [head, tail] = ip.includes('::') ? ip.split('::') : [ip, null];
+    const toGroups = text => (text ? text.split(':') : []);
+    let headGroups = toGroups(head), tailGroups = toGroups(tail);
+    const last = (tail !== null ? tailGroups : headGroups);
+    if (last.length && last[last.length - 1].includes('.')) {
+        const v4 = ipv4ToBigInt(last.pop());
+        if (v4 === null) return null;
+        last.push((v4 >> 16n).toString(16), (v4 & 0xffffn).toString(16));
+    }
+    const missing = 8 - headGroups.length - tailGroups.length;
+    if (tail === null ? missing !== 0 : missing < 1) return null;
+    const groups = [...headGroups, ...Array(tail === null ? 0 : missing).fill('0'), ...tailGroups];
+    if (groups.some(group => !/^[0-9a-f]{1,4}$/i.test(group))) return null;
+    return groups.reduce((value, group) => (value << 16n) + BigInt(parseInt(group, 16)), 0n);
+}
+function parseIp(ip) {
+    const text = String(ip || '').trim();
+    const v4 = ipv4ToBigInt(text);
+    if (v4 !== null) return { bits: 32, value: v4 };
+    const v6 = ipv6ToBigInt(text);
+    return v6 === null ? null : { bits: 128, value: v6 };
+}
+export function parseIpRules(input) {
+    const rules = String(input ?? '').split(/[\s,，、]+/).map(item => item.trim()).filter(Boolean);
+    if (rules.length > 20) throw new MeetingError('允許的 IP 最多 20 筆');
+    for (const rule of rules) {
+        const [address, prefix] = rule.split('/');
+        const ip = parseIp(address);
+        const length = prefix === undefined ? ip?.bits : Number(prefix);
+        if (!ip || !Number.isInteger(length) || length < 0 || length > ip.bits || (prefix !== undefined && !/^\d+$/.test(prefix))) throw new MeetingError(`IP 格式錯誤：${rule}（例如 140.124.0.0/16 或 203.0.113.5）`);
+    }
+    return rules;
+}
+export function ipAllowed(ip, rules) {
+    if (!rules?.length) return true;
+    const client = parseIp(ip);
+    if (!client) return false;
+    return rules.some(rule => {
+        const [address, prefix] = rule.split('/');
+        const network = parseIp(address);
+        if (!network || network.bits !== client.bits) return false;
+        const length = BigInt(prefix === undefined ? network.bits : Number(prefix));
+        const shift = BigInt(network.bits) - length;
+        return (network.value >> shift) === (client.value >> shift);
+    });
+}
+const sameName = (a, b) => String(a ?? '').replace(/\s+/g, '').toLowerCase() === String(b ?? '').replace(/\s+/g, '').toLowerCase();
+
+// Finds the roster entry for a 學號 + 姓名 pair; both must match.
+export function findMemberByIdentity(roster, studentId, name) {
+    const id = String(studentId ?? '').replace(/\s+/g, '').toUpperCase();
+    if (!id || !String(name ?? '').trim()) return null;
+    return roster.find(member => String(member.studentId || '').replace(/\s+/g, '').toUpperCase() === id && sameName(member.name, name)) || null;
+}
+
 // Minimum attendance and agreement for a vote, given the electorate and those present.
 export function voteRequirement(threshold, total, attendance) {
     if (threshold === 'ordinary' || threshold === 'major') {
@@ -95,7 +158,7 @@ export function newMeeting(input, username, now) {
     const type = MEETING_TYPES[input?.type] ? input.type : 'assembly';
     const meeting = {
         id: newId(), type, status: 'draft', createdBy: username, createdAt: now, updatedAt: now,
-        attendance: [], totalMembers: null, minutes: { content: '', generatedAt: '', updatedBy: '', finalizedAt: '', finalizedBy: '' }, notice: '', agenda: []
+        attendance: [], guests: [], totalMembers: null, minutes: { content: '', generatedAt: '', updatedBy: '', finalizedAt: '', finalizedBy: '' }, notice: '', agenda: []
     };
     return applyMeetingFields(meeting, { ...input, type }, true);
 }
@@ -125,6 +188,13 @@ export function applyMeetingFields(meeting, input, creating = false) {
     if (code && !/^[A-Z0-9]{4,12}$/.test(code)) throw new MeetingError('簽到碼需為 4 至 12 位英數字');
     meeting.checkInCode = code;
     if (input?.totalMembers !== undefined && input.totalMembers !== null && input.totalMembers !== '') meeting.totalMembers = count(input.totalMembers, '應出席人數');
+    // 學號＋姓名 check-in for members without accounts, limited by IP and one device per member.
+    if (input?.guestAccess !== undefined) meeting.guestAccess = input.guestAccess === true;
+    else if (creating) meeting.guestAccess = MEETING_TYPES[meeting.type].assembly;
+    if (input?.allowedIps !== undefined) meeting.allowedIps = parseIpRules(input.allowedIps);
+    else meeting.allowedIps ||= [];
+    if (input?.maxPerIp !== undefined && input.maxPerIp !== '') meeting.maxPerIp = count(input.maxPerIp, '每個 IP 簽到上限');
+    else meeting.maxPerIp ??= 0;
     if (input?.agenda !== undefined) {
         // Items may be added during the meeting (臨時動議), but voted items cannot be removed.
         const keptIds = new Set((Array.isArray(input.agenda) ? input.agenda : []).map(item => item?.id));
@@ -159,6 +229,7 @@ export function applyMeetingOp(meeting, op, payload, actor, now) {
         if (payload.remove) {
             if (!actor.officer) throw new MeetingError('只有幹部可以移除簽到', 403);
             meeting.attendance = meeting.attendance.filter(entry => entry.memberId !== payload.memberId);
+            meeting.guests = (meeting.guests || []).filter(entry => entry.memberId !== payload.memberId);
             return meeting;
         }
         const attendee = payload.attendee;
@@ -170,6 +241,27 @@ export function applyMeetingOp(meeting, op, payload, actor, now) {
         if (meeting.attendance.some(entry => entry.memberId === attendee.memberId)) throw new MeetingError('已經簽到過了', 409);
         if (meeting.attendance.length >= MAX_ATTENDEES) throw new MeetingError('簽到人數已達上限');
         meeting.attendance.push({ memberId: attendee.memberId, name: text(attendee.name, '姓名', 50) || '（未填姓名）', voting: attendee.voting === true, at: now, by: actor.officer && payload.byOfficer ? actor.username : 'self' });
+        return meeting;
+    }
+
+    if (op === 'guest-checkin') {
+        if (!meeting.guestAccess) throw new MeetingError('這場會議未開放學號姓名簽到', 403);
+        if (meeting.status !== 'open') throw new MeetingError('會議尚未開始或已散會，目前不能簽到', 403);
+        if (!ipAllowed(payload.ip, meeting.allowedIps)) throw new MeetingError('請連上會場網路（例如學校 Wi-Fi）後再簽到', 403);
+        if (meeting.checkInCode && String(payload.code || '').trim().toUpperCase() !== meeting.checkInCode) throw new MeetingError('簽到碼錯誤，請看現場公布的簽到碼');
+        meeting.guests ||= [];
+        const attendee = payload.attendee;
+        const device = meeting.guests.find(entry => entry.tokenHash === payload.deviceHash);
+        if (device && device.memberId !== attendee.memberId) throw new MeetingError('這台裝置已經替另一位社員簽到過，一台裝置只能簽到一人', 409);
+        const existing = meeting.attendance.find(entry => entry.memberId === attendee.memberId);
+        if (existing) {
+            if (device) return meeting; // same member, same device: just signing back in
+            throw new MeetingError('這個學號已經簽到過（可能在其他裝置）。如需更換裝置，請洽主席重設', 409);
+        }
+        if (meeting.maxPerIp && meeting.guests.filter(entry => entry.ip === payload.ip).length >= meeting.maxPerIp) throw new MeetingError(`同一個網路位址最多簽到 ${meeting.maxPerIp} 人，請改用手機網路或洽主席`, 429);
+        if (meeting.attendance.length >= MAX_ATTENDEES) throw new MeetingError('簽到人數已達上限');
+        meeting.guests.push({ memberId: attendee.memberId, tokenHash: payload.tokenHash, ip: String(payload.ip || '').slice(0, 64), at: now });
+        meeting.attendance.push({ memberId: attendee.memberId, name: text(attendee.name, '姓名', 50) || '（未填姓名）', voting: attendee.voting === true, at: now, by: 'guest', ip: String(payload.ip || '').slice(0, 64) });
         return meeting;
     }
 
@@ -250,7 +342,7 @@ export function applyMeetingOp(meeting, op, payload, actor, now) {
 
 // What a viewer may see: members never see drafts, the ballot list, or the check-in code.
 export function meetingView(meeting, viewer) {
-    const { attendance, ...rest } = meeting;
+    const { attendance, guests, ...rest } = meeting;
     const view = {
         ...rest,
         typeLabel: MEETING_TYPES[meeting.type].label,
@@ -279,6 +371,20 @@ export function meetingView(meeting, viewer) {
         view.keywords = '';
     }
     return view;
+}
+
+// What the public 學號＋姓名 page shows: no attendee names, no codes, no IPs.
+export function publicMeetingView(meeting, memberId) {
+    const view = meetingView(meeting, { officer: false, memberId });
+    const me = meeting.attendance.find(entry => entry.memberId === memberId);
+    return {
+        id: view.id, title: view.title, typeLabel: view.typeLabel, status: view.status, statusLabel: view.statusLabel,
+        date: view.date, time: view.time, location: view.location, onlineUrl: view.onlineUrl, notice: view.notice,
+        requiresCode: view.requiresCode, guestAccess: Boolean(meeting.guestAccess), totalMembers: view.totalMembers, counted: view.counted,
+        me: me ? { name: me.name, voting: me.voting, canVote: view.canVote } : null,
+        agenda: view.agenda.map(item => ({ id: item.id, title: item.title, description: item.description, kindLabel: AGENDA_KINDS[item.kind], thresholdLabel: item.thresholdLabel, threshold: item.threshold, vote: item.vote, voted: item.voted, resolution: meeting.status === 'closed' ? item.resolution : '' })),
+        minutes: view.minutes?.finalizedAt ? view.minutes.content : ''
+    };
 }
 
 export function canSeeMeeting(meeting, viewer) {
