@@ -2,7 +2,19 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="北科無人機">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="/assets/icons/icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="/assets/icons/icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/icon-72x72.png">
     <meta name="description" content="歡迎加入北科無人機社！我們提供最專業的多軸空拍機創作、FPV 穿越機飛行特技、機體組裝調參教學，並輔導民航局 CAA 無人機操作證照。無論是零基礎小白還是熱血極客，這裡都有你的藍天！">
     <meta name="keywords" content="北科無人機社, 北科大無人機社, NTUT Drone, 北科大無人機社團, 北科 FPV 穿越機, 北科 空拍機 課程, 北科無人機組裝教學, 台北無人機模擬器練習, 北科校園飛行空域申請, 民航局無人機考照題庫練習, Liftoff 模擬飛行新手訓練, 台北合法無人機飛場推薦, 台北科技大學">
     <meta property="og:title" content="北科無人機社 | NTUT Drone Club - 台北科技大學無人機、FPV 與空拍交流平台">
@@ -40,7 +52,9 @@
                 <a href="#about" class="nav-link">關於我們</a>
                 <a href="#features" class="nav-link">社團特色</a>
                 <a href="#gallery" class="nav-link">活動剪影</a>
+                <a href="#mobile-app" class="nav-link" style="color: #60a5fa; font-weight: 700;"><i data-lucide="smartphone" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 2px;"></i>手機 App</a>
                 <a href="#faq" class="nav-link">常見問題</a>
+                <a href="/admin" class="nav-link">社務後台</a>
             </nav>
 
             <div class="nav-socials">
@@ -73,9 +87,13 @@
             <a href="#about" class="drawer-link">關於我們</a>
             <a href="#features" class="drawer-link">社團特色</a>
             <a href="#gallery" class="drawer-link">活動剪影</a>
+            <a href="#mobile-app" class="drawer-link" style="color: #60a5fa; font-weight: 700;">📱 手機版 App（PWA / APK）</a>
             <a href="#faq" class="drawer-link">常見問題</a>
+            <a href="/admin" class="drawer-link">🔐 社務後台 / 會員登入</a>
+            <a href="/forms/equipment-loan" class="drawer-link">📋 設備借用申請</a>
             <hr class="drawer-divider">
-            <a href="mailto:ntut.droneclub@gmail.com" class="drawer-cta-btn" style="background: #3b82f6;"><i data-lucide="mail"></i> ntut.droneclub@gmail.com</a>
+            <button type="button" class="drawer-cta-btn" onclick="showPwaInstallModal()" style="background: linear-gradient(135deg, #1d4ed8, #2563eb); border: none; cursor: pointer; width: 100%;"><i data-lucide="download"></i> 安裝手機 App / 加入主畫面</button>
+            <a href="mailto:ntut.droneclub@gmail.com" class="drawer-cta-btn" style="background: #0284c7;"><i data-lucide="mail"></i> ntut.droneclub@gmail.com</a>
             <a href="https://lin.ee/s5YJgGI" target="_blank" class="drawer-cta-btn"><i data-lucide="message-square"></i> LINE 聯絡加入</a>
             <a href="https://www.instagram.com/ntut_drone/" target="_blank" class="drawer-cta-btn secondary"><i data-lucide="instagram"></i> 追蹤 Instagram</a>
         </nav>
@@ -361,6 +379,60 @@
         </div>
     </section>
 
+    <!-- Mobile App Showcase Section -->
+    <section class="mobile-app-section" id="mobile-app">
+        <div class="section-container">
+            <div class="section-header text-center">
+                <div class="hero-badge-top" style="margin-bottom: 12px; display: inline-block;">PWA & Android APK</div>
+                <h2 class="section-title">手機版 App 隨身帶著走</h2>
+                <p class="section-subtitle">專為社員與幹部打造的手機行動介面，無論 iPhone 還是 Android 都能享有流暢原生 App 體驗。</p>
+            </div>
+
+            <div class="app-cards-grid">
+                <!-- Apple iOS Card -->
+                <div class="app-card ios-card">
+                    <div class="app-card-badge">🍎 蘋果 iOS / iPadOS</div>
+                    <div class="app-icon-circle">
+                        <i data-lucide="apple"></i>
+                    </div>
+                    <h3>PWA 純網頁加入主畫面</h3>
+                    <p class="app-card-desc">無須透過 App Store！使用 Safari 開啟，三秒鐘加入 iPhone 主畫面，享受無網址列的全螢幕原生操作、動態安全邊界與離線快取。</p>
+                    <div class="app-steps">
+                        <div class="step-item"><span class="step-num">1</span> 用 Safari 開啟官網</div>
+                        <div class="step-item"><span class="step-num">2</span> 點擊底部的「分享」按鈕 <i data-lucide="share" style="width:14px; height:14px; vertical-align:middle;"></i></div>
+                        <div class="step-item"><span class="step-num">3</span> 選擇「加入主畫面」即可完成</div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="showPwaInstallModal('ios')" style="width: 100%; justify-content: center; margin-top: 16px;">
+                        <i data-lucide="help-circle"></i> 查看 iOS 安裝圖文指引
+                    </button>
+                </div>
+
+                <!-- Android Card -->
+                <div class="app-card android-card">
+                    <div class="app-card-badge">🤖 安卓 Android</div>
+                    <div class="app-icon-circle">
+                        <i data-lucide="smartphone"></i>
+                    </div>
+                    <h3>PWA 桌面安裝 或 原生 APK</h3>
+                    <p class="app-card-desc">支援 Chrome 一鍵新增至主螢幕，亦可直接下載安裝 Android 原生 APK 安裝包，支援下拉重新整理、硬體加速與獨立執行視窗。</p>
+                    <div class="app-steps">
+                        <div class="step-item"><span class="step-num">A</span> Chrome 點擊「安裝應用程式」</div>
+                        <div class="step-item"><span class="step-num">B</span> 或下載安裝 Android APK</div>
+                        <div class="step-item"><span class="step-num">C</span> 登入社務、會議簽到、設備借用</div>
+                    </div>
+                    <div class="app-action-buttons">
+                        <button type="button" class="btn btn-primary" id="btn-pwa-install" onclick="triggerPwaInstall()" style="flex: 1; justify-content: center;">
+                            <i data-lucide="download"></i> 安裝 PWA
+                        </button>
+                        <a href="https://github.com/jhuiry8/ntutdroneweb/releases" target="_blank" class="btn btn-secondary" style="flex: 1; justify-content: center;">
+                            <i data-lucide="package"></i> 下載 APK
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Footer -->
     <footer>
         <div class="footer-container">
@@ -387,6 +459,14 @@
                     <a href="#about">關於我們</a>
                     <a href="#features">社團特色</a>
                     <a href="#gallery">活動剪影</a>
+                    <a href="#mobile-app">手機版 App</a>
+                </div>
+                <div class="footer-col">
+                    <h4>社務與系統</h4>
+                    <a href="/admin">社務管理後台</a>
+                    <a href="/forms/equipment-loan">器材借用申請</a>
+                    <a href="https://github.com/jhuiry8/ntutdroneweb/releases" target="_blank">Android APK 下載</a>
+                    <button type="button" class="footer-install-btn" onclick="showPwaInstallModal()" style="background:none; border:none; color:var(--color-primary); cursor:pointer; padding:0; text-align:left; font:inherit;">加入手機主畫面 (PWA)</button>
                 </div>
                 <div class="footer-col">
                     <h4>聯絡資訊</h4>
@@ -398,9 +478,94 @@
         </div>
         <div class="footer-bottom">
             <p>&copy; 2026 國立臺北科技大學無人機社 NTUT Drone Club. All rights reserved.</p>
-            <p class="developer-tag">Designed with <i data-lucide="heart" class="heart-icon"></i> for NTUT</p>
+            <p class="developer-tag">PWA & Mobile Ready · Designed with <i data-lucide="heart" class="heart-icon"></i> for NTUT</p>
         </div>
     </footer>
+
+    <!-- Mobile Bottom Navigation Bar (Visible on mobile screens) -->
+    <nav class="mobile-bottom-nav" aria-label="手機快捷導覽列">
+        <a href="#home" class="mobile-nav-item active">
+            <i data-lucide="home"></i>
+            <span>首頁</span>
+        </a>
+        <a href="#features" class="mobile-nav-item">
+            <i data-lucide="zap"></i>
+            <span>特色</span>
+        </a>
+        <a href="/forms/equipment-loan" class="mobile-nav-item">
+            <i data-lucide="clipboard-list"></i>
+            <span>借用</span>
+        </a>
+        <a href="/admin" class="mobile-nav-item">
+            <i data-lucide="user"></i>
+            <span>後台</span>
+        </a>
+        <button type="button" class="mobile-nav-item" onclick="showPwaInstallModal()" style="background: none; border: none; cursor: pointer;">
+            <i data-lucide="download"></i>
+            <span>App</span>
+        </button>
+    </nav>
+
+    <!-- Smart PWA Banner (floating on mobile when not standalone) -->
+    <div id="pwa-smart-banner" class="pwa-smart-banner" style="display: none;">
+        <div class="banner-content">
+            <img src="/assets/icons/icon-96x96.png" alt="App Icon" class="banner-icon">
+            <div class="banner-text">
+                <strong>北科無人機社 App</strong>
+                <span>加入主畫面，享受原生全螢幕體驗</span>
+            </div>
+        </div>
+        <div class="banner-actions">
+            <button type="button" class="banner-btn install" onclick="showPwaInstallModal()">安裝</button>
+            <button type="button" class="banner-btn close" onclick="dismissPwaBanner()" aria-label="關閉提示">✕</button>
+        </div>
+    </div>
+
+    <!-- PWA Install Guidance Modal -->
+    <div id="pwa-install-modal" class="pwa-modal-overlay" style="display: none;">
+        <div class="pwa-modal-card">
+            <div class="pwa-modal-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <img src="/assets/icons/icon-96x96.png" alt="Logo" style="width: 36px; height: 36px; border-radius: 8px;">
+                    <div>
+                        <h3 style="margin: 0; font-size: 1.15rem;">安裝北科無人機社 App</h3>
+                        <span style="font-size: 0.8rem; color: #94a3b8;">純網頁 PWA 加入主畫面 · Android APK</span>
+                    </div>
+                </div>
+                <button type="button" class="pwa-modal-close" onclick="closePwaModal()" aria-label="關閉視窗">✕</button>
+            </div>
+            <div class="pwa-modal-body">
+                <!-- iOS Tab/Section -->
+                <div class="modal-platform-box ios-box">
+                    <div class="platform-title">
+                        <i data-lucide="apple"></i> 蘋果 iPhone / iPad (Safari PWA)
+                    </div>
+                    <ol class="modal-step-list">
+                        <li>點擊 Safari 瀏覽器底部的 <strong>「分享」按鈕</strong> <i data-lucide="share" style="width:16px; height:16px; vertical-align:middle; display:inline;"></i>。</li>
+                        <li>在分享清單中往下捲動，點擊 <strong>「加入主畫面」</strong> (Add to Home Screen)。</li>
+                        <li>點選右上角 <strong>「新增」</strong>，即可像 App 一樣從桌面開啟！</li>
+                    </ol>
+                    <div class="modal-tip">✨ 提示：加入主畫面後自動隱藏瀏覽器網址列，支援 iOS 安全邊界與快速存取。</div>
+                </div>
+
+                <!-- Android Tab/Section -->
+                <div class="modal-platform-box android-box" style="margin-top: 16px;">
+                    <div class="platform-title">
+                        <i data-lucide="smartphone"></i> 安卓 Android
+                    </div>
+                    <p style="font-size: 0.88rem; color: #cbd5e1; margin-bottom: 12px;">您可以選擇純網頁直接安裝，或下載 Android 原生 APK 安裝包：</p>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button type="button" class="btn btn-primary" id="modal-pwa-btn" onclick="triggerPwaInstall()" style="flex: 1; justify-content: center; min-width: 140px;">
+                            <i data-lucide="download"></i> 直接新增至桌面
+                        </button>
+                        <a href="https://github.com/jhuiry8/ntutdroneweb/releases" target="_blank" class="btn btn-secondary" style="flex: 1; justify-content: center; min-width: 140px;">
+                            <i data-lucide="package"></i> 下載 APK 安裝檔
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Main JavaScript -->
     <script src="main.js"></script>

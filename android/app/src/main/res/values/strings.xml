@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">北科無人機社</string>
+    <string name="default_url">https://ntut.tpe.pp.ua</string>
+    <string name="offline_title">目前處於離線狀態</string>
+    <string name="offline_message">請檢查網路連線後點擊重試</string>
+    <string name="retry">重試連線</string>
+</resources>

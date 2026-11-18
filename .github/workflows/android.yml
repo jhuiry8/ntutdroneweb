@@ -1,0 +1,87 @@
+name: Android App (APK build)
+
+# Builds Android APK on every change to android/ or manual trigger.
+# Pushing a tag such as android-v1.0.0 automatically creates a GitHub Release
+# with the downloadable APKs attached.
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'android-v*' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'android/**', '.github/workflows/android.yml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v3
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x android/gradlew
+
+    - name: Build Debug APK
+      run: |
+        cd android
+        ./gradlew assembleDebug --stacktrace
+
+    - name: Prepare APK outputs
+      run: |
+        mkdir -p dist/apk
+        if [ -f android/app/build/outputs/apk/debug/app-debug.apk ]; then
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/apk/NTUT-Drone-Club-Debug.apk
+        fi
+        echo "Built APK files:"
+        ls -la dist/apk/
+
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: NTUT-Drone-Club-APK
+        path: dist/apk/*.apk
+        retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/android-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: NTUT-Drone-Club-APK
+        path: dist/apk
+
+    - name: Publish GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        name: 北科無人機社 Android App ${{ github.ref_name }}
+        files: dist/apk/*.apk
+        body: |
+          ### 📱 北科無人機社 Android APK 安裝包 (${{ github.ref_name }})
+
+          此版本為國立臺北科技大學無人機社官方 Android 原生 App，支援：
+          - 🛸 全螢幕流暢操作、即時社務資料同步
+          - 🔄 下拉重新整理 (Pull-to-Refresh)
+          - 📋 線上表單填寫、會議簽到、設備借用
+          - 🚀 離線友善提示與硬體加速
+
+          **安裝說明**：
+          1. 下載下方 `NTUT-Drone-Club-Debug.apk`。
+          2. 在 Android 手機點擊安裝（若出現未驗證來源提示，請選擇「允許來自此來源的安裝」）。
+          3. 開啟即可登入使用！

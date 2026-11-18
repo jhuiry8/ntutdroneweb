@@ -76,7 +76,11 @@
 3. `admin` 到「系統設定」更換密碼，再到「帳號與權限」為每位社長、財務、幹部或社員建立個別帳號並提供初始密碼。每人登入後應更換自己的密碼。不要再共用 `admin` 帳號。
 4. 若舊 KV 尚未建立 `admin_password_hash`（例如舊站從未有人登入），需先設定 `ADMIN_INITIAL_PASSWORD`，用 `admin` 與該密碼首次登入，完成後移除該變數。
 
-網站前台與後台提供手機版版面與導覽，包含 iPhone Safari 的安全邊界與動態視窗高度處理。Apple 裝置可直接用 Safari 開啟網址；此網站目前不是可離線使用的原生 App。
+### 1-1. 手機版行動支援（PWA 純網頁加入主畫面 & 安卓 APK）
+* **🍎 蘋果 iOS (iPhone / iPad)**：支援 **PWA 純網頁加入主畫面**。使用 Safari 開啟社團網站後，點擊下方「分享」圖示 ➔ 「加入主畫面」，即可像原生 App 一樣以全螢幕開啟，自動隱藏網址列，並享有 iPhone Safari 動態視窗高度、安全邊界（瀏海／動態島／底部橫條）與 Service Worker 離線快取支援。
+* **🤖 安卓 Android**：
+  * **純網頁 PWA 一鍵安裝**：以 Chrome 開啟網站時點擊「安裝應用程式」或「新增至主畫面」即可安裝至桌面。
+  * **原生 APK 安裝包**：專案目錄 `android/` 提供完整 Android 原生 WebView App 專案，具備手勢下拉更新 (Pull-to-Refresh)、檔案選擇器、智慧外部 App 跳轉與離線友善提示。透過 GitHub Actions（`.github/workflows/android.yml`）每次推送皆會自動編譯 APK，社員與幹部可直接在 GitHub Releases / Actions 下載安裝。
 
 ### 2. 文章管理 (Blog Posts)
 * 文章與頁面保留 Markdown 格式、表格、圖片及基本文字格式；腳本、事件屬性、危險連結與 iframe 等主動內容會在顯示時移除，既有內容亦適用。後台預覽使用相同的伺服器過濾規則，需要連線；預覽無法載入時會顯示純文字。

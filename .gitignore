@@ -2,3 +2,8 @@ node_modules/
 package-lock.json
 .wrangler/
 .dev.vars
+deno.lock
+desktop/screenshots/
+__pycache__/
+*.pyc
+
