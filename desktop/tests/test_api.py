@@ -12,7 +12,8 @@ from urllib.parse import parse_qs
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from clubdesk.api import (AI_TIMEOUT, ApiClient, ApiError, ConnectionFailed, Response,  # noqa: E402
-                          can_manage_finance, can_manage_members, normalize_base_url, session_cookie)
+                          can_manage_elections, can_manage_finance, can_manage_members,
+                          normalize_base_url, session_cookie)
 
 
 def reply(status=200, body=None, text=None, headers=None):
@@ -148,6 +149,44 @@ class FormTests(unittest.TestCase):
         self.assertEqual(sent.calls[1]["url"], "https://club.example/admin/forms/blank/expense-report")
 
 
+class ElectionTests(unittest.TestCase):
+    def test_election_routes(self):
+        api, sent = client(reply(200, []), reply(201, {"id": "e1"}), reply(200, {}), reply(200, {}),
+                           reply(200, {"voters": []}), reply(200, {"options": []}), reply(200, {}))
+        api.elections()
+        api.create_election({"title": "社長選舉", "candidates": []})
+        api.update_election("e/1", {"title": "改"})
+        api.election_status("e1", "open")
+        api.election_audit("e1")
+        api.election_results("e1")
+        api.delete_election("e1")
+        self.assertEqual(sent.calls[0]["url"], "https://club.example/api/elections")
+        self.assertEqual(sent.json_body(1), {"title": "社長選舉", "candidates": []})
+        self.assertEqual((sent.calls[2]["method"], sent.calls[2]["url"]), ("PUT", "https://club.example/api/elections/e%2F1"))
+        self.assertEqual(sent.calls[3]["url"], "https://club.example/api/elections/e1/status")
+        self.assertEqual(sent.json_body(3), {"action": "open"})
+        self.assertEqual(sent.calls[4]["url"], "https://club.example/api/elections/e1/audit")
+        self.assertEqual(sent.calls[5]["url"], "https://club.example/api/elections/e1/results")
+        self.assertEqual(sent.calls[6]["method"], "DELETE")
+        self.assertEqual(api.vote_page_url("e1"), "https://club.example/vote/e1")
+
+    def test_only_president_message_is_shown(self):
+        api, _ = client(reply(403, {"error": "只有社長可以開始、結束投票或公布結果"}))
+        with self.assertRaises(ApiError) as caught:
+            api.election_status("e1", "open")
+        self.assertEqual(caught.exception.status, 403)
+        self.assertIn("社長", str(caught.exception))
+
+    def test_time_helpers_use_taiwan_time(self):
+        try:
+            from clubdesk.pages.elections import local_input, taipei_time
+        except ImportError as error:  # PySide6 or its system libraries missing
+            self.skipTest(str(error))
+        self.assertEqual(taipei_time("2026-12-01T01:00:00.000Z"), "2026/12/01 09:00")
+        self.assertEqual(local_input("2026-12-01T16:30:00.000Z"), "2026-12-02T00:30")
+        self.assertEqual(taipei_time(""), "")
+
+
 class HelperTests(unittest.TestCase):
     def test_normalize_base_url(self):
         self.assertEqual(normalize_base_url(" club.example/ "), "https://club.example")
@@ -162,6 +201,8 @@ class HelperTests(unittest.TestCase):
         self.assertTrue(can_manage_members("finance"))
         self.assertFalse(can_manage_members("cadre"))
         self.assertFalse(can_manage_finance("member"))
+        self.assertTrue(can_manage_elections("cadre"))
+        self.assertFalse(can_manage_elections("finance"))
 
 
 class SemesterTests(unittest.TestCase):

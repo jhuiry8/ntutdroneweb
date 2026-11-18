@@ -54,6 +54,12 @@ def can_manage_equipment(role: str) -> bool:
     return role in ("president", "finance", "cadre")
 
 
+# Same rule as canManageElections in src/elections.js; opening, closing and
+# publishing results are further limited to the president by the server.
+def can_manage_elections(role: str) -> bool:
+    return role in ("president", "cadre")
+
+
 class ApiError(Exception):
     """An error reported by the server, or a connection failure."""
 
@@ -308,6 +314,31 @@ class ApiClient:
         if response.status >= 400:
             raise ApiError(response.text.strip()[:200] or f"伺服器錯誤（HTTP {response.status}）", response.status)
         return response.text
+
+    # ------------------------------------------------------------ elections
+    def elections(self) -> list:
+        return self.get("/api/elections")
+
+    def create_election(self, fields: dict) -> dict:
+        return self.post("/api/elections", fields)
+
+    def update_election(self, election_id: str, fields: dict) -> dict:
+        return self.put(f"/api/elections/{quote(election_id, safe='')}", fields)
+
+    def delete_election(self, election_id: str) -> dict:
+        return self.delete(f"/api/elections/{quote(election_id, safe='')}")
+
+    def election_status(self, election_id: str, action: str) -> dict:
+        return self.post(f"/api/elections/{quote(election_id, safe='')}/status", {"action": action})
+
+    def election_audit(self, election_id: str) -> dict:
+        return self.get(f"/api/elections/{quote(election_id, safe='')}/audit")
+
+    def election_results(self, election_id: str) -> dict:
+        return self.get(f"/api/elections/{quote(election_id, safe='')}/results")
+
+    def vote_page_url(self, election_id: str) -> str:
+        return self._url(f"/vote/{quote(election_id, safe='')}")
 
     # ---------------------------------------------------------- regulations
     def regulations(self) -> list:
