@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import csv
+import os
+import re
+import tempfile
 from contextlib import contextmanager
 from typing import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QFrame, QHBoxLayout,
                                QHeaderView, QLabel, QMessageBox, QPushButton, QTableWidget,
                                QTableWidgetItem, QVBoxLayout, QWidget)
 
 from .api import ApiError
+from .icons import icon
 
 Column = tuple  # (header, key or callable, optional "right" alignment)
 
@@ -32,6 +37,70 @@ def show_error(parent, error: Exception, title: str = "錯誤") -> None:
         relogin = getattr(parent.window(), "relogin", None)
         if relogin:
             relogin()
+
+
+class _Signals(QObject):
+    done = Signal(object)
+    failed = Signal(object)
+
+
+class _Job(QRunnable):
+    def __init__(self, work):
+        super().__init__()
+        self.work = work
+        self.signals = _Signals()
+
+    def run(self) -> None:
+        try:
+            result = self.work()
+        except Exception as error:  # noqa: BLE001 - handed to the caller on the UI thread
+            self.signals.failed.emit(error)
+        else:
+            self.signals.done.emit(result)
+
+
+_running: set = set()
+
+
+def background(work: Callable, done: Callable | None = None, failed: Callable | None = None) -> None:
+    """Runs work() on a worker thread (network calls) and calls done/failed back on the UI thread."""
+    job = _Job(work)
+    _running.add(job)  # keep the signal object alive until the job reports back
+
+    def finish(callback, value):
+        _running.discard(job)
+        if callback:
+            callback(value)
+
+    job.signals.done.connect(lambda value: finish(done, value))
+    job.signals.failed.connect(lambda error: finish(failed, error))
+    job.setAutoDelete(False)
+    QThreadPool.globalInstance().start(job)
+
+
+def open_url(parent, url: str) -> None:
+    if not QDesktopServices.openUrl(QUrl(url)):
+        QMessageBox.information(parent, "開啟網頁", f"無法自動開啟瀏覽器，請手動開啟：\n{url}")
+
+
+def open_html(parent, html: str, name: str) -> None:
+    """Saves a page to the temp folder and opens it in the browser (printing, previews)."""
+    folder = os.path.join(tempfile.gettempdir(), "ClubDesk")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, (re.sub(r"[^\w-]", "_", name) or "page") + ".html")
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(html)
+    if not QDesktopServices.openUrl(QUrl.fromLocalFile(path)):
+        QMessageBox.information(parent, "開啟網頁", f"無法自動開啟瀏覽器，請手動開啟：\n{path}")
+
+
+def icon_button(text: str, icon_name: str = "", tip: str = "") -> QPushButton:
+    button = QPushButton(text)
+    if icon_name:
+        button.setIcon(icon(icon_name))
+    if tip:
+        button.setToolTip(tip)
+    return button
 
 
 def confirm(parent, message: str, title: str = "確認") -> bool:
@@ -119,6 +188,7 @@ class Page(QWidget):
     """A work area with a caption bar, like the right pane of a classic MMC console."""
 
     title = ""
+    icon_name = ""
     export_name = "export.csv"
 
     def __init__(self, api, user: dict, status: Callable[[str], None]):
@@ -130,8 +200,19 @@ class Page(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(4)
-        caption = QLabel(self.title)
+        caption = QWidget()
         caption.setObjectName("CaptionBar")
+        caption.setAttribute(Qt.WA_StyledBackground, True)
+        caption_row = QHBoxLayout(caption)
+        caption_row.setContentsMargins(6, 3, 6, 3)
+        caption_row.setSpacing(6)
+        if self.icon_name:
+            badge = QLabel()
+            badge.setPixmap(icon(self.icon_name, light=True).pixmap(16, 16))
+            caption_row.addWidget(badge)
+        caption_text = QLabel(self.title)
+        caption_text.setObjectName("CaptionText")
+        caption_row.addWidget(caption_text, 1)
         outer.addWidget(caption)
         self.body = QVBoxLayout()
         self.body.setContentsMargins(6, 2, 6, 6)
@@ -165,6 +246,13 @@ class Page(QWidget):
         self.table.export_csv(self, self.export_name)
 
 
+# Buttons without an icon get one from the start of their caption.
+AUTO_ICONS = [("新增", "add"), ("修改", "edit"), ("批次", "edit"), ("刪除", "delete"), ("查詢", "search"), ("列印", "print"),
+              ("匯入", "import"), ("匯出", "export"), ("核准", "check"), ("退回", "cross"), ("變更密碼", "password"),
+              ("AI", "ai"), ("全選", "check"), ("儲存", "save"), ("清除", "delete"), ("登錄", "add"), ("編輯", "edit"),
+              ("設定", "edit"), ("關閉", "cross"), ("確定", "check")]
+
+
 def button_row(*buttons: QPushButton, stretch_first=False) -> QHBoxLayout:
     row = QHBoxLayout()
     row.setSpacing(4)
@@ -172,6 +260,11 @@ def button_row(*buttons: QPushButton, stretch_first=False) -> QHBoxLayout:
         row.addStretch(1)
     for button in buttons:
         button.setMinimumWidth(80)
+        if button.icon().isNull():
+            caption = button.text().replace("&", "")
+            name = next((icon_name for prefix, icon_name in AUTO_ICONS if caption.startswith(prefix)), "")
+            if name:
+                button.setIcon(icon(name))
         row.addWidget(button)
     if not stretch_first:
         row.addStretch(1)

@@ -7,10 +7,11 @@ from datetime import date
 
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (QComboBox, QDateEdit, QDialog, QDialogButtonBox, QFileDialog,
-                               QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+                               QFormLayout, QGroupBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit,
                                QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QVBoxLayout)
 
 from ..api import ApiError
+from ..icons import icon
 from ..widgets import DataTable, Page, busy, button_row, confirm, money, show_error
 
 LEVELS = [("trial", "非正式社員"), ("member", "正式社員"), ("prep", "籌備幹部"), ("officer", "正式幹部")]
@@ -166,6 +167,7 @@ class BulkDialog(QDialog):
 
 class MembersPage(Page):
     title = "社員名冊"
+    icon_name = "members"
     export_name = "社員名冊.csv"
 
     def __init__(self, *args):
@@ -211,7 +213,12 @@ class MembersPage(Page):
         select_all.clicked.connect(self.table.selectAll)
         imp = QPushButton("匯入 CSV(&I)...")
         imp.clicked.connect(self.import_csv)
-        self.body.addLayout(button_row(add, edit, bulk, remove, select_all, imp))
+        ai_import = QPushButton("AI 整理名單...")
+        ai_import.setToolTip("貼上格式混亂的名單（Google 表單、試算表、聊天紀錄），AI 整理後再確認匯入")
+        ai_import.clicked.connect(self.ai_import)
+        for button, name in ((add, "add"), (edit, "edit"), (bulk, "edit"), (remove, "delete"), (select_all, "check"), (imp, "import"), (ai_import, "ai")):
+            button.setIcon(icon(name))
+        self.body.addLayout(button_row(add, edit, bulk, remove, select_all, imp, ai_import))
 
     def clear_search(self) -> None:
         self.query.clear()
@@ -308,6 +315,46 @@ class MembersPage(Page):
         self.safe_refresh()
 
 
+    def ai_import(self) -> None:
+        text, ok = QInputDialog.getMultiLineText(self, "AI 整理名單", "貼上名單（最多約 30,000 字）。AI 會整理成姓名、學號、Email、電話等欄位，確認後才匯入：")
+        if not ok or not text.strip():
+            return
+        try:
+            with busy():
+                result = self.api.ai_member_import(text)
+        except ApiError as error:
+            show_error(self, error)
+            return
+        rows = result.get("rows", [])
+        if not rows:
+            QMessageBox.information(self, "AI 整理名單", "AI 沒有從內容中找到社員資料。" + (f"\n{result.get('notes')}" if result.get("notes") else ""))
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"確認匯入 {len(rows)} 位社員")
+        table = DataTable([("姓名", "name"), ("學號", "studentId"), ("Email", "email"), ("電話", "phone"), ("職務", "position"),
+                           ("身分", "level"), ("社費", "feeStatus"), ("學期", "feeSemester"), ("加入日期", "joinedAt"), ("備註", "note")])
+        table.set_rows(rows)
+        layout = QVBoxLayout(dialog)
+        if result.get("notes"):
+            note = QLabel("AI 提醒：" + result["notes"])
+            note.setWordWrap(True)
+            layout.addWidget(note)
+        layout.addWidget(table, 1)
+        layout.addWidget(QLabel("學號或姓名重複者會自動略過。若有錯誤請取消，修正原始名單後再試，或匯入後再個別修改。"))
+        layout.addWidget(dialog_buttons(dialog))
+        dialog.resize(900, 480)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        try:
+            with busy():
+                done = self.api.import_members(rows[:500])
+        except ApiError as error:
+            show_error(self, error)
+            return
+        QMessageBox.information(self, "匯入完成", f"已匯入 {done['imported']} 筆，略過重複 {done['skipped']} 筆。")
+        self.safe_refresh()
+
+
 class ReceiptDialog(QDialog):
     def __init__(self, parent, members: list[dict], receiver: str):
         super().__init__(parent)
@@ -373,6 +420,7 @@ class ReceiptDialog(QDialog):
 
 
 class FeeReceiptsPage(Page):
+    icon_name = "receipts"
     title = "社費簽收紀錄"
     export_name = "社費簽收紀錄.csv"
 

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import csv
+
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QComboBox, QDialog, QFormLayout, QGridLayout, QGroupBox, QInputDialog,
-                               QLabel, QLineEdit, QMessageBox, QPushButton, QSpinBox, QTableWidget,
-                               QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
+                               QGridLayout, QGroupBox, QInputDialog, QLabel, QLineEdit, QMessageBox,
+                               QPlainTextEdit, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem,
+                               QTabWidget, QVBoxLayout, QWidget)
 
 from ..api import ApiError, can_manage_users
+from ..icons import icon
 from ..widgets import DataTable, Page, busy, button_row, confirm, money, show_error
 from .members import combo, date_edit, date_text, dialog_buttons
 
@@ -112,6 +116,7 @@ class BudgetDialog(QDialog):
 
 class FinancePage(Page):
     title = "收支帳目"
+    icon_name = "finance"
     export_name = "收支帳目.csv"
 
     def __init__(self, *args):
@@ -159,7 +164,15 @@ class FinancePage(Page):
         if not president:
             approve.setToolTip("僅社長可審核收支")
             reject.setToolTip("僅社長可審核收支")
-        ledger_layout.addLayout(button_row(add, approve, reject, remove))
+        ai_check = QPushButton("AI 帳目檢查...")
+        ai_check.setToolTip("找出可能重複、送審太久或可疑的帳目，並建議預算分類")
+        ai_check.clicked.connect(lambda: ai_review(self))
+        legacy = QPushButton("匯入舊帳本 CSV...")
+        legacy.setToolTip("匯入舊的試算表帳本（日期、事宜、收入、支出、現金餘額、郵局餘額），匯入後為待審核")
+        legacy.clicked.connect(lambda: import_legacy(self))
+        for button, name in ((add, "add"), (approve, "check"), (reject, "cross"), (remove, "delete"), (ai_check, "ai"), (legacy, "import")):
+            button.setIcon(icon(name))
+        ledger_layout.addLayout(button_row(add, approve, reject, remove, ai_check, legacy))
         tabs.addTab(ledger, "收支明細")
 
         budget_tab = QWidget()
@@ -244,3 +257,95 @@ class FinancePage(Page):
         dialog = BudgetDialog(self, self.budgets)
         if dialog.exec() == QDialog.Accepted:
             self.call(lambda: self.api.save_budgets(dialog.values()))
+
+
+LEGACY_HEADERS = {"日期": "date", "事宜": "item", "事由": "item", "項目": "item", "收入": "income", "支出": "expense",
+                  "現金餘額": "cashBalance", "現金": "cashBalance", "郵局餘額": "postalBalance", "郵局": "postalBalance"}
+
+
+def ai_review(page: FinancePage) -> None:
+    try:
+        with busy():
+            review = page.api.ai_finance_review()
+    except ApiError as error:
+        show_error(page, error)
+        return
+    transactions = {t["id"]: t for t in page.table.rows}
+
+    def describe(transaction_id):
+        t = transactions.get(transaction_id)
+        return f"{t['date']}「{t['item']}」{money(t.get('amount'))} 元" if t else transaction_id
+
+    dialog = QDialog(page)
+    dialog.setWindowTitle("AI 帳目檢查")
+    layout = QVBoxLayout(dialog)
+    lines = [review.get("summary") or ""]
+    for finding in review.get("anomalies", []):
+        lines.append(("🔎 " if finding.get("source") == "rule" else "✨ ") + finding.get("issue", ""))
+    if not review.get("anomalies"):
+        lines.append("沒有發現明顯異常。")
+    text = QPlainTextEdit("\n".join(line for line in lines if line))
+    text.setReadOnly(True)
+    layout.addWidget(QLabel("需要注意："))
+    layout.addWidget(text)
+    suggestions = review.get("suggestions", [])
+    checks = []
+    if suggestions:
+        layout.addWidget(QLabel("預算分類建議（勾選後按「套用」才會寫入）："))
+        box = QWidget()
+        box_layout = QVBoxLayout(box)
+        for item in suggestions:
+            check = QCheckBox(f"{describe(item['id'])} → {page.budget_name(item['budgetId']) or item['budgetId']}（{item.get('reason', '')}）")
+            check.setChecked(True)
+            box_layout.addWidget(check)
+            checks.append((check, item))
+        layout.addWidget(box)
+    buttons = QDialogButtonBox()
+    apply = buttons.addButton("套用勾選的分類", QDialogButtonBox.AcceptRole)
+    apply.setEnabled(bool(suggestions))
+    buttons.addButton("關閉", QDialogButtonBox.RejectRole)
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    layout.addWidget(buttons)
+    dialog.resize(720, 480)
+    if dialog.exec() != QDialog.Accepted:
+        return
+    done, errors = 0, []
+    with busy():
+        for check, item in checks:
+            if not check.isChecked():
+                continue
+            try:
+                page.api.set_transaction_budget(item["id"], item["budgetId"])
+                done += 1
+            except ApiError as error:
+                errors.append(f"{describe(item['id'])}：{error}")
+    QMessageBox.information(page, "AI 帳目檢查", f"已套用 {done} 筆。" + ("\n" + "\n".join(errors) if errors else ""))
+    page.safe_refresh()
+
+
+def import_legacy(page: FinancePage) -> None:
+    path, _ = QFileDialog.getOpenFileName(page, "匯入舊帳本", "", "CSV 檔案 (*.csv)")
+    if not path:
+        return
+    try:
+        with open(path, newline="", encoding="utf-8-sig") as handle:
+            rows = [{LEGACY_HEADERS.get(k.strip(), k.strip()): (v or "").strip() for k, v in row.items() if k} for row in csv.DictReader(handle)]
+    except (OSError, UnicodeDecodeError, csv.Error) as error:
+        show_error(page, ApiError(f"無法讀取 CSV：{error}"))
+        return
+    rows = [r for r in rows if r.get("date") and r.get("item")]
+    if not rows:
+        QMessageBox.warning(page, "匯入舊帳本", "找不到資料。第一列需為欄位名稱：日期,事宜,收入,支出,現金餘額,郵局餘額")
+        return
+    if not confirm(page, f"即將匯入 {len(rows)} 筆舊帳目（皆為待審核，需社長核准）。是否繼續？"):
+        return
+    try:
+        with busy():
+            result = page.api.import_transactions(rows[:1000])
+    except ApiError as error:
+        show_error(page, error)
+        return
+    QMessageBox.information(page, "匯入完成", f"已匯入 {result.get('imported', 0)} 筆待審核帳目。")
+    page.safe_refresh()
+

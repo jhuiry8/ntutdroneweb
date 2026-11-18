@@ -27,6 +27,7 @@ DisableWelcomePage=no
 CloseApplications=yes
 RestartApplications=no
 UninstallDisplayIcon={app}\ClubDesk.exe
+SetupIconFile=..\clubdesk\resources\app.ico
 UninstallDisplayName={#AppName}
 VersionInfoVersion={#AppVersion}
 VersionInfoDescription={#AppName} 安裝程式

@@ -72,7 +72,7 @@ a = Analysis(
     ["main.py"],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[("clubdesk/resources/app.ico", "clubdesk/resources"), ("clubdesk/resources/app.png", "clubdesk/resources")],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -94,7 +94,7 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,
-    icon=None,
+    icon="clubdesk/resources/app.ico",
     version=VERSION_INFO,
 )
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="ClubDesk")
