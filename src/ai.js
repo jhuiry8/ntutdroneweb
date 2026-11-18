@@ -304,3 +304,34 @@ export async function runAssistant(env, user, messages, tools, permissions, fetc
     }
     throw new FormServiceError('AI 沒有產生回答，請重試');
 }
+
+// ───────────────────────── Meetings ─────────────────────────
+
+const NOTICE_SYSTEM_PROMPT = [
+    '你是無人機社的秘書，負責撰寫開會通知，張貼在社團官網與群組。依使用者給的會議資料與關鍵字，寫一份正式但親切的繁體中文開會通知。',
+    '通知要包含：會議名稱、時間、地點（或線上連結）、召集人、議程（報告事項、討論事項）、出席提醒（社員大會需說明具表決權資格與法定出席人數的重要性、可攜帶學生證簽到）。',
+    '只輸出 JSON：{"title": "公告標題", "content": "Markdown 內文"}。只能使用提供的事實，缺的資訊寫「（待補）」，不可捏造。',
+    DATA_NOTICE
+].join('\n');
+
+export async function draftMeetingNotice(env, facts, fetchImpl = fetch) {
+    const raw = await requestAiJson(env, NOTICE_SYSTEM_PROMPT, `${dateContext()}\n會議資料：${compactJson(facts, 16000)}`, fetchImpl, { maxTokens: 4096 });
+    const content = clip(raw?.content, 20000);
+    if (!content) throw new FormServiceError('AI 沒有產生通知內容，請重試');
+    return { title: clip(raw?.title, 200), content };
+}
+
+const MINUTES_SYSTEM_PROMPT = [
+    '你是無人機社的會議紀錄。根據系統提供的會議資料、出席人數、表決結果與現場紀錄的關鍵字，寫成正式的繁體中文會議紀錄（Markdown）。',
+    '格式依序為：會議名稱標題、一、時間 二、地點 三、主席 四、紀錄 五、出席情形（應出席、實到、是否達法定人數）六、主席致詞／報告事項 七、討論事項（每案寫「案由」「說明」「討論摘要」「表決結果」「決議」）八、臨時動議 九、散會。',
+    '討論摘要要把關鍵字整理成通順的句子，但不可加入關鍵字沒有提到的發言內容、人名或數字。表決票數與結果一律照系統資料，不可更改。資訊不足處寫「（待補）」。',
+    '只輸出 JSON：{"content": "Markdown 會議紀錄", "notes": "提醒紀錄人需要確認的地方"}。',
+    DATA_NOTICE
+].join('\n');
+
+export async function draftMinutes(env, facts, fetchImpl = fetch) {
+    const raw = await requestAiJson(env, MINUTES_SYSTEM_PROMPT, `會議資料：${compactJson(facts, 30000)}`, fetchImpl, { maxTokens: 8192, timeoutMs: 60000 });
+    const content = clip(raw?.content, 50000);
+    if (!content) throw new FormServiceError('AI 沒有產生會議紀錄，請重試');
+    return { content, notes: clip(raw?.notes, 600) };
+}

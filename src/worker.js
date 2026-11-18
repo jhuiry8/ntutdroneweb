@@ -35,7 +35,10 @@ import {
     aiProvider
 } from './forms.js';
 import { handleAiRequest, generateClubReport } from './ai-routes.js';
+import { handleMeetingRequest } from './meeting-routes.js';
+import { MeetingError } from './meetings.js';
 export { FormStore } from './form-store.js';
+export { MeetingStore } from './meetings.js';
 export { SiteStore } from './site-store.js';
 
 // Legacy unsalted admin hash format (migrated to PBKDF2 on first login)
@@ -774,6 +777,10 @@ async function handleRequest(request, env, ctx) {
             // ==================== API: AI tools, assistant and weekly report ====================
             const aiResponse = await handleAiRequest(request, env, aiDeps);
             if (aiResponse) return aiResponse;
+
+            // ==================== API: Meetings (社員大會、幹部會議、委員會) ====================
+            const meetingResponse = await handleMeetingRequest(request, env, aiDeps);
+            if (meetingResponse) return meetingResponse;
 
             // ==================== API: Posts CRUD (Admin Auth required) ====================
             if (path.startsWith('/api/posts') && ['POST', 'DELETE', 'GET'].includes(method)) {
@@ -1642,6 +1649,7 @@ async function handleRequest(request, env, ctx) {
             if (e instanceof PayloadTooLargeError) return Response.json({ error: e.message }, { status: 413 });
             if (e instanceof FinanceValidationError || e instanceof FormValidationError || e instanceof RegulationRuleError) return Response.json({ error: e.message }, { status: 400 });
             if (e instanceof FormServiceError) return Response.json({ error: e.message }, { status: e.status });
+            if (e instanceof MeetingError) return Response.json({ error: e.message }, { status: e.status });
             if (e instanceof PasswordResetRequiredError) {
                 if (path === '/api/login') {
                     return loginPageResponse(env, e.message, 409);

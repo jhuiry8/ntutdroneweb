@@ -96,7 +96,7 @@
     fab.addEventListener('click', function () { openPanel('ai'); setTimeout(function () { var input = document.getElementById('ai-chat-input'); if (input) input.focus(); }, 50); });
     document.body.appendChild(fab);
 
-    var toolLabels = { search_regulations: '法規條文', open_amendments: '修正案', my_forms: '我的表單', club_overview: '社團概況', recent_forms: '表單紀錄', list_posts: '官網文章', class_notes: '社課備忘錄', finance_summary: '財務總覽', search_transactions: '帳目', query_members: '社員名冊', query_equipment: '設備清冊', equipment_loans: '設備借用' };
+    var toolLabels = { search_regulations: '法規條文', open_amendments: '修正案', my_forms: '我的表單', club_overview: '社團概況', recent_forms: '表單紀錄', list_posts: '官網文章', class_notes: '社課備忘錄', finance_summary: '財務總覽', search_transactions: '帳目', query_members: '社員名冊', query_equipment: '設備清冊', equipment_loans: '設備借用', meetings: '會議' };
     var history = [];
     try { history = JSON.parse(sessionStorage.getItem(HISTORY_KEY) || '[]') || []; } catch (e) { history = []; }
     function saveHistory() { try { sessionStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(-40))); } catch (e) { /* storage unavailable */ } }

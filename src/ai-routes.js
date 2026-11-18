@@ -4,6 +4,8 @@ import { canEditCms, canViewCms, canManageFinance, canManageMembers, canManageEq
 import { membershipStatus, MEMBER_LEVELS } from './membership.js';
 import { REGULATION_KINDS, AMENDMENT_ACTIONS, requirementsFor } from './regulation-rules.js';
 import { aiProvider, taipeiToday, FORM_TYPES, formTitle, FormValidationError } from './forms.js';
+import { listMeetings } from './meeting-routes.js';
+import { MEETING_TYPES, MEETING_STATUSES } from './meetings.js';
 import {
     assistContent, reviewFinance, financeChecks, cleanMemberImport, AI_MEMBER_IMPORT_MAX_ROWS,
     reviewAmendment, summarizeReport, runAssistant
@@ -85,6 +87,18 @@ export function assistantTools(env, user, deps) {
             const amendments = await readList(env, KEYS.amendments);
             return amendments.filter(item => item.status === 'proposed' || item.status === 'awaiting_school')
                 .map(item => ({ title: item.title, action: AMENDMENT_ACTIONS[item.action], status: item.status, proposedAt: String(item.proposedAt).slice(0, 10), reason: text(item.reason, 300) }));
+        }
+    };
+    tools.meetings = {
+        description: '列出社員大會、幹部會議與委員會議（時間、地點、議程、表決結果、紀錄是否定稿）',
+        async run() {
+            return (await listMeetings(env)).filter(meeting => can.viewCms || meeting.status !== 'draft')
+                .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10)
+                .map(meeting => ({
+                    title: meeting.title, type: MEETING_TYPES[meeting.type]?.label, status: MEETING_STATUSES[meeting.status], date: meeting.date, time: meeting.time, location: meeting.location,
+                    agenda: meeting.agenda.map(item => ({ title: item.title, result: item.vote.state === 'closed' && item.vote.result ? item.vote.result.reason : (item.vote.state === 'open' ? '投票中' : '未表決') })),
+                    minutesFinalized: Boolean(meeting.minutes?.finalizedAt)
+                }));
         }
     };
     tools.my_forms = {
@@ -191,6 +205,11 @@ export async function clubStats(env, deps, viewer = null) {
     const [posts, amendments, records] = await Promise.all([readList(env, 'posts_list'), readList(env, KEYS.amendments), formRecords(env, deps)]);
     stats.website = { posts: posts.length, postsThisWeek: posts.filter(post => String(post.date || '').slice(0, 10) >= weekAgo).length, latestPost: posts[0] ? { title: posts[0].title, date: String(posts[0].date).slice(0, 10) } : null };
     stats.amendments = amendments.filter(item => item.status === 'proposed' || item.status === 'awaiting_school').map(item => ({ title: item.title, status: item.status === 'proposed' ? '提案中' : '待學校核備' }));
+    const meetings = await listMeetings(env);
+    stats.meetings = {
+        upcoming: meetings.filter(meeting => ['announced', 'open'].includes(meeting.status) && meeting.date >= today && meeting.date <= dayOffset(today, 14)).map(meeting => `${meeting.date} ${meeting.title}`),
+        minutesPending: meetings.filter(meeting => meeting.status === 'closed' && !meeting.minutes?.finalizedAt).map(meeting => `${meeting.date} ${meeting.title}`)
+    };
     const newForms = records.filter(record => record.createdAt.slice(0, 10) >= weekAgo);
     stats.forms = { thisWeek: newForms.length, byType: Object.fromEntries(Object.entries(FORM_TYPES).map(([type, config]) => [config.label, newForms.filter(record => record.type === type).length]).filter(([, count]) => count)) };
     if (can.finance) {
@@ -239,6 +258,8 @@ export function reportText(stats, summary) {
     if (stats.members) lines.push(`社員：共 ${stats.members.total} 人，未繳社費 ${stats.members.unpaid} 人，具表決權 ${stats.members.voting} 人`);
     if (stats.equipment) lines.push(`設備：共 ${stats.equipment.total} 件，維修中 ${stats.equipment.inRepair.length} 件；借用中 ${stats.equipment.activeLoans} 筆${stats.equipment.endedLoansToCheck.length ? `；請確認是否已歸還：${stats.equipment.endedLoansToCheck.join('；')}` : ''}`);
     lines.push(`表單：本週新增 ${stats.forms.thisWeek} 份；文章：本週發佈 ${stats.website.postsThisWeek} 篇`);
+    if (stats.meetings?.upcoming.length) lines.push(`即將召開的會議：${stats.meetings.upcoming.join('、')}`);
+    if (stats.meetings?.minutesPending.length) lines.push(`會議紀錄尚未定稿：${stats.meetings.minutesPending.join('、')}`);
     if (stats.amendments.length) lines.push(`法規修正案進行中：${stats.amendments.map(item => `「${item.title}」${item.status}`).join('、')}`);
     return lines.join('\n');
 }
