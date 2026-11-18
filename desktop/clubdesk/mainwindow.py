@@ -8,8 +8,9 @@ from PySide6.QtWidgets import (QDialog, QLabel, QMainWindow, QMessageBox, QSplit
                                QStyle, QTreeWidget, QTreeWidgetItem)
 
 from . import __version__
-from .api import (ROLE_LABELS, ApiClient, can_manage_equipment, can_manage_finance,
+from .api import (ROLE_LABELS, ApiClient, can_manage_elections, can_manage_equipment, can_manage_finance,
                   can_manage_members, can_manage_users)
+from .pages.elections import ElectionsPage
 from .pages.equipment import EquipmentPage
 from .pages.finance import FinancePage
 from .pages.forms import FormsPage
@@ -45,6 +46,7 @@ class MainWindow(QMainWindow):
             ("文書作業", [(FormsPage, True)]),
             ("財務管理", [(FinancePage, can_manage_finance(role))]),
             ("器材管理", [(EquipmentPage, can_manage_equipment(role))]),
+            ("選舉管理", [(ElectionsPage, can_manage_elections(role))]),
             ("其他", [(RegulationsPage, True), (AccountPage, True)]),
         ]
         for group, entries in groups:

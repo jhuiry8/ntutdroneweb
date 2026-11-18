@@ -36,6 +36,8 @@ import {
 } from './forms.js';
 export { FormStore } from './form-store.js';
 export { SiteStore } from './site-store.js';
+export { ElectionStore } from './election-store.js';
+import { handleElectionRoute, ElectionValidationError } from './elections.js';
 
 // Legacy unsalted admin hash format (migrated to PBKDF2 on first login)
 const SALT = 'ntut_drone_salt_123';
@@ -1456,6 +1458,20 @@ async function handleRequest(request, env, ctx) {
                 return Response.json(amendment);
             }
 
+            // ==================== Club elections (選舉公報 / 投票) ====================
+            const electionResponse = await handleElectionRoute(request, env, {
+                sessionUser: req => sessionUser(req, env),
+                readJson: readJsonObject,
+                readMembers: async () => parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY)),
+                createCaptcha: () => createCaptcha(captchaStore(env)),
+                takeAttempt: limits => takeAttempt(env, limits),
+                // Without Turnstile the self-hosted image CAPTCHA is required instead.
+                verifyHuman: (body, ip) => env.TURNSTILE_SECRET_KEY
+                    ? verifyTurnstile(env, String(body?.turnstileToken || ''), ip)
+                    : verifyCaptcha(captchaStore(env), String(body?.captchaId || ''), body?.captcha)
+            });
+            if (electionResponse) return electionResponse;
+
             // ==================== Public equipment loan slip (no login, no AI) ====================
             if (path === '/forms/equipment-loan' && method === 'GET') {
                 const captcha = env.TURNSTILE_SECRET_KEY ? null : await createCaptcha(captchaStore(env));
@@ -1661,7 +1677,7 @@ async function handleRequest(request, env, ctx) {
 
         } catch (e) {
             if (e instanceof PayloadTooLargeError) return Response.json({ error: e.message }, { status: 413 });
-            if (e instanceof FinanceValidationError || e instanceof FormValidationError || e instanceof RegulationRuleError) return Response.json({ error: e.message }, { status: 400 });
+            if (e instanceof FinanceValidationError || e instanceof FormValidationError || e instanceof RegulationRuleError || e instanceof ElectionValidationError) return Response.json({ error: e.message }, { status: 400 });
             if (e instanceof FormServiceError) return Response.json({ error: e.message }, { status: e.status });
             if (e instanceof PasswordResetRequiredError) {
                 if (path === '/api/login') {
