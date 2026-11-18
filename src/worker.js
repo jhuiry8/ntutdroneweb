@@ -130,6 +130,7 @@ const NOTES_KEY = 'club:class-notes';
 const EQUIPMENT_KEY = 'equipment:assets';
 const EQUIPMENT_MIGRATION_KEY = 'equipment:durable-object-migrated';
 const FORM_SETTINGS_KEY = 'forms:settings';
+const DESKTOP_RELEASE_KEY = 'desktop:release';
 const AI_DAILY_LIMIT = 30;
 
 // Every signed-in account can fill in forms. Officers see everyone's forms;
@@ -191,6 +192,30 @@ async function readFormSettings(env) {
 }
 
 class FinanceValidationError extends Error {}
+
+// Latest desktop program release (desktop/). Installers are published as GitHub
+// release assets; the program checks the SHA-256 before running a download.
+function normalizeDesktopRelease(body, username) {
+    const version = String(body.version ?? '').trim();
+    if (!/^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(version)) throw new FinanceValidationError('版本號格式須為「1.2.0」');
+    const url = String(body.url ?? '').trim();
+    let parsed;
+    try { parsed = new URL(url); } catch { throw new FinanceValidationError('下載網址格式無效'); }
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com' || url.length > 500) throw new FinanceValidationError('下載網址必須是 https://github.com/ 的 Release 檔案');
+    const sha256 = String(body.sha256 ?? '').trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(sha256)) throw new FinanceValidationError('SHA-256 必須是 64 位十六進位字元');
+    const notes = String(body.notes ?? '').trim();
+    if (notes.length > 2000) throw new FinanceValidationError('更新說明不可超過 2000 字');
+    return { version, url: parsed.href, sha256, notes, mandatory: body.mandatory === true, publishedBy: username, publishedAt: new Date().toISOString() };
+}
+
+function parseDesktopRelease(json) {
+    if (!json) return null;
+    try {
+        const release = JSON.parse(json);
+        return release && typeof release.version === 'string' ? release : null;
+    } catch { return null; }
+}
 class PayloadTooLargeError extends Error {
     constructor(maxBytes) {
         super(`請求資料不可超過 ${maxBytes >= 1_000_000 ? `${Math.round(maxBytes / 1_000_000)} MB` : `${Math.round(maxBytes / 1024)} KB`}`);
@@ -1491,6 +1516,22 @@ async function handleRequest(request, env, ctx) {
                 return new Response(renderFormPrint(record, await readFormSettings(env)), {
                     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer' }
                 });
+            }
+
+            // ==================== Desktop program update check ====================
+            // The desktop program (desktop/) asks this on start-up. Public, so it can be
+            // checked before signing in; only the president publishes a new release.
+            if (path === '/api/desktop/version' && ['GET', 'PUT'].includes(method)) {
+                if (method === 'GET') {
+                    const release = parseDesktopRelease(await env.DRONE_DB.get(DESKTOP_RELEASE_KEY));
+                    return Response.json(release || { version: null }, { headers: { 'Cache-Control': 'no-store' } });
+                }
+                const user = await sessionUser(request, env);
+                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                if (!canManageUsers(user)) return Response.json({ error: '只有社長可以發布桌面程式更新' }, { status: 403 });
+                const release = normalizeDesktopRelease(await readJsonObject(request, 16 * 1024), user.username);
+                await env.DRONE_DB.put(DESKTOP_RELEASE_KEY, JSON.stringify(release));
+                return Response.json(release);
             }
 
             // ==================== Paper forms (fill in online, review on paper) ====================

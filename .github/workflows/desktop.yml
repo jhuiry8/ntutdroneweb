@@ -1,0 +1,104 @@
+name: Desktop App (Windows installer)
+
+# Builds ClubDesk-Setup-x.y.z.exe on every change to desktop/.
+# Pushing a tag such as desktop-v1.1.0 also publishes it as a GitHub Release;
+# the president then announces it from 工具 → 發布桌面版更新 so every copy updates.
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'desktop-v*' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'desktop/**', '.github/workflows/desktop.yml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+        shell: pwsh
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt pyinstaller
+
+    - name: Run unit tests
+      env:
+        QT_QPA_PLATFORM: offscreen
+      run: python -m unittest discover -s tests -v
+
+    - name: Read program version
+      id: version
+      run: |
+        $version = python -c "from clubdesk import __version__; print(__version__)"
+        "version=$version" >> $env:GITHUB_OUTPUT
+        if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "desktop-v$version") {
+          throw "Tag $env:GITHUB_REF_NAME does not match clubdesk.__version__ $version"
+        }
+
+    - name: Build program folder
+      run: pyinstaller --noconfirm ClubDesk.spec
+
+    - name: Build installer
+      run: |
+        if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          $env:Path += ";${env:ProgramFiles(x86)}\Inno Setup 6"
+        }
+        iscc /DAppVersion=${{ steps.version.outputs.version }} installer\ClubDesk.iss
+
+    - name: Report size and checksum
+      id: setup
+      run: |
+        $file = Get-Item "dist\ClubDesk-Setup-${{ steps.version.outputs.version }}.exe"
+        $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+        $folder = (Get-ChildItem dist\ClubDesk -Recurse -File | Measure-Object Length -Sum).Sum
+        "Installer: {0:N1} MB, installed size: {1:N1} MB, SHA-256: {2}" -f ($file.Length / 1MB), ($folder / 1MB), $hash
+        if ($file.Length -gt 50MB) { throw "Installer is larger than 50 MB" }
+        "sha256=$hash" >> $env:GITHUB_OUTPUT
+
+    - name: Upload installer
+      uses: actions/upload-artifact@v4
+      with:
+        name: ClubDesk-Setup-${{ steps.version.outputs.version }}
+        path: desktop/dist/ClubDesk-Setup-*.exe
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha256: ${{ steps.setup.outputs.sha256 }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: ClubDesk-Setup-${{ needs.build.outputs.version }}
+
+    - name: Publish GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        name: 社務管理系統 ${{ needs.build.outputs.version }}
+        files: ClubDesk-Setup-*.exe
+        body: |
+          北科無人機社 社務管理系統（桌面版）${{ needs.build.outputs.version }}
+
+          下載 ClubDesk-Setup-${{ needs.build.outputs.version }}.exe 並執行即可安裝。
+
+          SHA-256: ${{ needs.build.outputs.sha256 }}
