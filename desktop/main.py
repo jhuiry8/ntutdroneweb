@@ -2,6 +2,7 @@
 
 import sys
 
+from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
 from PySide6.QtWidgets import QApplication, QDialog
 
 from clubdesk import __version__
@@ -16,6 +17,11 @@ def main() -> int:
     app.setApplicationName("ClubDesk")
     app.setApplicationVersion(__version__)
     apply_classic_style(app)
+    # Chinese text on Qt's own buttons (Yes/No, OK/Cancel in message boxes).
+    QLocale.setDefault(QLocale(QLocale.Chinese, QLocale.Taiwan))
+    translator = QTranslator(app)
+    if translator.load("qtbase_zh_TW", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
+        app.installTranslator(translator)
 
     login = LoginDialog()
     if login.exec() != QDialog.Accepted:

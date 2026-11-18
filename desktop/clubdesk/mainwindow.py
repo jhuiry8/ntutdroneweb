@@ -9,11 +9,13 @@ from PySide6.QtWidgets import (QDialog, QLabel, QMainWindow, QMessageBox, QSplit
 
 from . import __version__
 from .api import (ROLE_LABELS, ApiClient, can_manage_equipment, can_manage_finance,
-                  can_manage_members)
+                  can_manage_members, can_manage_users)
 from .pages.equipment import EquipmentPage
 from .pages.finance import FinancePage
+from .pages.forms import FormsPage
 from .pages.members import FeeReceiptsPage, MembersPage
 from .pages.other import AccountPage, RegulationsPage
+from .updater import PublishDialog, check_and_offer
 
 APP_TITLE = "北科無人機社 社務管理系統"
 
@@ -40,6 +42,7 @@ class MainWindow(QMainWindow):
         leaf = style.standardIcon(QStyle.SP_FileIcon)
         groups = [
             ("社務管理", [(MembersPage, can_manage_members(role)), (FeeReceiptsPage, can_manage_members(role))]),
+            ("文書作業", [(FormsPage, True)]),
             ("財務管理", [(FinancePage, can_manage_finance(role))]),
             ("器材管理", [(EquipmentPage, can_manage_equipment(role))]),
             ("其他", [(RegulationsPage, True), (AccountPage, True)]),
@@ -95,6 +98,10 @@ class MainWindow(QMainWindow):
         self.act_exit = action("結束(&X)", self.close, "Alt+F4")
         self.act_about = action("關於本系統(&A)...", self.about, None, QStyle.SP_MessageBoxInformation)
         self.act_password = action("變更密碼(&P)...", self.change_password, None, None)
+        self.act_update = action("檢查更新(&U)...", lambda: check_and_offer(self, self.api, quiet=False), None, None,
+                                 "向網站查詢是否有新版本")
+        self.act_publish = action("發布桌面版更新(&R)...", lambda: PublishDialog(self, self.api).exec(), None, None,
+                                  "通知所有社員安裝新版本（社長）")
 
         menu = self.menuBar()
         file_menu = menu.addMenu("檔案(&F)")
@@ -110,7 +117,12 @@ class MainWindow(QMainWindow):
             view_menu.addAction(act)
         tools_menu = menu.addMenu("工具(&T)")
         tools_menu.addAction(self.act_password)
+        if can_manage_users(self.user.get("role", "")):
+            tools_menu.addSeparator()
+            tools_menu.addAction(self.act_publish)
         help_menu = menu.addMenu("說明(&H)")
+        help_menu.addAction(self.act_update)
+        help_menu.addSeparator()
         help_menu.addAction(self.act_about)
 
         toolbar = self.addToolBar("標準按鈕")

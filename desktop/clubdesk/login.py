@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QByteArray, QSettings, Qt
+from PySide6.QtCore import QByteArray, QSettings, Qt, QTimer
 from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFrame, QGridLayout, QGroupBox,
                                QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout)
 
 from .api import ApiClient, ApiError, normalize_base_url
+from .updater import check_and_offer
 from .widgets import busy, show_error
 
 
@@ -32,6 +33,7 @@ class LoginDialog(QDialog):
         self.client: ApiClient | None = None
         self.user: dict | None = None
         self.captcha_id = ""
+        self.update_checked = False
 
         banner = QLabel("北科無人機社　社務管理系統\nNTUT Drone Club Management System")
         banner.setObjectName("Banner")
@@ -122,6 +124,14 @@ class LoginDialog(QDialog):
             return
         self.captcha_id = captcha["id"]
         self.captcha_image.setPixmap(svg_pixmap(captcha["svg"]))
+        if not self.update_checked:
+            # Once the server answers, ask it whether a newer desktop version exists.
+            self.update_checked = True
+            QTimer.singleShot(0, self.check_update)
+
+    def check_update(self) -> None:
+        if self.client and check_and_offer(self, self.client):
+            self.reject()
 
     def try_login(self) -> None:
         url = normalize_base_url(self.server.text())

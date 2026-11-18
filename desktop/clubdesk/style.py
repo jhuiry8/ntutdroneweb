@@ -16,9 +16,11 @@ SELECTION = "#0A246A"  # classic navy highlight
 TITLE_BAR = "#0A246A"
 TITLE_BAR_END = "#A6CAF0"
 
-FONT_CANDIDATES = ["PMingLiU", "新細明體", "MingLiU", "細明體", "Microsoft JhengHei",
-                   "微軟正黑體", "Noto Sans CJK TC", "Noto Sans TC", "AR PL UMing TW", "WenQuanYi Zen Hei",
-                   "PingFang TC", "Heiti TC", "Tahoma"]
+# Around 2010 Traditional Chinese Windows used 新細明體 (PMingLiU) as the UI font;
+# 微軟正黑體 was not yet the norm. Only Ming (serif) faces are used, with the
+# closest Ming font on macOS and Linux for development.
+FONT_CANDIDATES = ["PMingLiU", "新細明體", "MingLiU", "細明體",
+                   "LiSong Pro", "Apple LiSung", "AR PL UMing TW", "AR PL New Sung"]
 
 STYLESHEET = f"""
 QToolBar {{ border: none; border-bottom: 1px solid {SHADOW}; spacing: 2px; padding: 1px; }}
@@ -44,7 +46,7 @@ def pick_font() -> QFont:
             break
     else:
         font = QFont()
-    font.setPointSize(9)
+    font.setPointSize(9)  # 新細明體 9pt = the classic 12px bitmap size
     font.setStyleStrategy(QFont.PreferDefault)
     return font
 
