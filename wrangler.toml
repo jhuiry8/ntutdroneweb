@@ -33,3 +33,11 @@ new_sqlite_classes = ["FormStore"]
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["SiteStore"]
+
+[[durable_objects.bindings]]
+name = "ELECTION_STORE"
+class_name = "ElectionStore"
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["ElectionStore"]

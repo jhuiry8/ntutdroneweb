@@ -4,7 +4,7 @@ import { canViewCms, canManageFinance, canManageMembers, canManageEquipment } fr
 import { escapeHtml, safeUrl, sanitizeContent, sanitizeInline } from './html.js';
 
 // Helper: Common Header
-function getHeader(title, lang = 'zh') {
+export function getHeader(title, lang = 'zh') {
     lang = lang === 'en' ? 'en' : 'zh';
     const t = locales[lang];
     return `
@@ -55,7 +55,7 @@ function getHeader(title, lang = 'zh') {
 
 
 // Helper: Common Footer
-function getFooter(lang = 'zh') {
+export function getFooter(lang = 'zh') {
     lang = lang === 'en' ? 'en' : 'zh';
     const t = locales[lang];
     return `
@@ -77,6 +77,7 @@ function getFooter(lang = 'zh') {
                         <a href="/?lang=${lang}">回到首頁</a>
                         <a href="/blog?lang=${lang}">${t.navBlog}</a>
                         <a href="/forms/equipment-loan">設備借用申請</a>
+                        <a href="/vote">社團選舉</a>
                         <a href="https://lin.ee/s5YJgGI" target="_blank">LINE 社群</a>
                     </div>
                 </div>
@@ -1119,6 +1120,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
     const manageFinance = canManageFinance(user);
     const manageMembers = canManageMembers(user);
     const manageEquipment = canManageEquipment(user);
+    const manageElections = ['president', 'cadre'].includes(user?.role);
     if (!viewCms) { posts = []; pages = []; }
     return `
     <!DOCTYPE html>
@@ -1671,6 +1673,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                         ${manageEquipment ? `<button class="nav-item" onclick="showPanel('equipment'); loadEquipment()"><i data-lucide="package-check"></i> 設備管理</button>` : ''}
                         ${viewCms ? `<button class="nav-item" onclick="showPanel('notes'); loadNotes()"><i data-lucide="sticky-note"></i> 社課備忘錄</button>` : ''}
                         <button class="nav-item" onclick="showPanel('regulations'); loadRegulations()"><i data-lucide="scale"></i> 法規查詢</button>
+                        ${manageElections ? `<button class="nav-item" onclick="showPanel('elections'); loadElections()"><i data-lucide="vote"></i> 選舉管理</button>` : ''}
                     </div>
                     <div class="nav-group"><p class="nav-group-label">系統管理</p>
                         <button class="nav-item" onclick="showPanel('settings'); loadMyMember()"><i data-lucide="settings"></i> 系統設定</button>
@@ -2243,6 +2246,13 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     <div class="forms-field" style="justify-content:flex-end;"><button class="btn btn-primary" type="submit">儲存設定</button></div>
                 </form></details>` : ''}
             </div>
+            ${manageElections ? `<!-- Elections Panel -->
+            <div id="panel-elections" class="panel" data-role="${escapeHtml(user?.role || '')}">
+                <div class="content-header"><div><h1>選舉管理</h1><p class="forms-muted">登錄候選人與選舉公報、開始／結束投票、查看投票稽核紀錄與開票結果。選票與投票紀錄分開保存，任何人都看不到個別選民投給誰；開始、結束投票及公布結果限社長操作。公開頁面：<a href="/vote" target="_blank" rel="noopener" style="color:var(--color-cyan);">/vote</a></p></div><button type="button" class="btn btn-primary" id="election-new">新增選舉</button></div>
+                <div id="election-list"></div>
+                <form id="election-editor" class="forms-card" hidden novalidate style="margin-top:16px;"></form>
+                <div id="election-detail" hidden style="margin-top:16px;"></div>
+            </div>` : ''}
             <!-- Settings Panel -->
             <div id="panel-settings" class="panel ${!viewCms ? 'active' : ''}">
                 <div class="content-header">
@@ -3281,6 +3291,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             }
         </script>
         <script src="/admin-forms.js" defer></script>
+        ${manageElections ? '<script src="/admin-elections.js" defer></script>' : ''}
     </body>
     </html>
     `;
