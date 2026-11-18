@@ -75,8 +75,10 @@ test('ballots are secret, single, and limited to checked-in voters', () => {
     applyMeetingOp(meeting, 'status', { status: 'announced' }, officer, now);
     applyMeetingOp(meeting, 'status', { status: 'open', totalMembers: 3 }, officer, now);
     const itemId = meeting.agenda[0].id;
-    applyMeetingOp(meeting, 'attend', { attendee: { memberId: 'a', name: 'A', voting: true } }, { officer: false }, now);
-    applyMeetingOp(meeting, 'attend', { attendee: { memberId: 'b', name: 'B', voting: false } }, { officer: false }, now);
+    assert.match(meeting.checkInCode, /^[A-Z2-9]{6}$/);
+    assert.throws(() => applyMeetingOp(meeting, 'attend', { attendee: { memberId: 'a', name: 'A', voting: true } }, { officer: false }, now), /簽到碼/);
+    applyMeetingOp(meeting, 'attend', { attendee: { memberId: 'a', name: 'A', voting: true }, code: meeting.checkInCode }, { officer: false }, now);
+    applyMeetingOp(meeting, 'attend', { attendee: { memberId: 'b', name: 'B', voting: false }, code: meeting.checkInCode }, { officer: false }, now);
     applyMeetingOp(meeting, 'vote', { itemId, action: 'open' }, officer, now);
     applyMeetingOp(meeting, 'ballot', { itemId, choice: 'agree' }, { memberId: 'a' }, now);
     assert.throws(() => applyMeetingOp(meeting, 'ballot', { itemId, choice: 'agree' }, { memberId: 'a' }, now), /已經投過票/);
@@ -289,28 +291,32 @@ test('members without accounts check in with 學號＋姓名 and vote from one d
     assert.equal((await other.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'B11000001', name: '社員一', code: 'FLY123' })).status, 200);
 });
 
-test('guest check-in can be limited to the venue network and per IP', async () => {
+test('guest check-in always needs a code, records IPs without blocking, and only counts failures', async () => {
     const { request, store, env } = fixture();
-    store.set('members:list', JSON.stringify(roster.map((member, index) => ({ ...member, studentId: `B1100000${index + 1}` }))));
-    assert.equal((await request('/api/meetings', 'cadre', 'POST', { title: 'x', date: '2026-09-15', allowedIps: '999.1.1.1' })).status, 400);
-    const meeting = await openAssembly(request, { allowedIps: '140.124.0.0/16\n2001:db8::/32', maxPerIp: 1 });
-    const outside = guestClient(env, '8.8.8.8');
-    assert.equal((await outside.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'B11000001', name: '社員一' })).status, 403);
-    const first = guestClient(env, '140.124.1.1');
-    assert.equal((await first.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'B11000001', name: '社員一' })).status, 200);
-    const second = guestClient(env, '140.124.1.1');
-    assert.equal((await second.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'B11000002', name: '社員二' })).status, 429);
-    const v6 = guestClient(env, '2001:db8:5::9');
-    assert.equal((await v6.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'B11000002', name: '社員二' })).status, 200);
-    // Leaving the network blocks voting too.
-    first.setIp('8.8.4.4');
-    await request(`/api/meetings/${meeting.id}/agenda/${meeting.agenda[0].id}/vote`, 'cadre', 'POST', { action: 'open' });
-    assert.equal((await first.call(`/api/public/meetings/${meeting.id}/ballot`, { itemId: meeting.agenda[0].id, choice: 'agree' })).status, 403);
-    // Guessing student IDs is rate limited per IP.
-    const guesser = guestClient(env, '140.124.9.9');
+    // Forty members on one shared campus IP.
+    const many = Array.from({ length: 40 }, (_, i) => ({ id: `g${i}`, name: `社員${i}`, studentId: `B120000${String(i).padStart(2, '0')}`, level: 'member', feeStatus: 'lifetime' }));
+    store.set('members:list', JSON.stringify(many));
+    const meeting = await openAssembly(request);
+    assert.match(meeting.checkInCode, /^[A-HJ-NP-Z2-9]{6}$/);
+    const code = meeting.checkInCode;
+    const noCode = guestClient(env, '140.124.1.1');
+    assert.equal((await noCode.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: 'B12000000', name: '社員0' })).status, 400);
+    for (let i = 0; i < 40; i++) {
+        const phone = guestClient(env, '140.124.1.1');
+        assert.equal((await phone.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: `B120000${String(i).padStart(2, '0')}`, name: `社員${i}`, code })).status, 200, `member ${i}`);
+    }
+    // Any network works; the IP is only kept on the attendance record.
+    const abroad = await (await request(`/api/meetings/${meeting.id}`, 'cadre')).json();
+    assert.equal(abroad.attendanceCount, 40);
+    assert.equal(abroad.attendance[0].ip, '140.124.1.1');
+    // Wrong guesses are limited per IP and meeting.
+    const guesser = guestClient(env, '203.0.113.9');
     let last;
-    for (let i = 0; i < 31; i++) last = await guesser.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: `X${i}`, name: '猜' });
+    for (let i = 0; i < 31; i++) last = await guesser.call(`/api/public/meetings/${meeting.id}/checkin`, { studentId: `X${i}`, name: '猜', code });
     assert.equal(last.status, 429);
+    // A code the chair set is kept.
+    const chosen = await openAssembly(request, { checkInCode: 'DRONE9' });
+    assert.equal(chosen.checkInCode, 'DRONE9');
 });
 
 test('guest access can be turned off per meeting, and drafts are never public', async () => {

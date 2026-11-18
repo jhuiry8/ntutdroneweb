@@ -38,7 +38,7 @@
         if (error) html += '<div class="error">' + esc(error) + '</div>';
 
         if (m.me) html += '<div class="card"><p class="ok">✅ 已簽到：' + esc(m.me.name) + '</p><p class="muted">' + (m.me.voting ? '您具有表決權。' : '您以列席身分出席，不具表決權。') + '請不要清除瀏覽器資料或換裝置，否則需要請主席重設。</p></div>';
-        else if (m.status === 'open') html += '<form class="card" id="checkin"><h2>簽到</h2><p class="muted">請輸入社員名冊上的學號與姓名。一台裝置只能替一位社員簽到。</p><label>學號<input name="studentId" autocomplete="off" autocapitalize="characters" maxlength="30" required></label><label>姓名<input name="name" autocomplete="name" maxlength="50" required></label>' + (m.requiresCode ? '<label>現場簽到碼<input name="code" autocomplete="off" autocapitalize="characters" maxlength="12" required></label>' : '') + '<div class="row"><button class="primary" type="submit">簽到</button></div></form>';
+        else if (m.status === 'open') html += '<form class="card" id="checkin"><h2>簽到</h2><p class="muted">請輸入社員名冊上的學號與姓名。一台裝置只能替一位社員簽到。</p><label>學號<input name="studentId" autocomplete="off" autocapitalize="characters" maxlength="30" required></label><label>姓名<input name="name" autocomplete="name" maxlength="50" required></label>' + '<label>現場簽到碼<input name="code" autocomplete="off" autocapitalize="characters" maxlength="12" required></label>' + '<div class="row"><button class="primary" type="submit">簽到</button></div></form>';
         else if (m.status === 'announced') html += '<div class="card"><p>會議尚未開始，開會時主席開放後即可在此頁簽到。</p></div>';
         else html += '<div class="card"><p>會議已散會。</p></div>';
 

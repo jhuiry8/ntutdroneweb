@@ -6,7 +6,7 @@ import { membershipStatus } from './membership.js';
 import { sanitizeContent, escapeHtml } from './html.js';
 import { aiProvider } from './forms.js';
 import { draftMeetingNotice, draftMinutes } from './ai.js';
-import { MEETING_TYPES, AGENDA_KINDS, THRESHOLDS, MEETING_STATUSES, meetingView, canSeeMeeting, minutesFacts, publicMeetingView, findMemberByIdentity, ipAllowed } from './meetings.js';
+import { MEETING_TYPES, AGENDA_KINDS, THRESHOLDS, MEETING_STATUSES, meetingView, canSeeMeeting, minutesFacts, publicMeetingView, findMemberByIdentity } from './meetings.js';
 
 const MEMBERS_KEY = 'members:list';
 
@@ -65,7 +65,9 @@ h1 { font-size: 20pt; text-align: center; } h2 { font-size: 14pt; margin-top: 18
 <p class="no-print" style="text-align:center; margin-top:24px;"><button onclick="window.print()">列印／另存 PDF</button></p></body></html>`;
 }
 
-const GUEST_ATTEMPTS_PER_IP = 30;
+// Failed 學號＋姓名 or code attempts per IP per meeting; successful check-ins are not counted,
+// so a whole class on one shared campus IP can still sign in.
+const GUEST_FAILURES_PER_IP = 30;
 const GUEST_WINDOW_SECONDS = 900;
 const GUEST_COOKIE_SECONDS = 12 * 3600;
 
@@ -115,18 +117,19 @@ async function handlePublicMeeting(request, env, deps, path, method) {
     const body = await deps.readJsonLimited(request, 8 * 1024);
 
     if (action === 'checkin') {
-        // Every attempt counts per IP, so student IDs cannot be guessed in bulk.
-        if (!(await deps.takeAttempt(env, [{ key: `meeting-guest:${ip || 'unknown'}`, max: GUEST_ATTEMPTS_PER_IP, windowSeconds: GUEST_WINDOW_SECONDS }]))) return json({ error: '嘗試次數過多，請 15 分鐘後再試' }, 429);
+        // Each attempt is taken up front and handed back when it succeeds, so only failures count.
+        const attemptKey = `meeting-guest:${id}:${ip || 'unknown'}`;
+        if (!(await deps.takeAttempt(env, [{ key: attemptKey, max: GUEST_FAILURES_PER_IP, windowSeconds: GUEST_WINDOW_SECONDS }]))) return json({ error: '錯誤次數過多，請 15 分鐘後再試，或洽主席協助' }, 429);
         const member = findMemberByIdentity(await roster(env), body?.studentId, body?.name);
         if (!member) return json({ error: '學號或姓名與社員名冊不符，請確認後再試，或洽主席協助' }, 400);
         const newToken = guest ? token : Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('');
         const result = await meetingStore(env, '/op', { id, op: 'guest-checkin', actor: { username: 'guest' }, attendee: attendeeFor(member), tokenHash: await sha256(newToken), deviceHash: tokenHash, ip, code: body?.code });
         if (result.status !== 200) return json(result.body, result.status);
+        await deps.giveBackAttempt(env, [attemptKey]);
         return new Response(JSON.stringify(publicMeetingView(result.body, member.id)), { headers: { 'Content-Type': 'application/json', 'Set-Cookie': `${guestCookieName(id)}=${newToken}; Path=/; HttpOnly; Max-Age=${GUEST_COOKIE_SECONDS}; Secure; SameSite=Strict` } });
     }
     if (action === 'ballot') {
         if (!guest) return json({ error: '請先簽到' }, 403);
-        if (!ipAllowed(ip, meeting.allowedIps)) return json({ error: '請連上會場網路後再投票' }, 403);
         const result = await meetingStore(env, '/op', { id, op: 'ballot', actor: { username: 'guest', memberId: guest.memberId }, itemId: String(body?.itemId || ''), choice: body?.choice });
         return json(result.status === 200 ? publicMeetingView(result.body, guest.memberId) : result.body, result.status);
     }
@@ -163,8 +166,7 @@ export async function handleMeetingRequest(request, env, deps) {
             me: { officer: actor.officer, president: actor.president, memberId: actor.memberId, voting: member ? membershipStatus(member).voting : false, name: member?.name || '' },
             options: { types: Object.fromEntries(Object.entries(MEETING_TYPES).map(([key, value]) => [key, value.label])), kinds: AGENDA_KINDS, thresholds: Object.fromEntries(Object.entries(THRESHOLDS).map(([key, value]) => [key, value.label])), statuses: MEETING_STATUSES },
             roster: actor.officer ? members.map(entry => ({ id: entry.id, name: entry.name, studentId: entry.studentId, voting: membershipStatus(entry).voting })) : [],
-            ai: Boolean(aiProvider(env)),
-            myIp: actor.officer ? (request.headers.get('CF-Connecting-IP') || '') : ''
+            ai: Boolean(aiProvider(env))
         });
     }
     if (path === '/api/meetings' && method === 'POST') {

@@ -518,7 +518,7 @@ function addSecurityHeaders(response, request) {
 
 // What the AI routes and the weekly report need from this module.
 const aiDeps = {
-    sessionUser, readJsonLimited, withAiQuota, formStore, equipmentStoreRequest, aiDailyLimit, takeAttempt,
+    sessionUser, readJsonLimited, withAiQuota, formStore, equipmentStoreRequest, aiDailyLimit, takeAttempt, giveBackAttempt,
     readRegulations: async env => parseRegulations(await env.DRONE_DB.get(REGULATIONS_KEY))
 };
 
