@@ -430,7 +430,7 @@ ICONS = {
         '<circle cx="12" cy="12" r="9" fill="#008080" stroke="#004D40" stroke-width="0.8"/>'
         '<ellipse cx="12" cy="12" rx="4.5" ry="9" fill="none" stroke="#80CBC4" stroke-width="0.8"/>'
         '<line x1="3" y1="12" x2="21" y2="12" stroke="#80CBC4" stroke-width="0.8"/>'
-        '<polygon points="12,3 7,9 10,9 10,15 14,15 14,9 17,9" fill="#FFD54F" stroke="#FFA000" stroke-width="0.6"/>'
+        '<polygon points="12,21 7,15 10,15 10,9 14,9 14,15 17,15" fill="#81C784" stroke="#2E7D32" stroke-width="0.6"/>'
     ),
     "publish": (
         "#008080",
@@ -532,8 +532,10 @@ ICONS = {
     ),
     "md-hr": (
         "#808080",
-        '<rect x="2" y="11" width="20" height="2" fill="#808080"/>'
-        '<line x1="2" y1="13" x2="22" y2="13" stroke="#FFFFFF" stroke-width="1"/>'
+        '<rect x="3" y="4" width="18" height="3" fill="#FFFFFF" stroke="#808080" stroke-width="0.6"/>'
+        '<rect x="2" y="10.5" width="20" height="3" fill="#404040"/>'
+        '<line x1="2" y1="14" x2="22" y2="14" stroke="#FFFFFF" stroke-width="1"/>'
+        '<rect x="3" y="17" width="18" height="3" fill="#FFFFFF" stroke="#808080" stroke-width="0.6"/>'
     ),
     "md-video": (
         "#212121",

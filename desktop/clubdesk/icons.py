@@ -1,8 +1,9 @@
 """Coloured toolbar, menu and navigation icons, plus the program icon.
 
-The shapes come from icondata.py (generated from the Lucide set the website
-already uses). Each icon is drawn at 16, 20, 24 and 32 px so it stays sharp on
-high-DPI screens; results are cached.
+The shapes are hand-drawn Windows 98/2000-style vector icons in icondata.py
+(edit that file directly). Each icon is drawn at 16, 20, 24, 32 and 48 px so it
+stays sharp on high-DPI screens, with a greyed-out copy for disabled buttons;
+results are cached.
 """
 
 from __future__ import annotations
@@ -63,7 +64,10 @@ def _make_disabled(pixmap: QPixmap) -> QPixmap:
 
 @lru_cache(maxsize=None)
 def icon(name: str, light: bool = False) -> QIcon:
-    """Named icon (cached at standard sizes with normal and disabled states); empty for unknown names."""
+    """Named icon (cached at standard sizes with normal and disabled states); empty for unknown names.
+
+    `light` is kept for callers that used white line icons on dark bars; the
+    full-colour icons read well on any background, so it no longer changes anything."""
     if name not in ICONS:
         return QIcon()
     result = QIcon()

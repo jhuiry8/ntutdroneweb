@@ -295,7 +295,7 @@ class MainWindow(QMainWindow):
                           "國立臺北科技大學無人機社 社務管理桌面程式。<br>"
                           f"社團網站：<a href='{self.api.base_url}'>{self.api.base_url}</a><br>"
                           "資料與社團網站後台共用，所有變更會即時寫入網站伺服器。<br><br>"
-                          "圖示取自 Lucide（ISC 授權）。")
+                          "圖示為仿 Windows 98／2000 風格的自繪向量圖示。")
 
     def relogin(self) -> None:
         """Sign out and show the login dialog again; quit if it is cancelled."""

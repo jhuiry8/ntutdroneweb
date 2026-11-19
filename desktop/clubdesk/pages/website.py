@@ -541,6 +541,7 @@ class ContentPage(Page):
         self.lang.addItem("（全部語言）", "")
         for value, label in LANGS:
             self.lang.addItem(label, value)
+        self.lang.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         self.lang.currentIndexChanged.connect(self.apply_filter)
         row.addWidget(QLabel("關鍵字："))
         row.addWidget(self.query, 1)
@@ -779,7 +780,10 @@ class HomepagePage(Page):
         tabs = QTabWidget()
         for section, fields in HOMEPAGE_SECTIONS:
             page = QWidget()
-            form = QFormLayout(page)
+            column = QVBoxLayout(page)
+            form = QFormLayout()
+            column.addLayout(form)
+            column.addStretch(1)  # keep the fields together at the top
             for key, label, default, multi in fields:
                 if multi:
                     edit = QPlainTextEdit()

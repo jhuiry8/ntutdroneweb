@@ -49,6 +49,7 @@
         '.msg-item { margin-bottom:10px; } .msg-item .who { font-weight:600; font-size:.88rem; } .msg-item .at { color:var(--text-muted); font-size:.78rem; margin-left:6px; }',
         '.msg-item .text { margin-top:2px; line-height:1.6; word-break:break-word; } .msg-item.mine .who { color:var(--color-cyan); }',
         '.msg-item .tools button { background:none; border:0; color:var(--text-muted); cursor:pointer; font-size:.78rem; }',
+        '.msg-item .tools button + button { margin-left:6px; } .msg-item a, .msg-ann a { color:var(--color-cyan); text-decoration:underline; }',
         '.msg-compose { display:flex; gap:8px; padding:10px; border-top:1px solid var(--border-glass); } .msg-compose textarea { flex:1; resize:vertical; min-height:44px; }',
         '.msg-ann { padding:14px 16px; border:1px solid var(--border-glass); border-radius:12px; margin-bottom:12px; } .msg-ann.unread { border-color:#60a5fa; }',
         '.msg-ann .body { white-space:pre-wrap; line-height:1.7; margin-top:6px; }',

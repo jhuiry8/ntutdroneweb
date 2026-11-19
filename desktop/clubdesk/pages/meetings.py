@@ -679,6 +679,7 @@ class MeetingsPage(Page):
         self.new = icon_button("召開新會議(&N)...", "add")
         self.new.clicked.connect(lambda: self.create(""))
         self.template = QComboBox()
+        self.template.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         self.template.addItem("用範本建立…", "")
         for name in TEMPLATES:
             self.template.addItem(name, name)
