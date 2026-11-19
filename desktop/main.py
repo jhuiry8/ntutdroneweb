@@ -27,13 +27,19 @@ def wait_in_tray(app, instances, notice: str):
     menu.addActions([sign_in, quit_action])
     tray.setContextMenu(menu)
 
+    asking = []
+
     def ask_login() -> None:
+        if asking:  # a second start or a tray click while the dialog is already open
+            return
+        asking.append(True)
         sign_in.setEnabled(False)
         dialog = LoginDialog(notice=notice)
         if dialog.exec() == QDialog.Accepted:
             result["login"] = (dialog.client, dialog.user)
             app.quit()
         sign_in.setEnabled(True)
+        asking.clear()
 
     sign_in.triggered.connect(ask_login)
     quit_action.triggered.connect(app.quit)
@@ -70,6 +76,7 @@ def main() -> int:
     if ask_running_instance():
         return 0  # already running (maybe hidden in the tray); it was asked to show itself
     instances = InstanceServer(parent=app)
+    app.instances = instances  # MainWindow.relogin points it at the new window
     autostarted = "--autostart" in sys.argv
     client, user, notice = auto_login(autostarted)
     skipped_login_dialog = bool(client)
@@ -85,13 +92,14 @@ def main() -> int:
             return 0
         client, user, autostarted = login.client, login.user, False
     window = MainWindow(client, user, LoginDialog)
-    instances.set_handler(window.restore_window)
     if autostarted and window.tray:
         window.hide_to_tray_silently()  # started with Windows: stay in the tray
     else:
         window.show()
         if skipped_login_dialog:  # the login dialog normally checks for updates
             QTimer.singleShot(3000, lambda: check_and_offer(window, client))
+    # Last: a second start that arrived while we were signing in is answered now, after the window is set up.
+    instances.set_handler(window.restore_window)
     return app.exec()
 
 

@@ -467,6 +467,9 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.Accepted:
             window = MainWindow(dialog.client, dialog.user, self.login_factory)
             window.show()
+            instances = getattr(QApplication.instance(), "instances", None)
+            if instances:  # a later second start must open this window, not the closed one
+                instances.set_handler(window.restore_window)
             # Keep a reference so the new window is not garbage-collected.
             self.successor = window
         self.save_geometry()
