@@ -46,12 +46,19 @@ TOPICS = [
 <tr><td><kbd>F1</kbd></td><td>開啟使用教學</td></tr>
 <tr><td><kbd>F5</kbd></td><td>重新從伺服器讀取目前畫面</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>把目前表格匯出成 Excel 可開啟的 CSV</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></td><td>把目前畫面匯出成 Word（.docx）文件</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>1</kbd> ～ <kbd>9</kbd></td><td>切換到「檢視」選單中的第 1～9 個畫面</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>開啟訊息中心（聊天室與私訊）</td></tr>
 <tr><td>文章編輯器 <kbd>Ctrl</kbd>+<kbd>B</kbd>／<kbd>I</kbd>／<kbd>K</kbd></td><td>粗體／斜體／插入連結</td></tr>
 <tr><td>聊天 <kbd>Enter</kbd>／<kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>送出／換行</td></tr></table>
 <h3>表格操作</h3>
 <ul><li>點欄位標題可排序，再點一次反向排序。</li><li>拖曳欄位邊界可調整寬度。</li><li>雙擊一列等於按「修改」或「開啟」。</li></ul>
+<h3>匯出 Word（.docx）</h3>
+<p>工具列的「匯出 Word」或 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> 會把目前畫面存成可直接列印、繳交學校的 Word 文件：</p>
+<ul><li>表格（社員、帳目、器材…）：匯出目前顯示的資料，欄位多時自動橫向。</li>
+<li>文章或頁面：先選取一篇，匯出完整內文。</li>
+<li>會議：先選取一場，匯出完整會議資料、表決結果、出席名單與會議紀錄（附簽名欄）。</li>
+<li>法規查詢會匯出整本法規彙編；聊天室匯出目前的對話紀錄。</li></ul>
 <h3>系統匣通知</h3>
 <p>程式開著時，每 30 秒會檢查新訊息與公告；有新的會在螢幕右下角跳出通知，點通知即可前往查看。</p>
 """),

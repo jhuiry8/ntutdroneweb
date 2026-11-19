@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QFr
                                QTableWidgetItem, QVBoxLayout, QWidget)
 
 from .api import ApiError
+from .docx import Document
 from .icons import icon
 
 Column = tuple  # (header, key or callable, optional "right" alignment)
@@ -183,6 +184,46 @@ class DataTable(QTableWidget):
                 writer.writerow([self.item(r, c).text() if self.item(r, c) else "" for c in range(self.columnCount())])
         QMessageBox.information(parent, "匯出完成", f"已匯出 {self.rowCount()} 筆資料至\n{path}")
 
+    def visible_rows(self) -> list[list[str]]:
+        """The cells as shown (current sort order and filter)."""
+        return [[self.item(r, c).text() if self.item(r, c) else "" for c in range(self.columnCount())] for r in range(self.rowCount())]
+
+    def export_docx(self, parent, path: str, title: str, subtitle: str = "") -> None:
+        right = {i for i, column in enumerate(self.columns) if len(column) > 2 and column[2] == "right"}
+        headers = [c[0] for c in self.columns]
+        document = Document(title, landscape=len(headers) > 6)
+        document.title_block(title, subtitle)
+        document.table(headers, self.visible_rows(), align_right=right)
+        document.paragraph(f"共 {self.rowCount()} 筆", align="right", size=18)
+        save_docx(parent, document, path)
+
+
+def docx_path(parent, default_name: str) -> str:
+    """Asks where to save a Word file; '' when cancelled."""
+    name = default_name if default_name.lower().endswith(".docx") else re.sub(r"\.\w+$", "", default_name) + ".docx"
+    path, _ = QFileDialog.getSaveFileName(parent, "匯出 Word", name, "Word 文件 (*.docx)")
+    if path and not path.lower().endswith(".docx"):
+        path += ".docx"
+    return path
+
+
+def export_info(user: dict | None, server: str = "") -> str:
+    from datetime import datetime
+    who = f"・匯出者 {user.get('username')}" if user else ""
+    return f"匯出時間 {datetime.now():%Y-%m-%d %H:%M}{who}" + (f"・{server}" if server else "")
+
+
+def save_docx(parent, document: Document, path: str) -> bool:
+    try:
+        document.save(path)
+    except OSError as error:
+        QMessageBox.warning(parent, "匯出 Word", f"無法儲存檔案（檔案是否正在 Word 中開啟？）：\n{error}")
+        return False
+    if QMessageBox.question(parent, "匯出完成", f"已儲存至\n{path}\n\n要現在開啟嗎？",
+                            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+    return True
+
 
 class Page(QWidget):
     """A work area with a caption bar, like the right pane of a classic MMC console."""
@@ -244,6 +285,16 @@ class Page(QWidget):
             QMessageBox.information(self, "匯出", "此畫面沒有可匯出的表格。")
             return
         self.table.export_csv(self, self.export_name)
+
+    def export_docx(self) -> None:
+        """Word export of the current page; pages with richer content override it."""
+        if self.table is None:
+            QMessageBox.information(self, "匯出 Word", "此畫面沒有可匯出的表格。")
+            return
+        path = docx_path(self, self.export_name if self.export_name != "export.csv" else f"{self.title}.docx")
+        if not path:
+            return
+        self.table.export_docx(self, path, self.title, export_info(self.user, getattr(self.api, "base_url", "")))
 
 
 # Buttons without an icon get one from the start of their caption.

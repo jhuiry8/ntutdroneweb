@@ -314,6 +314,16 @@ ICONS = {
         '<line x1="6.5" y1="3" x2="6.5" y2="21" stroke="#81C784" stroke-width="0.6"/>'
         '<polygon points="12,13 7,18 10,18 10,23 14,23 14,18 17,18" fill="#F57C00" stroke="#E65100" stroke-width="0.6"/>'
     ),
+    "word": (
+        "#1F4E9A",
+        '<path d="M5 2h10l4 4v16H5z" fill="#FFFFFF" stroke="#5A6B85" stroke-width="0.8"/>'
+        '<path d="M15 2v4h4" fill="#D6E2F5" stroke="#5A6B85" stroke-width="0.8"/>'
+        '<line x1="11" y1="9" x2="17" y2="9" stroke="#90A4C8" stroke-width="0.8"/>'
+        '<line x1="11" y1="12" x2="17" y2="12" stroke="#90A4C8" stroke-width="0.8"/>'
+        '<line x1="11" y1="15" x2="17" y2="15" stroke="#90A4C8" stroke-width="0.8"/>'
+        '<rect x="2" y="7" width="11" height="11" rx="1" fill="#2B579A" stroke="#173A70" stroke-width="0.8"/>'
+        '<path d="M3.8 9.5l1.4 6 1.3-4.3 1.3 4.3 1.4-6" fill="none" stroke="#FFFFFF" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>'
+    ),
     "export-md": (
         "#1976D2",
         '<polygon points="4,2 14,2 18,6 18,22 4,22" fill="#FFFFFF" stroke="#546E7A" stroke-width="0.8"/>'
