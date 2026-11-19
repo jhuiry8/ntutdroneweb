@@ -5,9 +5,10 @@ from __future__ import annotations
 from PySide6.QtCore import QByteArray, QSettings, Qt, QTimer
 from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFrame, QGridLayout, QGroupBox,
+from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFrame, QGridLayout, QGroupBox,
                                QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout)
 
+from . import autostart, saved_session
 from .api import DEFAULT_SERVER, ApiClient, ApiError, normalize_base_url
 from .icons import app_icon, app_pixmap, icon
 from .updater import check_and_offer
@@ -26,7 +27,7 @@ def svg_pixmap(svg: str) -> QPixmap:
 
 
 class LoginDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, notice: str = ""):
         super().__init__(parent)
         self.setWindowTitle("登入 - 北科無人機社 社務管理系統")
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
@@ -83,6 +84,14 @@ class LoginDialog(QDialog):
             label = grid.itemAtPosition((0, 1, 2, 4)[i], 0).widget()
             label.setBuddy(widget)
 
+        self.remember = QCheckBox("保持登入 30 天（下次開啟程式自動登入）(&K)")
+        self.remember.setChecked(self.settings.value("login/remember", True, bool))
+        self.autostart = QCheckBox("開機時自動啟動並縮小到系統匣(&A)")
+        self.autostart.setChecked(autostart.is_enabled())
+        self.autostart.setVisible(autostart.supported())
+        grid.addWidget(self.remember, 5, 0, 1, 3)
+        grid.addWidget(self.autostart, 6, 0, 1, 3)
+
         buttons = QDialogButtonBox()
         self.ok = buttons.addButton("登入", QDialogButtonBox.AcceptRole)
         buttons.addButton("取消", QDialogButtonBox.RejectRole)
@@ -95,7 +104,7 @@ class LoginDialog(QDialog):
         inner = QVBoxLayout()
         inner.setContentsMargins(10, 4, 10, 0)
         inner.addWidget(box)
-        hint = QLabel("驗證碼不分大小寫，五分鐘內有效，每張只能使用一次。")
+        hint = QLabel((notice + "\n" if notice else "") + "驗證碼不分大小寫，五分鐘內有效，每張只能使用一次。")
         hint.setStyleSheet("color: #404040;")
         inner.addWidget(hint)
         row = QHBoxLayout()
@@ -166,7 +175,8 @@ class LoginDialog(QDialog):
         try:
             with busy():
                 self.user = self.client.login(self.username.text().strip().lower(), self.password.text(),
-                                              self.captcha_id, self.captcha_answer.text().strip())
+                                              self.captcha_id, self.captcha_answer.text().strip(),
+                                              self.remember.isChecked())
         except ApiError as error:
             show_error(self, error, "登入失敗")
             if "密碼" in str(error):
@@ -176,4 +186,14 @@ class LoginDialog(QDialog):
             return
         self.settings.setValue("server", url)
         self.settings.setValue("username", self.username.text().strip().lower())
+        self.settings.setValue("login/remember", self.remember.isChecked())
+        if self.remember.isChecked() and self.client.token:
+            saved_session.save(url, self.user.get("username", ""), self.client.token, self.client.session_seconds or None)
+        else:
+            saved_session.clear()
+        if autostart.supported():
+            try:
+                autostart.set_enabled(self.autostart.isChecked() and self.remember.isChecked())
+            except OSError as error:
+                show_error(self, ApiError(f"無法設定開機自動啟動：{error}"))
         self.accept()

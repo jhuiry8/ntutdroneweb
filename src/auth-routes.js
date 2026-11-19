@@ -24,6 +24,9 @@ const LOGIN_MAX_ATTEMPTS_PER_ACCOUNT = 5;
 const LOGIN_MAX_ATTEMPTS_PER_IP = 20;
 const LOGIN_LOCKOUT_SECONDS = 900;
 const CAPTCHA_MAX_PER_IP = 60;
+// Normal sessions last a day; "保持登入" (desktop program) lasts 30 days, then the person signs in again.
+const SESSION_SECONDS = 86400;
+export const REMEMBER_SESSION_SECONDS = 30 * 86400;
 
 // Helper: Render the login page. When Cloudflare Turnstile is not configured,
 // a self-hosted image CAPTCHA is attached so every login attempt needs one.
@@ -110,13 +113,14 @@ export async function handleAuthRequest(request, env) {
             await siteStore(env, '/limit/clear', { key: attemptsKey });
             await giveBackAttempt(env, [ipAttemptsKey]);
             const token = crypto.randomUUID();
-            await env.DRONE_DB.put(`session:${token}`, JSON.stringify({ username: user.username, version: user.version }), { expirationTtl: 86400 });
+            const sessionSeconds = ['1', 'true', 'on'].includes(String(formData.get('remember') || '')) ? REMEMBER_SESSION_SECONDS : SESSION_SECONDS;
+            await env.DRONE_DB.put(`session:${token}`, JSON.stringify({ username: user.username, version: user.version }), { expirationTtl: sessionSeconds });
 
             return new Response('', {
                 status: 302,
                 headers: {
                     'Location': '/admin/dashboard',
-                    'Set-Cookie': `session=${token}; Path=/; HttpOnly; Max-Age=86400; Secure; SameSite=Lax`
+                    'Set-Cookie': `session=${token}; Path=/; HttpOnly; Max-Age=${sessionSeconds}; Secure; SameSite=Lax`
                 }
             });
         } else {
