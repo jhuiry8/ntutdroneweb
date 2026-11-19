@@ -366,6 +366,7 @@ class MainWindow(QMainWindow):
             self.act_autostart.setChecked(autostart.is_enabled())
             show_error(self, ApiError(f"無法設定開機自動啟動：{error}"))
             return
+        QSettings().setValue("login/autostart", checked)
         if checked and not (saved_session.load() or {}).get("token"):
             QMessageBox.information(self, APP_TITLE, "開機自動啟動需要「保持登入 30 天」才能自動登入。"
                                     "請從「檔案 → 登出並切換使用者」重新登入並勾選保持登入。")

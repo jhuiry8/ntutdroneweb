@@ -87,7 +87,8 @@ class LoginDialog(QDialog):
         self.remember = QCheckBox("保持登入 30 天（下次開啟程式自動登入）(&K)")
         self.remember.setChecked(self.settings.value("login/remember", True, bool))
         self.autostart = QCheckBox("開機時自動啟動並縮小到系統匣(&A)")
-        self.autostart.setChecked(autostart.is_enabled())
+        # On by default; afterwards the last choice is remembered.
+        self.autostart.setChecked(self.settings.value("login/autostart", True, bool))
         self.autostart.setVisible(autostart.supported())
         grid.addWidget(self.remember, 5, 0, 1, 3)
         grid.addWidget(self.autostart, 6, 0, 1, 3)
@@ -191,6 +192,7 @@ class LoginDialog(QDialog):
             saved_session.save(url, self.user.get("username", ""), self.client.token, self.client.session_seconds or None)
         else:
             saved_session.clear()
+        self.settings.setValue("login/autostart", self.autostart.isChecked())
         if autostart.supported():
             try:
                 autostart.set_enabled(self.autostart.isChecked() and self.remember.isChecked())
