@@ -36,3 +36,21 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Lets the Desktop App workflow announce each automatic release to the website
+      # (PUT /api/desktop/version). Optional: skipped when the GitHub secret is not set.
+      - name: Sync desktop release token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DESKTOP_RELEASE_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
+        run: |
+          if [ -z "$DESKTOP_RELEASE_TOKEN" ]; then
+            echo "DESKTOP_RELEASE_TOKEN is not set; desktop releases must be announced by the president in the program."
+            exit 0
+          fi
+          if [ ${#DESKTOP_RELEASE_TOKEN} -lt 32 ]; then
+            echo "::warning::DESKTOP_RELEASE_TOKEN must be at least 32 characters; not installed."
+            exit 0
+          fi
+          printf '%s' "$DESKTOP_RELEASE_TOKEN" | npx wrangler secret put DESKTOP_RELEASE_TOKEN

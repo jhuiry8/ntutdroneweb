@@ -81,18 +81,35 @@
 
 也可以從「說明 → 檢查更新」手動檢查。社長可把某個版本設為「必要更新」，舊版就必須更新才能使用。
 
-### 發布新版本（給維護者）
+### 發布新版本（自動）
 
-1. 修改 `desktop/clubdesk/__init__.py` 的 `__version__`，例如 `1.2.0`，合併到 `main`。
-2. 在 `main` 上建立並推送標籤 `desktop-v1.2.0`：
-   ```bash
-   git tag desktop-v1.2.0
-   git push origin desktop-v1.2.0
-   ```
-3. GitHub Actions（Desktop App）會自動打包安裝程式，並建立 GitHub Release，說明中附上 SHA-256。
-4. 社長用桌面版「工具 → 發布桌面版更新」，按「從 GitHub 最新 Release 帶入」，確認後按確定。之後所有社員開啟程式就會收到更新通知。
+**合併到 `main` 就會自動發布**（只要這次合併有改到 `desktop/`）：
 
-網站端只接受 `https://github.com/` 的下載網址，且只有社長能發布。
+1. GitHub Actions（Desktop App）測試並打包安裝程式，自動決定版本號：
+   * 主、次版本取自 `desktop/clubdesk/__init__.py` 的 `__version__`（例如 `1.2`）。
+   * 修訂號自動加一：第一次發布 `1.2.0`，之後依序 `1.2.1`、`1.2.2`…
+   * 要升大版本時，把 `__version__` 改成例如 `1.3.0` 再合併，就會從 `1.3.0` 開始。
+2. 建立標籤 `desktop-vX.Y.Z` 與 GitHub Release（附 SHA-256，說明取自 PR 標題）。
+3. **自動通知網站**：若設定了 GitHub Secret `DESKTOP_RELEASE_TOKEN`，會直接更新網站的
+   `/api/desktop/version`，所有社員下次開啟程式就會收到更新通知，社長不用再手動操作。
+
+PR 只會測試與打包，不會發布；Actions 紀錄中會顯示「Merging this pull request would release X」。
+
+#### 一次性設定：自動通知網站
+
+1. 產生一組至少 32 字元的隨機字串，例如在終端機執行 `openssl rand -hex 32`。
+2. GitHub 儲存庫 → Settings → Secrets and variables → Actions → New repository secret，
+   名稱 `DESKTOP_RELEASE_TOKEN`，值貼上剛才的字串。
+3. 之後任何一次合併到 `main`，網站部署流程會自動把同一組字串設定到 Cloudflare Worker。
+4. 網站網址不是 `https://ntut.tpe.pp.ua` 時，在同一頁的 Variables 新增 `SITE_URL`。
+
+沒有設定這個 Secret 也沒關係：Release 照樣自動建立，只是要由社長用桌面版
+「工具 → 發布桌面版更新 → 從 GitHub 最新 Release 帶入」通知大家。
+
+#### 手動發布（選用）
+
+仍可手動推送標籤 `desktop-vX.Y.Z` 來發布指定版本。網站只接受 `https://github.com/` 的下載網址；
+人工發布只有社長能做，自動通知用的權杖不會把網站上的版本改回較舊的版本。
 
 ## 檔案大小
 
