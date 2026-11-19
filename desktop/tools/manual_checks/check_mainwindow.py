@@ -7,6 +7,7 @@ DESKTOP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."
 if DESKTOP_DIR not in sys.path:
     sys.path.insert(0, DESKTOP_DIR)
 
+from clubdesk import qtcompat  # noqa: F401  (PySide2 fallback)
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 

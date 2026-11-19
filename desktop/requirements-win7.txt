@@ -1,0 +1,4 @@
+# Windows 7 edition: Python 3.8 (the last Python that runs on Windows 7) + Qt 5.15.
+# Build with .github/workflows/desktop-win7.yml. The normal edition uses requirements.txt.
+PySide2>=5.15.2.1,<5.16
+certifi

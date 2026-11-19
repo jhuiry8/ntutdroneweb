@@ -57,11 +57,23 @@
 4. **MMC 風格漸層標題列**：各功能頁面頂部配備微軟管理主控台（MMC）經典深藍漸層標題橫幅（`#000080` 至 `#1084d0`）。
 5. **經典控制項與狀態列**：具備下凹面板分區的 QStatusBar、傳統立體捲軸與分頁標籤。
 
-## 系統需求
+## Windows 7 版（獨立版本）
 
-* **Windows 7 SP1、8、8.1、10、11（64 位元）**。Windows 2000 / XP / Vista 以及 32 位元系統不支援。
-* Windows 7 需先安裝 SP1 與 Windows Update 的「通用 C 執行階段」更新（KB2999226）；並啟用 TLS 1.2（KB3140245，或直接用 Windows Update 更新到最新），否則連不上社團網站的 HTTPS。
-* 程式自帶 Python 與 Qt，不需另外安裝。
+給無法升級作業系統的舊電腦使用，**另外打包、另外發行**，不影響上面的一般版（Windows 10 / 11）：
+
+| | 一般版 | Windows 7 版 |
+| :--- | :--- | :--- |
+| 系統 | Windows 10 / 11（64 位元） | Windows 7 SP1 以上（64 位元，也能在 8 / 10 / 11 執行） |
+| 技術 | Python 3.12 + PySide6（Qt 6） | Python 3.8 + PySide2（Qt 5.15） |
+| 安裝檔 | `ClubDesk-Setup-x.y.z.exe` | `ClubDesk-Win7-Setup-x.y.z.exe` |
+| 發行 | 每次合併自動發行（`desktop-v*`） | 手動推 `desktop-win7-v*` 標籤才發行 |
+| 自動更新 | 有 | **沒有**（「檢查更新」只會提示去 Releases 下載） |
+
+* Windows 7 需先安裝 SP1 與「通用 C 執行階段」更新（KB2999226）。
+* 兩個版本可並存安裝（安裝目錄與解除安裝識別碼不同），資料都在網站上，不受影響。
+* **資安提醒**：Windows 7 已停止安全更新，Python 3.8 與 Qt 5.15 也已結束維護。Windows 7 版只建議用在無法升級的電腦，其他電腦請用一般版。
+* 與一般版共用同一份程式碼；`clubdesk/qtcompat.py` 在找不到 PySide6 時改載入 PySide2，並補上 Qt 5 與 Qt 6 的差異。新增功能時請避免 Python 3.9 以上才有的語法與函式。
+* 打包流程：`.github/workflows/desktop-win7.yml`；本機建置：`pip install -r requirements-win7.txt pyinstaller`（Python 3.8）、`pyinstaller --noconfirm ClubDesk.spec`、`iscc /DWin7 /DAppVersion=x.y.z installer\ClubDesk.iss`。
 
 ## 安裝
 
@@ -124,7 +136,7 @@ PR 只會測試與打包，不會發布；Actions 紀錄中會顯示「Merging t
 
 ## 開發者：從原始碼執行與測試
 
-Python 3.8 以上皆可。**發行版用 Python 3.8 + PySide2（Qt 5.15）打包**，這是仍能在 Windows 7 SP1 執行的最新組合；Python 3.9 以上（只能在 Windows 10 以上）則自動改用 PySide6（Qt 6）。程式碼以 PySide6 的名稱撰寫，`clubdesk/qtcompat.py` 在找不到 PySide6 時改載入 PySide2，兩者共用同一份程式。
+需要 Python 3.10 以上（建議 3.12）。Windows 7 版改用 Python 3.8 與 `requirements-win7.txt`，見上方「Windows 7 版」。
 
 ```bash
 cd desktop
@@ -196,5 +208,5 @@ desktop/
     └── test_updater.py     版本比對與 GitHub Release 解析單元測試
 ```
 
-使用 Python + PySide2／PySide6（Qt）撰寫原生視窗介面，不使用肥大的網頁打包技術。
+使用 Python + PySide6（Qt）撰寫原生視窗介面，不使用肥大的網頁打包技術。
 `installer/ChineseTraditional.isl` 取自 Inno Setup 專案的非官方繁體中文翻譯。

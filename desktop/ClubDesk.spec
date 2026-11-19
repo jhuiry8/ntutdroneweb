@@ -13,7 +13,7 @@ import re
 import sys
 
 sys.path.insert(0, SPECPATH)
-from clubdesk import __version__  # noqa: E402
+from clubdesk import __version__, qtcompat  # noqa: E402
 
 VERSION_INFO = None  # the Windows "Details" tab of ClubDesk.exe; needs pefile, which exists only on Windows
 if sys.platform == "win32":
@@ -75,7 +75,9 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[("clubdesk/resources/app.ico", "clubdesk/resources"), ("clubdesk/resources/app.png", "clubdesk/resources")],
-    hiddenimports=[],
+    # qtcompat loads PySide2 by name, which PyInstaller's static analysis cannot follow.
+    hiddenimports=["PySide2.QtCore", "PySide2.QtGui", "PySide2.QtWidgets", "PySide2.QtSvg"]
+    if qtcompat.BINDING == "PySide2" else [],
     hookspath=[],
     hooksconfig={},
     excludes=UNUSED_MODULES,

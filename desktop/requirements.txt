@@ -1,5 +1,2 @@
-# Windows 7 / 8 / 8.1 / 10 / 11 release build: Python 3.8 + Qt 5.15 (Python 3.8 is the last one that runs on Windows 7).
-PySide2>=5.15.2.1,<5.16 ; python_version < "3.9"
-# Python 3.9 or newer (Windows 10+): Qt 6.
-PySide6-Essentials>=6.6,<7 ; python_version >= "3.9"
+PySide6-Essentials>=6.6,<7
 certifi

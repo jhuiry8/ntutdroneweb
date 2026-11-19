@@ -5,6 +5,7 @@ import traceback
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
+from clubdesk import qtcompat  # noqa: F401  (PySide2 fallback)
 from PySide6.QtWidgets import QApplication
 
 app = QApplication.instance() or QApplication([])
