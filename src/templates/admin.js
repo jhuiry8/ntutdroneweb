@@ -32,7 +32,9 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
         <link rel="stylesheet" href="/admin.css">
     </head>
     <body data-admin="${escapeHtml(JSON.stringify(adminConfig))}">
-        <div class="mobile-admin-bar"><button type="button" onclick="toggleAdminMenu()" aria-label="開啟後台選單" aria-controls="admin-sidebar" aria-expanded="false">☰</button><strong>NTUT DRONE 後台</strong></div>
+        <div class="mobile-admin-bar"><button type="button" onclick="toggleAdminMenu()" aria-label="開啟後台選單" aria-controls="admin-sidebar" aria-expanded="false">☰</button><strong id="mobile-admin-title">NTUT DRONE 後台</strong><span id="offline-badge" class="offline-badge" hidden role="status">離線中</span></div>
+        <div id="install-hint" class="install-hint" hidden><span id="install-hint-text"></span><button type="button" id="install-hint-btn" class="btn btn-primary" hidden>安裝</button><button type="button" id="install-hint-close" aria-label="關閉提示">✕</button></div>
+        <div id="admin-backdrop" class="admin-backdrop"></div>
         <div class="sidebar" id="admin-sidebar">
             <div>
                 <div class="sidebar-logo">
@@ -684,6 +686,15 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             </div>` : ''}
         </div>
 
+        <nav class="mobile-tabbar" aria-label="後台快捷導覽">
+            ${viewCms ? `<button type="button" class="mobile-tab" data-panel="posts"><i data-lucide="book-open"></i><span>文章</span></button>` : ''}
+            <button type="button" class="mobile-tab" data-panel="forms" data-loader="loadForms"><i data-lucide="file-pen-line"></i><span>表單</span></button>
+            ${manageEquipment ? `<button type="button" class="mobile-tab" data-panel="equipment" data-loader="loadEquipment"><i data-lucide="package-check"></i><span>設備</span></button>` : ''}
+            ${manageMembers ? `<button type="button" class="mobile-tab" data-panel="members" data-loader="loadMembers"><i data-lucide="contact-round"></i><span>社員</span></button>` : ''}
+            <button type="button" class="mobile-tab" data-panel="settings" data-loader="loadMyMember"><i data-lucide="settings"></i><span>設定</span></button>
+            <button type="button" class="mobile-tab" onclick="toggleAdminMenu()" aria-label="更多選單"><i data-lucide="menu"></i><span>更多</span></button>
+        </nav>
+
         <!-- Toast Notice -->
         <div id="toast">
             <i data-lucide="check-circle" style="color: var(--color-cyan); width: 20px; height: 20px;"></i>
@@ -696,6 +707,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
         <script src="/admin-ai.js" defer></script>
         <script src="/admin-messages.js" defer></script>
         <script src="/admin-notifications.js" defer></script>
+        <script src="/admin-mobile.js" defer></script>
     </body>
     </html>
     `;
