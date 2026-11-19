@@ -29,8 +29,11 @@ QStatusBar::item {{ border: 1px solid {SHADOW}; border-right-color: {LIGHT}; bor
 QTableWidget, QTreeWidget, QListWidget, QTextBrowser {{ gridline-color: {FACE}; }}
 QHeaderView::section {{ background: {FACE}; padding: 2px 4px;
     border: 1px solid {SHADOW}; border-top-color: {LIGHT}; border-left-color: {LIGHT}; }}
-QLabel#CaptionBar {{ color: white; font-weight: bold; padding: 3px 6px;
+QLabel#CaptionBar, QWidget#CaptionBar {{ color: white; font-weight: bold; padding: 3px 6px;
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {TITLE_BAR}, stop:1 {TITLE_BAR_END}); }}
+QLabel#CaptionText {{ color: white; font-weight: bold; background: transparent; }}
+QWidget#CaptionBar QLabel {{ background: transparent; }}
+QLabel#BannerLogo {{ background: {TITLE_BAR}; padding: 6px 4px 6px 10px; }}
 QLabel#Banner {{ color: white; font-weight: bold; padding: 10px;
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {TITLE_BAR}, stop:1 {TITLE_BAR_END}); }}
 QLabel#Total {{ border: 1px solid {SHADOW}; border-right-color: {LIGHT}; border-bottom-color: {LIGHT};

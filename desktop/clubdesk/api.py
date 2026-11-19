@@ -23,7 +23,8 @@ from urllib.parse import quote, urlencode, urljoin
 
 TIMEOUT = 20
 AI_TIMEOUT = 90  # AI calls wait for the language model
-USER_AGENT = "NTUTDroneClubDesk/1.1"
+USER_AGENT = "NTUTDroneClubDesk/1.2"
+DEFAULT_SERVER = "https://ntut.tpe.pp.ua"
 
 ROLE_LABELS = {
     "president": "社長",
@@ -40,6 +41,10 @@ def can_manage_users(role: str) -> bool:
 
 def can_view_cms(role: str) -> bool:
     return role in ("president", "finance", "cadre")
+
+
+def can_edit_cms(role: str) -> bool:
+    return role in ("president", "cadre")
 
 
 def can_manage_finance(role: str) -> bool:
@@ -173,6 +178,15 @@ class ApiClient:
     def delete(self, path):
         return self.request("DELETE", path)
 
+    def page_html(self, path: str) -> str:
+        """A signed-in HTML page of the website (printable minutes and forms)."""
+        response = self._send("GET", self._url(path))
+        if response.status in (301, 302, 401):
+            raise ApiError("登入已逾時，請重新登入", 401)
+        if response.status >= 400:
+            raise ApiError(response.text.strip()[:200] or f"伺服器錯誤（HTTP {response.status}）", response.status)
+        return response.text
+
     # ---------------------------------------------------------------- login
     def captcha(self) -> dict:
         """Returns {"id": ..., "svg": ...}. Raises ApiError if the site uses Turnstile."""
@@ -302,16 +316,177 @@ class ApiClient:
     def form_print_html(self, form_id: str = "", blank_type: str = "") -> str:
         """The printable A4 page (self-contained HTML) for a saved form or a blank one."""
         path = f"/admin/forms/blank/{quote(blank_type, safe='')}" if blank_type else f"/admin/forms/print/{quote(form_id, safe='')}"
-        response = self._send("GET", self._url(path))
-        if response.status in (301, 302, 401):
-            raise ApiError("登入已逾時，請重新登入", 401)
-        if response.status >= 400:
-            raise ApiError(response.text.strip()[:200] or f"伺服器錯誤（HTTP {response.status}）", response.status)
-        return response.text
+        return self.page_html(path)
 
     # ---------------------------------------------------------- regulations
     def regulations(self) -> list:
         return self.get("/api/regulations")
+
+    # ------------------------------------------------------- website (CMS)
+    def posts(self) -> list:
+        return self.get("/api/posts")
+
+    def get_post(self, slug: str) -> dict:
+        return self.get(f"/api/posts/{quote(slug, safe='')}")
+
+    def save_post(self, fields: dict, original_slug: str = "") -> dict:
+        return self.post("/api/posts", {**fields, "originalSlug": original_slug})
+
+    def delete_post(self, slug: str) -> dict:
+        return self.delete(f"/api/posts/{quote(slug, safe='')}")
+
+    def pages(self) -> list:
+        return self.get("/api/pages")
+
+    def get_page(self, slug: str) -> dict:
+        return self.get(f"/api/pages/{quote(slug, safe='')}")
+
+    def save_page(self, fields: dict, original_slug: str = "") -> dict:
+        return self.post("/api/pages", {**fields, "originalSlug": original_slug})
+
+    def delete_page(self, slug: str) -> dict:
+        return self.delete(f"/api/pages/{quote(slug, safe='')}")
+
+    def preview_markdown(self, content: str) -> str:
+        """The server's sanitized HTML for Markdown, exactly as the website will show it."""
+        return self.post("/api/preview", {"content": content}).get("html", "")
+
+    def homepage(self) -> dict:
+        return self.get("/api/homepage")
+
+    def save_homepage(self, fields: dict) -> dict:
+        return self.post("/api/homepage", fields)
+
+    def notes(self) -> list:
+        return self.get("/api/notes")
+
+    def create_note(self, fields: dict) -> dict:
+        return self.post("/api/notes", fields)
+
+    def delete_note(self, note_id: str) -> dict:
+        return self.delete(f"/api/notes/{quote(note_id, safe='')}")
+
+    # ------------------------------------------------------------------- AI
+    def ai_status(self) -> dict:
+        return self.get("/api/ai/status")
+
+    def ai_assistant(self, messages: list) -> dict:
+        """{"reply", "actions": [...], "tools": [...]}"""
+        return self.post("/api/ai/assistant", {"messages": messages}, timeout=AI_TIMEOUT)
+
+    def ai_content(self, action: str, fields: dict, notes: str = "") -> dict:
+        """AI writing help for posts/pages: action is draft, polish, summary or translate."""
+        return self.post("/api/ai/content", {"action": action, "notes": notes, **fields}, timeout=AI_TIMEOUT)
+
+    def ai_finance_review(self) -> dict:
+        return self.post("/api/ai/finance-review", {}, timeout=AI_TIMEOUT)
+
+    def set_transaction_budget(self, transaction_id: str, budget_id: str) -> dict:
+        return self.patch(f"/api/finance/transactions/{quote(transaction_id, safe='')}/budget", {"budgetId": budget_id})
+
+    def ai_member_import(self, text: str) -> dict:
+        return self.post("/api/ai/member-import", {"text": text}, timeout=AI_TIMEOUT)
+
+    def reports(self) -> list:
+        return self.get("/api/ai/reports")
+
+    def create_report(self) -> dict:
+        return self.post("/api/ai/reports", {}, timeout=AI_TIMEOUT)
+
+    def import_transactions(self, rows: list) -> dict:
+        return self.post("/api/finance/import", {"rows": rows})
+
+    # ------------------------------------------------------------- meetings
+    def meetings(self) -> dict:
+        return self.get("/api/meetings")
+
+    def create_meeting(self, fields: dict) -> dict:
+        return self.post("/api/meetings", fields)
+
+    def update_meeting(self, meeting_id: str, fields: dict) -> dict:
+        return self.patch(f"/api/meetings/{quote(meeting_id, safe='')}", fields)
+
+    def delete_meeting(self, meeting_id: str) -> dict:
+        return self.delete(f"/api/meetings/{quote(meeting_id, safe='')}")
+
+    def meeting_action(self, meeting_id: str, action: str, data: dict | None = None, timeout: float = TIMEOUT) -> dict:
+        """POST /api/meetings/<id>/<action>: status, attendance, ai-notice, ai-minutes."""
+        return self.post(f"/api/meetings/{quote(meeting_id, safe='')}/{action}", data or {}, timeout=timeout)
+
+    def save_minutes(self, meeting_id: str, data: dict) -> dict:
+        return self.put(f"/api/meetings/{quote(meeting_id, safe='')}/minutes", data)
+
+    def agenda_action(self, meeting_id: str, item_id: str, action: str, data: dict) -> dict:
+        """POST /api/meetings/<id>/agenda/<item>/<action>: notes, vote, ballot."""
+        return self.post(f"/api/meetings/{quote(meeting_id, safe='')}/agenda/{quote(item_id, safe='')}/{action}", data)
+
+    # ------------------------------------------------------------ messages
+    def message_summary(self) -> dict:
+        return self.get("/api/messages/summary")
+
+    def conversations(self) -> list:
+        return self.get("/api/messages/conversations")
+
+    def people(self) -> dict:
+        return self.get("/api/messages/people")
+
+    def messages(self, conv: str, after: int = 0, limit: int = 80) -> dict:
+        return self.get(f"/api/messages/c/{quote(conv, safe='~')}", after=after or None, limit=limit)
+
+    def send_message(self, conv: str, text: str) -> dict:
+        return self.post(f"/api/messages/c/{quote(conv, safe='~')}", {"text": text})
+
+    def edit_message(self, conv: str, seq: int, text: str) -> dict:
+        return self.patch(f"/api/messages/c/{quote(conv, safe='~')}/{int(seq)}", {"text": text})
+
+    def delete_message(self, conv: str, seq: int) -> dict:
+        return self.delete(f"/api/messages/c/{quote(conv, safe='~')}/{int(seq)}")
+
+    def mark_read(self, conv: str, seq: int) -> dict:
+        return self.post(f"/api/messages/c/{quote(conv, safe='~')}/read", {"seq": seq})
+
+    def mark_all_read(self) -> dict:
+        return self.post("/api/messages/read-all")
+
+    def open_dm(self, username: str) -> dict:
+        return self.post("/api/messages/dm", {"username": username})
+
+    def create_channel(self, fields: dict) -> dict:
+        return self.post("/api/messages/channels", fields)
+
+    def update_channel(self, channel_id: str, fields: dict) -> dict:
+        return self.patch(f"/api/messages/channels/{quote(channel_id, safe='')}", fields)
+
+    def announcements(self) -> list:
+        return self.get("/api/announcements")
+
+    def create_announcement(self, fields: dict) -> dict:
+        return self.post("/api/announcements", fields)
+
+    def update_announcement(self, announcement_id: str, fields: dict) -> dict:
+        return self.patch(f"/api/announcements/{quote(announcement_id, safe='')}", fields)
+
+    def delete_announcement(self, announcement_id: str) -> dict:
+        return self.delete(f"/api/announcements/{quote(announcement_id, safe='')}")
+
+    def read_announcement(self, announcement_id: str) -> dict:
+        return self.post(f"/api/announcements/{quote(announcement_id, safe='')}/read")
+
+    def push_settings(self) -> dict:
+        return self.get("/api/messages/push-settings")
+
+    def save_push_settings(self, settings: dict) -> dict:
+        return self.put("/api/messages/push-settings", settings)
+
+    def push_test(self) -> dict:
+        return self.post("/api/messages/push-test")
+
+    # --------------------------------------------------------- site settings
+    def site_settings(self) -> dict:
+        return self.get("/api/site-settings")
+
+    def save_site_settings(self, settings: dict) -> dict:
+        return self.put("/api/site-settings", settings)
 
     # ---------------------------------------------------------------- users
     def users(self) -> list:

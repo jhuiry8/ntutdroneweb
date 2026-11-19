@@ -13,6 +13,7 @@ from .members import FEE_TYPE_LABELS, dialog_buttons
 
 class RegulationsPage(Page):
     title = "社團法規查詢"
+    icon_name = "regulations"
 
     def __init__(self, *args):
         super().__init__(*args)
@@ -78,6 +79,7 @@ class PasswordDialog(QDialog):
 
 class AccountPage(Page):
     title = "我的帳號"
+    icon_name = "account"
 
     def __init__(self, *args):
         super().__init__(*args)

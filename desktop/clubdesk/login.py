@@ -8,7 +8,8 @@ from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFrame, QGridLayout, QGroupBox,
                                QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout)
 
-from .api import ApiClient, ApiError, normalize_base_url
+from .api import DEFAULT_SERVER, ApiClient, ApiError, normalize_base_url
+from .icons import app_icon, app_pixmap, icon
 from .updater import check_and_offer
 from .widgets import busy, show_error
 
@@ -29,6 +30,7 @@ class LoginDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("登入 - 北科無人機社 社務管理系統")
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
+        self.setWindowIcon(app_icon())
         self.settings = QSettings()
         self.client: ApiClient | None = None
         self.user: dict | None = None
@@ -37,9 +39,19 @@ class LoginDialog(QDialog):
 
         banner = QLabel("北科無人機社　社務管理系統\nNTUT Drone Club Management System")
         banner.setObjectName("Banner")
+        logo = QLabel()
+        logo.setPixmap(app_pixmap(48))
+        logo.setObjectName("BannerLogo")
+        banner_row = QHBoxLayout()
+        banner_row.setSpacing(0)
+        banner_row.addWidget(logo)
+        banner_row.addWidget(banner, 1)
 
-        self.server = QLineEdit(self.settings.value("server", "", str))
-        self.server.setPlaceholderText("例如 https://ntut-drone-web.xxxx.workers.dev")
+        self.server = QLineEdit(self.settings.value("server", "", str) or DEFAULT_SERVER)
+        self.server.setPlaceholderText(DEFAULT_SERVER)
+        default = QPushButton("預設")
+        default.setToolTip(f"改回社團網站 {DEFAULT_SERVER}")
+        default.clicked.connect(lambda: (self.server.setText(DEFAULT_SERVER), self.server_changed()))
         self.username = QLineEdit(self.settings.value("username", "", str))
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.Password)
@@ -50,13 +62,14 @@ class LoginDialog(QDialog):
         self.captcha_image.setFrameShadow(QFrame.Sunken)
         self.captcha_answer = QLineEdit()
         self.captcha_answer.setMaxLength(5)
-        refresh = QPushButton("換一張(&R)")
+        refresh = QPushButton(icon("refresh"), "換一張(&R)")
         refresh.clicked.connect(self.load_captcha)
 
         box = QGroupBox("登入資訊")
         grid = QGridLayout(box)
         grid.addWidget(QLabel("伺服器網址(&S)："), 0, 0)
-        grid.addWidget(self.server, 0, 1, 1, 2)
+        grid.addWidget(self.server, 0, 1)
+        grid.addWidget(default, 0, 2)
         grid.addWidget(QLabel("帳號(&U)："), 1, 0)
         grid.addWidget(self.username, 1, 1, 1, 2)
         grid.addWidget(QLabel("密碼(&P)："), 2, 0)
@@ -78,7 +91,7 @@ class LoginDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 8)
-        layout.addWidget(banner)
+        layout.addLayout(banner_row)
         inner = QVBoxLayout()
         inner.setContentsMargins(10, 4, 10, 0)
         inner.addWidget(box)

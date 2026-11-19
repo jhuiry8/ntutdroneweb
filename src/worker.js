@@ -37,8 +37,11 @@ import {
 import { handleAiRequest, generateClubReport } from './ai-routes.js';
 import { handleMeetingRequest } from './meeting-routes.js';
 import { MeetingError } from './meetings.js';
+import { handleMessageRequest, pushNewPost } from './message-routes.js';
+import { MessageError } from './messages.js';
 export { FormStore } from './form-store.js';
 export { MeetingStore } from './meetings.js';
+export { MessageStore } from './messages.js';
 export { SiteStore } from './site-store.js';
 
 // Legacy unsalted admin hash format (migrated to PBKDF2 on first login)
@@ -544,7 +547,8 @@ function addSecurityHeaders(response, request) {
 // What the AI routes and the weekly report need from this module.
 const aiDeps = {
     sessionUser, readJsonLimited, withAiQuota, formStore, equipmentStoreRequest, aiDailyLimit, takeAttempt, giveBackAttempt,
-    readRegulations: async env => parseRegulations(await env.DRONE_DB.get(REGULATIONS_KEY))
+    readRegulations: async env => parseRegulations(await env.DRONE_DB.get(REGULATIONS_KEY)),
+    listUsers, readMembers: async env => parseFinanceList(await env.DRONE_DB.get(MEMBERS_KEY))
 };
 
 export default {
@@ -837,6 +841,10 @@ async function handleRequest(request, env, ctx) {
             const meetingResponse = await handleMeetingRequest(request, env, aiDeps);
             if (meetingResponse) return meetingResponse;
 
+            // ==================== API: 社團通訊 (chat, private messages, announcements, push) ====================
+            const messageResponse = await handleMessageRequest(request, env, aiDeps);
+            if (messageResponse) return messageResponse;
+
             // ==================== API: Posts CRUD (Admin Auth required) ====================
             if (path.startsWith('/api/posts') && ['POST', 'DELETE', 'GET'].includes(method)) {
                 const user = await sessionUser(request, env);
@@ -845,6 +853,8 @@ async function handleRequest(request, env, ctx) {
 
                 if (method === 'GET') {
                     const slug = path.substring(11);
+                    // GET /api/posts lists every post (the desktop program's 文章管理).
+                    if (!slug) return Response.json(JSON.parse((await env.DRONE_DB.get('posts_list')) || '[]'));
                     let postJson = await env.DRONE_DB.get(`post:${slug}`);
                     if (!postJson) {
                         const postsListJson = await env.DRONE_DB.get('posts_list');
@@ -913,7 +923,9 @@ async function handleRequest(request, env, ctx) {
                         sortByDate: true
                     });
 
-                    return new Response(JSON.stringify({ success: true, post: postData }), { headers: { 'Content-Type': 'application/json' } });
+                    // Optional external push (社團通訊 → 外部推播) for brand-new posts.
+                    const push = originalSlug ? [] : await pushNewPost(env, url.origin, postData);
+                    return new Response(JSON.stringify({ success: true, post: postData, push }), { headers: { 'Content-Type': 'application/json' } });
                 }
             }
 
@@ -925,6 +937,7 @@ async function handleRequest(request, env, ctx) {
 
                 if (method === 'GET') {
                     const slug = path.substring(11);
+                    if (!slug) return Response.json(JSON.parse((await env.DRONE_DB.get('pages_list')) || '[]'));
                     let pageJson = await env.DRONE_DB.get(`page:${slug}`);
                     if (!pageJson) {
                         const pagesListJson = await env.DRONE_DB.get('pages_list');
@@ -1721,6 +1734,7 @@ async function handleRequest(request, env, ctx) {
             if (e instanceof FinanceValidationError || e instanceof FormValidationError || e instanceof RegulationRuleError) return Response.json({ error: e.message }, { status: 400 });
             if (e instanceof FormServiceError) return Response.json({ error: e.message }, { status: e.status });
             if (e instanceof MeetingError) return Response.json({ error: e.message }, { status: e.status });
+            if (e instanceof MessageError) return Response.json({ error: e.message }, { status: e.status });
             if (e instanceof PasswordResetRequiredError) {
                 if (path === '/api/login') {
                     return loginPageResponse(env, e.message, 409);

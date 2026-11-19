@@ -69,6 +69,7 @@ class EquipmentDialog(QDialog):
 
 class EquipmentPage(Page):
     title = "器材清冊"
+    icon_name = "equipment"
     export_name = "器材清冊.csv"
 
     def __init__(self, *args):

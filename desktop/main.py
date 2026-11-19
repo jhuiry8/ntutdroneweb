@@ -6,13 +6,20 @@ from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
 from PySide6.QtWidgets import QApplication, QDialog
 
 from clubdesk import __version__
+from clubdesk.icons import app_icon
 from clubdesk.login import LoginDialog
 from clubdesk.mainwindow import MainWindow
 from clubdesk.style import apply_classic_style
 
 
 def main() -> int:
+    if sys.platform == "win32":
+        # Own taskbar group, so Windows shows the program icon instead of Python's.
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("NTUTDroneClub.ClubDesk")
     app = QApplication(sys.argv)
+    app.setWindowIcon(app_icon())
+    app.setQuitOnLastWindowClosed(True)
     app.setOrganizationName("NTUT Drone Club")
     app.setApplicationName("ClubDesk")
     app.setApplicationVersion(__version__)

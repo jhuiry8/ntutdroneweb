@@ -98,6 +98,17 @@ test('Worker test suite - Cloudflare Worker Routes & CMS APIs', async (t) => {
         assert.equal(data.title, '測試文章 1');
     });
 
+    await t.test('GET /api/posts and /api/pages list the site content for signed-in officers', async () => {
+        const denied = await worker.fetch(new Request('http://localhost/api/posts'), mockEnv);
+        assert.equal(denied.status, 401);
+        const posts = await worker.fetch(new Request('http://localhost/api/posts', { headers: { 'Cookie': 'session=valid-token' } }), mockEnv);
+        assert.equal(posts.status, 200);
+        assert.deepEqual((await posts.json()).map(post => post.slug), ['ntut1']);
+        const pages = await worker.fetch(new Request('http://localhost/api/pages', { headers: { 'Cookie': 'session=valid-token' } }), mockEnv);
+        assert.equal(pages.status, 200);
+        assert.deepEqual((await pages.json()).map(page => page.slug), ['about-us']);
+    });
+
     await t.test('POST /api/posts should create new post', async () => {
         const newPost = {
             title: '全新測試文章',

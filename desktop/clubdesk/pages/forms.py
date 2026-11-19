@@ -335,6 +335,7 @@ class SettingsDialog(QDialog):
 
 class FormsPage(Page):
     title = "表單作業"
+    icon_name = "forms"
     export_name = "表單紀錄.csv"
 
     def __init__(self, *args):
