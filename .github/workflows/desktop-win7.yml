@@ -39,8 +39,11 @@ jobs:
       run: pip install -r requirements-win7.txt "pyinstaller>=5.13,<6.10"
 
     - name: Run unit tests
+      timeout-minutes: 5
       env:
-        QT_QPA_PLATFORM: offscreen
+        # The real Windows platform plugin, as the installed program uses: Qt 5's "offscreen" plugin
+        # crashes PySide2 on Windows (access violation) as soon as any QMessageBox is shown.
+        QT_QPA_PLATFORM: windows
       run: |
         # faulthandler / unbuffered output: a native crash prints the Python stack instead of exiting silently.
         python -X faulthandler -u -m unittest discover -s tests -v
