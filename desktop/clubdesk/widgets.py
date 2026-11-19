@@ -301,7 +301,22 @@ class Page(QWidget):
 AUTO_ICONS = [("新增", "add"), ("修改", "edit"), ("批次", "edit"), ("刪除", "delete"), ("查詢", "search"), ("列印", "print"),
               ("匯入", "import"), ("匯出", "export"), ("核准", "check"), ("退回", "cross"), ("變更密碼", "password"),
               ("AI", "ai"), ("全選", "check"), ("儲存", "save"), ("清除", "delete"), ("登錄", "add"), ("編輯", "edit"),
-              ("設定", "edit"), ("關閉", "cross"), ("確定", "check")]
+              ("設定", "edit"), ("關閉", "cross"), ("確定", "check"),
+              # English captions (interface language English); matched as whole words
+              ("New", "add"), ("Edit", "edit"), ("Batch", "edit"), ("Delete", "delete"), ("Search", "search"),
+              ("Print", "print"), ("Import", "import"), ("Export", "export"), ("Approve", "check"),
+              ("Reject", "cross"), ("Change password", "password"), ("Select all", "check"),
+              ("Save", "save"), ("Clear", "delete"), ("Record", "add"), ("Settings", "edit"), ("Close", "cross"),
+              ("OK", "check")]
+
+
+def auto_icon_name(caption: str) -> str:
+    """Icon for a button caption: it starts with one of AUTO_ICONS (an English one only as a whole word)."""
+    for prefix, name in AUTO_ICONS:
+        if caption.startswith(prefix) and not (prefix.isascii() and prefix != "AI"
+                                               and caption[len(prefix):len(prefix) + 1].isalnum()):
+            return name
+    return ""
 
 
 def button_row(*buttons: QPushButton, stretch_first=False) -> QHBoxLayout:
@@ -313,7 +328,7 @@ def button_row(*buttons: QPushButton, stretch_first=False) -> QHBoxLayout:
         button.setMinimumWidth(80)
         if button.icon().isNull():
             caption = button.text().replace("&", "")
-            name = next((icon_name for prefix, icon_name in AUTO_ICONS if caption.startswith(prefix)), "")
+            name = auto_icon_name(caption)
             if name:
                 button.setIcon(icon(name))
         row.addWidget(button)

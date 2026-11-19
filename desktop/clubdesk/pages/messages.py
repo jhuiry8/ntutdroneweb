@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout, QGrid
 from ..api import ApiError, can_manage_users, can_view_cms
 from ..icons import icon
 from ..docx import Document
+from ..i18n import raw
 from ..widgets import (DataTable, Page, background, busy, button_row, confirm, docx_path, export_info, icon_button,
                        save_docx, show_error)
 from .members import dialog_buttons
@@ -254,10 +255,10 @@ class MessagesPage(Page):
         info = self.current()
         if conv.startswith("dm~"):
             other = next((n for n in conv.split("~")[1:] if n != self.me.get("username")), self.me.get("username", ""))
-            self.heading.setText(f" 私人訊息：{self.person(other)} ")
+            self.heading.setText(f" 私人訊息：{raw(self.person(other))} ")
         elif info:
-            extra = "・".join(x for x in (info.get("audienceLabel"), "僅幹部可發言" if info.get("readOnly") else "", info.get("description")) if x)
-            self.heading.setText(f" {info['name']}　{extra} ")
+            extra = "・".join(x for x in (info.get("audienceLabel"), "僅幹部可發言" if info.get("readOnly") else "", raw(info.get("description"))) if x)
+            self.heading.setText(f" {raw(info['name'])}　{extra} ")
         can_manage = bool(info and info["kind"] == "channel" and (self.me.get("president") or info.get("createdBy") == self.me.get("username")))
         self.settings_button.setVisible(can_manage)
         writable = not info or (not info.get("archived") and (not info.get("readOnly") or self.me.get("officer")))
@@ -296,7 +297,7 @@ class MessagesPage(Page):
             self.fetching = False
             if stale():
                 return
-            self.stream.setHtml(f"<p style='color:#A11D1D'>{html.escape(str(error))}</p>")
+            self.stream.setHtml(f"<p style='color:#A11D1D'>{raw(html.escape(str(error)))}</p>")
 
         background(lambda: self.api.messages(conv, after), done, failed)
 
@@ -325,9 +326,9 @@ class MessagesPage(Page):
                     links.append(f'<a href="delete:{message["seq"]}">刪除</a>')
                 tools = f" <span style='font-size:8pt'>{' '.join(links)}</span>" if links else ""
             colour = "#1F4E9A" if own else "#000000"
-            body = "<i style='color:#808080'>訊息已刪除</i>" if message.get("deleted") else message_html(message.get("text", ""))
+            body = "<i style='color:#808080'>訊息已刪除</i>" if message.get("deleted") else raw(message_html(message.get("text", "")))
             edited = "（已編輯）" if message.get("editedAt") and not message.get("deleted") else ""
-            rows.append(f"<p style='margin:2px 0 8px 0'><b style='color:{colour}'>{html.escape(message.get('authorName') or message.get('author', ''))}</b>"
+            rows.append(f"<p style='margin:2px 0 8px 0'><b style='color:{colour}'>{raw(html.escape(message.get('authorName') or message.get('author', '')))}</b>"
                         f" <span style='color:#808080; font-size:8pt'>{when(message.get('createdAt', ''))}{edited}</span>{tools}<br>{body}</p>")
         self.stream.setHtml("".join(rows) or "<p style='color:#808080'>還沒有訊息，說聲嗨吧！</p>")
         if at_bottom or len(self.messages) <= 80:
@@ -450,7 +451,7 @@ class MessagesPage(Page):
         if not path:
             return
         document = Document(title)
-        document.title_block(f"對話紀錄：{title}", export_info(self.user, self.api.base_url) + f"・{len(messages)} 則")
+        document.title_block(f"對話紀錄：{raw(title)}", export_info(self.user, self.api.base_url) + f"・{len(messages)} 則")
         day = ""
         for message in messages:
             stamp = when(message.get("createdAt", ""))
@@ -458,8 +459,8 @@ class MessagesPage(Page):
             if moment != day:
                 day = moment
                 document.heading(day, 3)
-            author = message.get("authorName") or message.get("author", "")
-            text = "（訊息已刪除）" if message.get("deleted") else message.get("text", "")
+            author = raw(message.get("authorName") or message.get("author", ""))
+            text = "（訊息已刪除）" if message.get("deleted") else raw(message.get("text", ""))
             document.paragraph(f"**{author}**　{stamp}{'（已編輯）' if message.get('editedAt') and not message.get('deleted') else ''}\n{text}")
         save_docx(self, document, path)
 
@@ -557,10 +558,10 @@ class AnnouncementsPage(Page):
             return
         read_by = ""
         if self.officer and item.get("readBy"):
-            read_by = f"<p style='color:#606060'>已讀：{html.escape('、'.join(item['readBy']))}</p>"
-        self.detail.setHtml(f"<h3>{'📌 ' if item.get('pinned') else ''}{html.escape(item['title'])}</h3>"
-                            f"<p style='color:#606060'>{html.escape(item.get('createdByName') or item.get('createdBy', ''))}・{when(item.get('createdAt', ''))}</p>"
-                            f"<p>{message_html(item.get('content', ''))}</p>{read_by}")
+            read_by = f"<p style='color:#606060'>已讀：{raw(html.escape('、'.join(item['readBy'])))}</p>"
+        self.detail.setHtml(f"<h3>{'📌 ' if item.get('pinned') else ''}{raw(html.escape(item['title']))}</h3>"
+                            f"<p style='color:#606060'>{raw(html.escape(item.get('createdByName') or item.get('createdBy', '')))}・{when(item.get('createdAt', ''))}</p>"
+                            f"<p>{raw(message_html(item.get('content', '')))}</p>{read_by}")
         if not item.get("read"):
             def done(updated):
                 item.update(updated)
@@ -581,12 +582,12 @@ class AnnouncementsPage(Page):
         document = Document("社團公告")
         document.title_block("北科無人機社 社團公告", export_info(self.user, self.api.base_url))
         for item in items:
-            document.heading(("📌 " if item.get("pinned") else "") + item.get("title", ""), 2)
+            document.heading(("📌 " if item.get("pinned") else "") + raw(item.get("title", "")), 2)
             extra = f"・已讀 {item.get('readCount', 0)} 人" if self.officer else ""
             audience = "幹部限定" if item.get("audience") == "officers" else "全體社員"
-            document.paragraph(f"{item.get('createdByName') or item.get('createdBy', '')}・{when(item.get('createdAt', ''))}・{audience}{extra}", size=18)
+            document.paragraph(f"{raw(item.get('createdByName') or item.get('createdBy', ''))}・{when(item.get('createdAt', ''))}・{audience}{extra}", size=18)
             for line in (item.get("content") or "").splitlines():
-                document.paragraph(line)
+                document.paragraph(raw(line))
         save_docx(self, document, path)
 
     def add(self) -> None:

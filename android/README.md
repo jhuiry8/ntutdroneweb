@@ -72,9 +72,9 @@ chmod +x gradlew
 
 ## 🤖 GitHub Actions 全自動建置與發佈 (CI/CD)
 
-`.github/workflows/android.yml` 會自動處理：
+`.github/workflows/android.yml`（發行由 `release.yml` 統一處理）會自動處理：
 - **Pull Request**：自動編譯 Debug APK，確認改動能成功建置。
-- **合併到 `main`（且有改到 `android/`）**：自動編譯、用社團金鑰簽署、版本號自動遞增（`1.0.<建置編號>`）、自動打標籤 `android-v1.0.x` 並發佈 GitHub Release。社員到 Releases 下載最新版即可覆蓋更新。
+- **合併到 `main`（且有改到 `android/`）**：由 `.github/workflows/release.yml` 呼叫本流程，自動編譯、用社團金鑰簽署（版本號 `1.0.<建置編號>`），並把 `NTUT-Drone-Club.apk` 放進與桌面版安裝檔**同一個 GitHub Release**。社員到 Releases 下載最新版即可覆蓋更新。
 - 也可以在 Actions 頁面手動按 **Run workflow** 重新建置發佈。
 
 ### 🔑 唯一需要手動的一次性設定：簽署密碼（不用安裝任何軟體）

@@ -1,0 +1,181 @@
+name: Release (all packages in one GitHub Release)
+
+# Every merge to main that changes desktop/ or android/ publishes ONE GitHub Release holding
+# every package, each as its own file:
+#   * ClubDesk-Setup-x.y.z.exe        desktop program, Windows 10 / 11 (auto-update)
+#   * ClubDesk-Win7-Setup-x.y.z.exe   desktop program, Windows 7 SP1 edition (no auto-update)
+#   * NTUT-Drone-Club.apk             Android app, signed with the club key
+# The release is tagged desktop-vx.y.z (installed programs look for that tag prefix) and,
+# when DESKTOP_RELEASE_TOKEN is set, announced to the website so every copy offers the update.
+# Version: major.minor from desktop/clubdesk/__init__.py; patch = one more than the newest
+# desktop-v<major>.<minor>.* tag, or the version in __init__.py if it is new.
+# The packages are built by desktop.yml, desktop-win7.yml and android.yml (also used on pull requests).
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'desktop/**'
+      - 'android/**'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/desktop.yml'
+      - '.github/workflows/desktop-win7.yml'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Releases run one after another, so two quick merges never pick the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0   # tags, to find the newest released version
+
+    - name: Choose version
+      id: next
+      run: |
+        base=$(sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' desktop/clubdesk/__init__.py)
+        IFS=. read -r major minor patch <<< "$base"
+        prefix="desktop-v${major}.${minor}."
+        latest=$(git tag --list "${prefix}*" | sed "s/^${prefix}//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)
+        if ! git tag --list "desktop-v${base}" | grep -q .; then
+          next="$base"                     # a version bumped by hand is used as is
+        elif [ -n "$latest" ]; then
+          next="${major}.${minor}.$((latest + 1))"
+        else
+          next="${major}.${minor}.$((patch + 1))"
+        fi
+        echo "Releasing $next (source $base)"
+        echo "version=$next" >> "$GITHUB_OUTPUT"
+
+  desktop:
+    needs: version
+    uses: ./.github/workflows/desktop.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  desktop-win7:
+    needs: version
+    uses: ./.github/workflows/desktop-win7.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  android:
+    uses: ./.github/workflows/android.yml
+    secrets: inherit
+
+  release:
+    # Only ever from main: a manual run on any other branch just builds and tests.
+    # The Windows installer is required; a failed Windows 7 or Android build must not hold the release back.
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && needs.desktop.result == 'success' }}
+    needs: [ version, desktop, desktop-win7, android ]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      SHA256: ${{ needs.desktop.outputs.sha256 }}
+      SHA256_WIN7: ${{ needs.desktop-win7.outputs.sha256 }}
+      WIN7_OK: ${{ needs.desktop-win7.result == 'success' }}
+      APK_SIGNED: ${{ needs.android.result == 'success' && needs.android.outputs.signed }}
+      APK_VERSION: ${{ needs.android.outputs.version }}
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: ClubDesk-Setup-${{ needs.version.outputs.version }}
+        path: dist
+
+    - uses: actions/download-artifact@v4
+      if: needs.desktop-win7.result == 'success'
+      with:
+        name: ClubDesk-Win7-Setup-${{ needs.version.outputs.version }}
+        path: dist
+
+    - uses: actions/download-artifact@v4
+      if: needs.android.result == 'success' && needs.android.outputs.signed == 'true'
+      with:
+        name: NTUT-Drone-Club-APK
+        path: apk
+
+    - name: Collect files and write the release notes
+      id: notes
+      env:
+        COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+      run: |
+        if [ "$APK_SIGNED" = true ]; then
+          cp apk/NTUT-Drone-Club.apk dist/
+        fi
+        ls -la dist
+        # First line of the merge (usually the pull request title) becomes the update note members see.
+        summary=$(printf '%s\n' "$COMMIT_MESSAGE" | sed -n '1p')
+        title=$(printf '%s\n' "$COMMIT_MESSAGE" | sed -n '3p')
+        case "$summary" in "Merge pull request"*) [ -n "$title" ] && summary="$title" ;; esac
+        [ -z "$summary" ] && summary="社務管理系統與 Android App 更新 $VERSION"
+        summary="${summary:0:300}"
+        printf 'summary<<NOTES_END\n%s\nNOTES_END\n' "$summary" >> "$GITHUB_OUTPUT"
+        {
+          echo "北科無人機社 社務管理系統（桌面版）${VERSION}"
+          echo
+          echo "$summary"
+          echo
+          echo "### 下載（每個檔案各自獨立）"
+          echo
+          echo "| 檔案 | 適用 |"
+          echo "| :--- | :--- |"
+          echo "| \`ClubDesk-Setup-${VERSION}.exe\` | 桌面版，Windows 10 / 11。已安裝的電腦開啟程式時會自動提示更新。 |"
+          if [ "$WIN7_OK" = true ]; then
+            echo "| \`ClubDesk-Win7-Setup-${VERSION}.exe\` | 桌面版，**Windows 7 SP1** 以上（獨立版本，不會自動更新）。需先安裝 SP1 與 KB2999226。 |"
+          fi
+          if [ "$APK_SIGNED" = true ]; then
+            echo "| \`NTUT-Drone-Club.apk\` | Android App（v${APK_VERSION}），可直接覆蓋安裝舊版。 |"
+          fi
+          echo
+          if [ "$WIN7_OK" = true ]; then
+            echo "Windows 7 已停止安全更新，Win7 版只建議用在無法升級的電腦；其他電腦請用一般版。"
+            echo
+          fi
+          echo "SHA-256（ClubDesk-Setup-${VERSION}.exe）: ${SHA256}"
+          if [ "$WIN7_OK" = true ]; then
+            echo "SHA-256（ClubDesk-Win7-Setup-${VERSION}.exe）: ${SHA256_WIN7}"
+          fi
+        } > notes.md
+
+    - name: Publish GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: desktop-v${{ needs.version.outputs.version }}
+        target_commitish: ${{ github.sha }}
+        name: 社務管理系統 ${{ needs.version.outputs.version }}
+        make_latest: true
+        body_path: notes.md
+        files: dist/*
+
+    - name: Announce to the website
+      env:
+        TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
+        SITE_URL: ${{ vars.SITE_URL || 'https://ntut.tpe.pp.ua' }}
+        NOTES: ${{ steps.notes.outputs.summary }}
+      run: |
+        if [ -z "$TOKEN" ]; then
+          echo "::notice::DESKTOP_RELEASE_TOKEN is not set: the president announces $VERSION from 工具 → 發布桌面版更新."
+          exit 0
+        fi
+        url="https://github.com/${GITHUB_REPOSITORY}/releases/download/desktop-v${VERSION}/ClubDesk-Setup-${VERSION}.exe"
+        body=$(jq -n --arg v "$VERSION" --arg u "$url" --arg s "$SHA256" --arg n "$NOTES" '{version:$v, url:$u, sha256:$s, notes:$n}')
+        # The website may still be deploying the token; retry for about two minutes.
+        for attempt in 1 2 3 4 5 6; do
+          status=$(curl -sS -o response.json -w '%{http_code}' -X PUT "${SITE_URL%/}/api/desktop/version" \
+            -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data "$body" || echo 000)
+          if [ "$status" = 200 ]; then echo "Announced $VERSION to $SITE_URL"; exit 0; fi
+          if [ "$status" = 409 ]; then echo "::notice::The website already offers a newer version: $(cat response.json)"; exit 0; fi
+          echo "Attempt $attempt: HTTP $status $(cat response.json 2>/dev/null)"
+          sleep 20
+        done
+        echo "::warning::Could not announce $VERSION to the website; the president can do it from 工具 → 發布桌面版更新."

@@ -12,15 +12,17 @@ the tray menu's 結束 really quits.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QSettings, Qt, QTimer
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import (QApplication, QDialog, QLabel, QMainWindow, QMenu, QMessageBox, QSplitter,
                                QStackedWidget, QSystemTrayIcon, QTreeWidget, QTreeWidgetItem)
 
-from . import __version__
-from .api import (ROLE_LABELS, ApiClient, can_manage_equipment, can_manage_finance, can_manage_members,
+from . import __version__, autostart, saved_session
+from .api import (ROLE_LABELS, ApiClient, ApiError, can_manage_equipment, can_manage_finance, can_manage_members,
                   can_manage_users, can_view_cms)
+from . import i18n
 from .help import HelpWindow, WelcomeDialog
 from .icons import app_icon, icon
+from .login import run_login, switch_language
 from .notifications import NotificationCenter, NotificationSettingsDialog, NotificationsPage, set_setting, setting
 from .pages.admin import AssistantPage, NotesPage, ReportsPage, UsersPage
 from .pages.equipment import EquipmentPage
@@ -32,7 +34,7 @@ from .pages.messages import AnnouncementsPage, MessagesPage, PushSettingsDialog
 from .pages.other import AccountPage, RegulationsPage
 from .pages.website import HomepagePage, PagesPage, PostsPage
 from .updater import PublishDialog, check_and_offer
-from .widgets import background, open_url
+from .widgets import background, open_url, show_error
 
 APP_TITLE = "北科無人機社 社務管理系統"
 POLL_MS = 30000
@@ -77,7 +79,7 @@ class MainWindow(QMainWindow):
         self.tree = QTreeWidget()
         self.tree.setHeaderLabel("功能選單")
         self.tree.setRootIsDecorated(True)
-        self.tree.setMinimumWidth(180)
+        self.tree.setMinimumWidth(240 if i18n.is_english() else 180)
         self.stack = QStackedWidget()
         for group, group_icon, entries in navigation(user.get("role", "")):
             allowed = [cls for cls, ok in entries if ok]
@@ -104,7 +106,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.tree)
         splitter.addWidget(self.stack)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([200, 980])
+        splitter.setSizes([260 if i18n.is_english() else 200, 980])
         self.setCentralWidget(splitter)
 
         self.build_actions()
@@ -120,7 +122,8 @@ class MainWindow(QMainWindow):
         self.poll.timeout.connect(self.check_messages)
         self.poll.start()
         QTimer.singleShot(500, self.check_messages)
-        QTimer.singleShot(300, lambda: WelcomeDialog.maybe_show(self))
+        # Not while hidden in the tray (start with Windows): wait until the window is opened.
+        QTimer.singleShot(300, lambda: WelcomeDialog.maybe_show(self) if self.isVisible() else None)
 
     # ------------------------------------------------------------- chrome
     def build_actions(self) -> None:
@@ -131,7 +134,7 @@ class MainWindow(QMainWindow):
                 act.setShortcut(QKeySequence(shortcut))
             if icon_name:
                 act.setIcon(icon(icon_name))
-            act.setStatusTip(tip or text.replace("&", "").rstrip("."))
+            act.setStatusTip(tip or act.text().replace("&", "").rstrip("."))
             return act
 
         president = can_manage_users(self.user.get("role", ""))
@@ -149,6 +152,11 @@ class MainWindow(QMainWindow):
                                           "右下角通知、提示音、勿擾模式與背景執行")
         self.act_dnd = action("勿擾模式(&D)", self.toggle_dnd, None, None, "暫停右下角通知")
         self.act_dnd.setCheckable(True)
+        self.act_autostart = action("開機自動啟動(&B)", self.toggle_autostart, None, None,
+                                    "Windows 開機登入後自動啟動並縮小到系統匣（使用 30 天保持登入）")
+        self.act_autostart.setCheckable(True)
+        self.act_autostart.setChecked(autostart.is_enabled())
+        self.act_autostart.setEnabled(autostart.supported())
         self.act_dnd.setChecked(not setting("enabled"))
         self.act_to_tray = action("縮小到系統匣(&Y)", self.hide_to_tray, "Ctrl+H", "tray",
                                   "隱藏視窗到右下角系統匣，程式在背景繼續執行並接收通知")
@@ -181,7 +189,7 @@ class MainWindow(QMainWindow):
         tools_menu = menu.addMenu("工具(&T)")
         tools_menu.addActions([self.act_notify, self.act_messages])
         tools_menu.addSeparator()
-        tools_menu.addActions([self.act_notify_settings, self.act_dnd, self.act_to_tray])
+        tools_menu.addActions([self.act_notify_settings, self.act_dnd, self.act_autostart, self.act_to_tray])
         tools_menu.addSeparator()
         tools_menu.addAction(self.act_password)
         if president:
@@ -189,6 +197,18 @@ class MainWindow(QMainWindow):
             tools_menu.addActions([self.act_push, self.act_publish])
         help_menu = menu.addMenu("說明(&H)")
         help_menu.addActions([self.act_tutorial, self.act_quick, self.act_welcome])
+        help_menu.addSeparator()
+        language_menu = help_menu.addMenu("\u200bLanguage / 語言")
+        self.language_actions = {}
+        language_group = QActionGroup(self)  # exactly one is checked
+        for code, name in i18n.LANGUAGES.items():
+            act = QAction("\u200b" + name, self)
+            act.setCheckable(True)
+            act.setChecked(code == i18n.language())
+            act.triggered.connect(lambda _=False, c=code: self.change_language(c))
+            language_group.addAction(act)
+            language_menu.addAction(act)
+            self.language_actions[code] = act
         help_menu.addSeparator()
         help_menu.addAction(self.act_update)
         help_menu.addSeparator()
@@ -350,6 +370,23 @@ class MainWindow(QMainWindow):
             self.tray.showMessage("仍在背景執行", "程式已縮小到右下角系統匣，會繼續接收新訊息與公告通知。"
                                   "點圖示可開回視窗；右鍵選「結束」可完全關閉。", app_icon(), 8000)
 
+    def hide_to_tray_silently(self) -> None:
+        """Started with Windows: show only the tray icon, no window and no first-time hint."""
+        self.hide()
+
+    def toggle_autostart(self, checked: bool) -> None:
+        try:
+            autostart.set_enabled(checked)
+        except OSError as error:
+            self.act_autostart.setChecked(autostart.is_enabled())
+            show_error(self, ApiError(f"無法設定開機自動啟動：{error}"))
+            return
+        QSettings().setValue("login/autostart", checked)
+        if checked and not (saved_session.load() or {}).get("token"):
+            QMessageBox.information(self, APP_TITLE, "開機自動啟動需要「保持登入 30 天」才能自動登入。"
+                                    "請從「檔案 → 登出並切換使用者」重新登入並勾選保持登入。")
+        self.set_message("已設定開機自動啟動" if checked else "已取消開機自動啟動")
+
     def notification_settings(self) -> None:
         if NotificationSettingsDialog(self).exec() == QDialog.Accepted:
             self.act_dnd.setChecked(not setting("enabled"))
@@ -428,21 +465,38 @@ class MainWindow(QMainWindow):
                           "資料與社團網站後台共用，所有變更會即時寫入網站伺服器。<br><br>"
                           "圖示為仿 Windows 98／2000 風格的自繪向量圖示。")
 
+    def change_language(self, code: str) -> None:
+        """The windows are built in one language, so a switch signs out and rebuilds them."""
+        if code == i18n.language():
+            return
+        self.language_actions[i18n.language()].setChecked(True)  # keep the current one checked unless it is switched
+        # The language is switched only after the question, so it is asked in the current one.
+        if QMessageBox.question(self, "\u200bLanguage / 語言", "切換語言會登出並重新開啟登入視窗。\n要繼續嗎？",
+                                QMessageBox.Yes | QMessageBox.No,
+                                QMessageBox.No) != QMessageBox.Yes:
+            return
+        switch_language(code)
+        self.relogin()
+
     def relogin(self) -> None:
         """Sign out and show the login dialog again; quit if it is cancelled."""
         self.quitting = True
         self.poll.stop()
         self.api.logout()
+        saved_session.clear()  # signing out ends the 30-day stay-signed-in too
         if self.tray:
             self.tray.hide()
         if not self.login_factory:
             self.close()
             return
         self.hide()
-        dialog = self.login_factory()
-        if dialog.exec() == QDialog.Accepted:
+        dialog = run_login(self.login_factory)
+        if dialog is not None:
             window = MainWindow(dialog.client, dialog.user, self.login_factory)
             window.show()
+            instances = getattr(QApplication.instance(), "instances", None)
+            if instances:  # a later second start must open this window, not the closed one
+                instances.set_handler(window.restore_window)
             # Keep a reference so the new window is not garbage-collected.
             self.successor = window
         self.save_geometry()
