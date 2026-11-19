@@ -9,8 +9,11 @@
     var main = document.querySelector('.main-content');
     if (!main) return;
 
-    var KEY_SETTINGS = 'club-notify-settings';
-    var KEY_HISTORY = 'club-notify-history';
+    // Per account, so the next person on a shared computer never sees someone else's previews.
+    var owner = (document.getElementById('panel-forms') || {}).dataset || {};
+    var KEY_SETTINGS = 'club-notify-settings:' + (owner.username || '_');
+    var KEY_HISTORY = 'club-notify-history:' + (owner.username || '_');
+    try { localStorage.removeItem('club-notify-history'); } catch (e) { /* storage blocked */ }
     var DEFAULTS = { system: false, announcements: true, messages: true, sound: true, mute: false };
     var settings = load(KEY_SETTINGS, DEFAULTS);
     var history = load(KEY_HISTORY, []);
@@ -71,7 +74,8 @@
         bell.setAttribute('aria-expanded', String(open));
         if (open) render();
     };
-    document.addEventListener('click', function (event) { if (!panel.contains(event.target) && event.target !== bell) close(); });
+    panel.addEventListener('click', function (event) { event.stopPropagation(); });
+    document.addEventListener('click', function (event) { if (event.target !== bell) close(); });
     document.addEventListener('keydown', function (event) { if (event.key === 'Escape') close(); });
     function close() { panel.classList.remove('open'); bell.setAttribute('aria-expanded', 'false'); }
 
@@ -147,7 +151,7 @@
 
     async function systemNotify(item) {
         if (!settings.system || !supported() || Notification.permission !== 'granted') return false;
-        var options = { body: item.body, icon: '/assets/icons/icon-192x192.png', badge: '/assets/icons/icon-192x192.png', tag: item.key, data: { url: '/admin/dashboard#messages', tab: item.tab, conv: item.conv || '' } };
+        var options = { body: item.body, icon: '/assets/icons/icon-192x192.png', badge: '/assets/icons/icon-192x192.png', tag: item.key, data: { url: '/admin/dashboard#notify=' + encodeURIComponent(item.tab) + ':' + encodeURIComponent(item.conv || ''), tab: item.tab, conv: item.conv || '' } };
         try {
             var reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration('/') : null;
             if (reg && reg.showNotification) { await reg.showNotification(item.title, options); return true; }
@@ -163,10 +167,10 @@
         save(KEY_HISTORY, history);
         if (settings.mute) return;
         if (settings.sound) beep();
-        // In the foreground a toast is enough; otherwise (or if asked) use the OS notification.
-        systemNotify(item).then(function (shown) {
-            if ((!shown || !document.hidden) && typeof showToast === 'function') showToast(item.title + '：' + item.body);
-        });
+        // In the foreground a toast is enough; in the background use the OS notification.
+        var toast = function () { if (typeof showToast === 'function') showToast(item.title + '：' + item.body); };
+        if (!document.hidden) return toast();
+        systemNotify(item).then(function (shown) { if (!shown) toast(); });
     }
 
     function onSummary(s) {
@@ -196,6 +200,13 @@
     }
 
     window.addEventListener('club:summary', function (event) { onSummary(event.detail || {}); });
+    if (window.ClubMessages && window.ClubMessages.lastSummary) onSummary(window.ClubMessages.lastSummary);
+    // Opened from an OS notification while no back-office tab was open.
+    var hash = /^#notify=([^:]*):(.*)$/.exec(location.hash);
+    if (hash) {
+        window.history.replaceState(null, '', location.pathname + location.search);
+        setTimeout(function () { go({ tab: decodeURIComponent(hash[1]), conv: decodeURIComponent(hash[2]) }); }, 0);
+    }
     // A click on an OS notification focuses this tab; the service worker tells us where to go.
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.addEventListener('message', function (event) {

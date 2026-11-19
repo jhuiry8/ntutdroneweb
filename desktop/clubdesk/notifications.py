@@ -14,7 +14,7 @@ from datetime import datetime
 from PySide6.QtCore import QObject, QSettings, Signal
 from PySide6.QtWidgets import QCheckBox, QDialog, QGroupBox, QLabel, QVBoxLayout
 
-from .widgets import DataTable, Page, button_row, confirm, icon_button
+from .widgets import DataTable, Page, button_row, confirm, icon_button, show_error
 
 HISTORY_LIMIT = 100
 DEFAULTS = {
@@ -65,8 +65,9 @@ class NotificationCenter(QObject):
                    "body": f"{c.get('lastAuthor', '')}：{c.get('lastPreview', '')}", "at": c.get("lastAt", ""),
                    "target": "messages", "conv": c.get("conv", "")}
                   for c in summary.get("conversations", [])]
-        self.unread_items = items
-        self.changed.emit()
+        if items != self.unread_items:  # avoid rebuilding the table (and losing the selection) every poll
+            self.unread_items = items
+            self.changed.emit()
 
     def clear(self) -> None:
         self.history = []
@@ -178,7 +179,11 @@ class NotificationsPage(Page):
             self.navigate(row.get("target", "messages"), row.get("conv", ""))
 
     def read_all(self) -> None:
-        self.api.post("/api/messages/read-all", {})
+        try:
+            self.api.post("/api/messages/read-all", {})
+        except Exception as error:  # noqa: BLE001 - report every failure to the user
+            show_error(self, error)
+            return
         self.status("已全部標為已讀")
         if self.navigate:
             self.navigate(None, "")  # just re-check the unread summary

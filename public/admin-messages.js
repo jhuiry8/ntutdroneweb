@@ -325,6 +325,7 @@
             if (badge) badge.innerHTML = total ? '<span class="msg-badge">' + (total > 99 ? '99+' : total) + '</span>' : '';
             document.title = (total ? '(' + total + ') ' : '') + document.title.replace(/^\(\d+\+?\) /, '');
             // admin-notifications.js turns new items into pop-ups and the bell's list.
+            if (window.ClubMessages) window.ClubMessages.lastSummary = s;
             window.dispatchEvent(new CustomEvent('club:summary', { detail: s }));
             if (panel.classList.contains('active')) renderTabs();
         } catch (e) { /* offline or feature not deployed: keep quiet */ }
