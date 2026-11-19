@@ -298,7 +298,7 @@ class ContentEditor(QDialog):
         self.noun = "文章" if kind == "post" else "頁面"
         self.original_slug = (item or {}).get("slug", "")
         self.saved = None
-        self.setWindowTitle(f"修改{self.noun} - {item.get('title', '')}" if item else f"新增{self.noun}")
+        self.setWindowTitle(f"修改{self.noun} - {raw(item.get('title', ''))}" if item else f"新增{self.noun}")
         self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.resize(1100, 720)
@@ -720,7 +720,7 @@ class ContentPage(Page):
 class ContentViewer(QDialog):
     def __init__(self, parent, item: dict):
         super().__init__(parent)
-        self.setWindowTitle(item.get("title", ""))
+        self.setWindowTitle(raw(item.get("title", "")))
         self.resize(700, 560)
         text = QPlainTextEdit(item.get("content", ""))
         text.setReadOnly(True)

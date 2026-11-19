@@ -75,14 +75,16 @@ jobs:
 
   release:
     # Only ever from main: a manual run on any other branch just builds and tests.
-    if: github.ref == 'refs/heads/main'
+    # The Windows installer is required; a failed Windows 7 or Android build must not hold the release back.
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && needs.desktop.result == 'success' }}
     needs: [ version, desktop, desktop-win7, android ]
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
       SHA256: ${{ needs.desktop.outputs.sha256 }}
       SHA256_WIN7: ${{ needs.desktop-win7.outputs.sha256 }}
-      APK_SIGNED: ${{ needs.android.outputs.signed }}
+      WIN7_OK: ${{ needs.desktop-win7.result == 'success' }}
+      APK_SIGNED: ${{ needs.android.result == 'success' && needs.android.outputs.signed }}
       APK_VERSION: ${{ needs.android.outputs.version }}
     steps:
     - uses: actions/download-artifact@v4
@@ -91,12 +93,13 @@ jobs:
         path: dist
 
     - uses: actions/download-artifact@v4
+      if: needs.desktop-win7.result == 'success'
       with:
         name: ClubDesk-Win7-Setup-${{ needs.version.outputs.version }}
         path: dist
 
     - uses: actions/download-artifact@v4
-      if: needs.android.outputs.signed == 'true'
+      if: needs.android.result == 'success' && needs.android.outputs.signed == 'true'
       with:
         name: NTUT-Drone-Club-APK
         path: apk
@@ -127,15 +130,21 @@ jobs:
           echo "| 檔案 | 適用 |"
           echo "| :--- | :--- |"
           echo "| \`ClubDesk-Setup-${VERSION}.exe\` | 桌面版，Windows 10 / 11。已安裝的電腦開啟程式時會自動提示更新。 |"
-          echo "| \`ClubDesk-Win7-Setup-${VERSION}.exe\` | 桌面版，**Windows 7 SP1** 以上（獨立版本，不會自動更新）。需先安裝 SP1 與 KB2999226。 |"
+          if [ "$WIN7_OK" = true ]; then
+            echo "| \`ClubDesk-Win7-Setup-${VERSION}.exe\` | 桌面版，**Windows 7 SP1** 以上（獨立版本，不會自動更新）。需先安裝 SP1 與 KB2999226。 |"
+          fi
           if [ "$APK_SIGNED" = true ]; then
             echo "| \`NTUT-Drone-Club.apk\` | Android App（v${APK_VERSION}），可直接覆蓋安裝舊版。 |"
           fi
           echo
-          echo "Windows 7 已停止安全更新，Win7 版只建議用在無法升級的電腦；其他電腦請用一般版。"
-          echo
+          if [ "$WIN7_OK" = true ]; then
+            echo "Windows 7 已停止安全更新，Win7 版只建議用在無法升級的電腦；其他電腦請用一般版。"
+            echo
+          fi
           echo "SHA-256（ClubDesk-Setup-${VERSION}.exe）: ${SHA256}"
-          echo "SHA-256（ClubDesk-Win7-Setup-${VERSION}.exe）: ${SHA256_WIN7}"
+          if [ "$WIN7_OK" = true ]; then
+            echo "SHA-256（ClubDesk-Win7-Setup-${VERSION}.exe）: ${SHA256_WIN7}"
+          fi
         } > notes.md
 
     - name: Publish GitHub Release

@@ -29,7 +29,7 @@ def auto_login(autostarted: bool, sleep=time.sleep, make_client=ApiClient):
         try:
             return client, client.me(), ""
         except ApiError as error:
-            if error.status in (401, 403):
+            if error.status == 401:  # a 403 may come from a proxy or firewall, not from an expired session
                 saved_session.clear()
                 return None, None, EXPIRED_NOTICE
             if error.status != 0 and error.status < 500:

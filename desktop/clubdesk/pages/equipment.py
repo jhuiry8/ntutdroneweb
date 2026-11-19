@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (QDialog, QFormLayout, QGroupBox, QHBoxLayout, QLa
                                QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QVBoxLayout)
 
 from ..api import ApiError
+from ..i18n import raw
 from ..widgets import DataTable, Page, busy, button_row, money, show_error
 from .members import combo, date_edit, date_text, dialog_buttons
 
@@ -19,7 +20,7 @@ class EquipmentDialog(QDialog):
     def __init__(self, parent, asset: dict | None = None):
         super().__init__(parent)
         asset = asset or {}
-        self.setWindowTitle(f"修改器材 {asset.get('assetNo', '')}" if asset else "新增器材")
+        self.setWindowTitle(f"修改器材 {raw(asset.get('assetNo', ''))}" if asset else "新增器材")
         self.name = QLineEdit(asset.get("assetName", ""))
         self.category = QLineEdit(asset.get("category", ""))
         self.category.setPlaceholderText("例如 空拍機、穿越機、電池、遙控器")

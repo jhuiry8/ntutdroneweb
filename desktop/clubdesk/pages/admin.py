@@ -159,7 +159,7 @@ class NotesPage(Page):
 class AccountDialog(QDialog):
     def __init__(self, parent, members: list[dict], user: dict | None = None):
         super().__init__(parent)
-        self.setWindowTitle(f"修改帳號 {user['username']}" if user else "新增帳號")
+        self.setWindowTitle(f"修改帳號 {raw(user['username'])}" if user else "新增帳號")
         self.username = QLineEdit(user.get("username", "") if user else "")
         self.username.setEnabled(user is None)
         self.username.setPlaceholderText("3–40 位英數字、點、底線或連字號")

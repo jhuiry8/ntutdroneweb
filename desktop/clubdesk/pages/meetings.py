@@ -63,7 +63,7 @@ class MeetingDialog(QDialog):
         self.options = options
         meeting = meeting or {}
         self.locked = meeting.get("status") in ("open", "closed")
-        self.setWindowTitle(f"修改會議 - {meeting.get('title', '')}" if meeting else "召開新會議")
+        self.setWindowTitle(f"修改會議 - {raw(meeting.get('title', ''))}" if meeting else "召開新會議")
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.type = QComboBox()
         for key, label in options.get("types", {}).items():
@@ -409,7 +409,7 @@ class MeetingWindow(QDialog):
 
     def render(self, full: bool) -> None:
         m = self.meeting
-        self.setWindowTitle(f"{m.get('title', '')} - 會議")
+        self.setWindowTitle(f"{raw(m.get('title', ''))} - 會議")
         self.header.setText(f"{raw(m.get('title', ''))}　〔{raw(m.get('typeLabel', ''))}・{raw(m.get('statusLabel', ''))}〕")
         where = raw(m.get("location")) or "（地點待補）"
         if m.get("onlineUrl"):
