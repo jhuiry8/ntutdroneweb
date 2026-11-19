@@ -979,7 +979,7 @@ TRANSLATIONS = {
     '聊天室與私訊：未讀 ': 'Chat rooms and messages: unread ',
     '此聊天室目前無法發言': 'Nobody can post in this chat room right now',
     "<i style='color:#808080'>訊息已刪除</i>": "<i style='color:#808080'>Message deleted</i>",
-    '（已編輯）': '(edited)',
+    '（已編輯）': ' (edited)',
     "<p style='color:#808080'>還沒有訊息，說聲嗨吧！</p>": "<p style='color:#808080'>No messages yet - say hi!</p>",
     '請先選擇一個對話。': 'Please select a conversation first.',
     '對話紀錄-': 'Chat-log-',

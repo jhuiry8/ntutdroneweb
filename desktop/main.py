@@ -3,7 +3,7 @@
 import sys
 
 from clubdesk import qtcompat  # noqa: F401  (PySide2 fallback for Windows 7; must come first)
-from PySide6.QtCore import QLibraryInfo, QLocale, QTimer, QTranslator
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
@@ -71,12 +71,7 @@ def main() -> int:
     i18n.set_language(i18n.saved_language())
     i18n.install()
     apply_classic_style(app)
-    if not i18n.is_english():
-        # Chinese text on Qt's own buttons (Yes/No, OK/Cancel in message boxes).
-        QLocale.setDefault(QLocale(QLocale.Chinese, QLocale.Taiwan))
-        translator = QTranslator(app)
-        if translator.load("qtbase_zh_TW", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
-            app.installTranslator(translator)
+    i18n.apply_qt_locale(app)  # Qt's own buttons (Yes/No, OK/Cancel) in the interface language
 
     if ask_running_instance():
         return 0  # already running (maybe hidden in the tray); it was asked to show itself

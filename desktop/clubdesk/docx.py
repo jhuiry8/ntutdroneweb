@@ -83,7 +83,7 @@ def inline_runs(text: str, size: int | None = None) -> str:
 
 class Document:
     def __init__(self, title: str = "", landscape: bool = False, author: str = "北科無人機社 社務管理系統"):
-        self.title = tr(title)
+        self.title = tr_exact(title)  # often a post / meeting title: whole-text matches only
         self.author = tr(author)
         self.landscape = landscape
         self.body: list[str] = []

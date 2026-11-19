@@ -81,6 +81,16 @@ class TranslateTests(unittest.TestCase):
     def test_marked_text_is_kept(self):
         self.assertEqual(i18n.tr("​繁體中文"), "​繁體中文")
 
+    def test_server_data_marked_with_raw_is_kept(self):
+        text = "會議紀錄：" + i18n.raw("新增設備，設定：完成") + "（已編輯）"
+        self.assertEqual(i18n.tr(text), "Minutes: 新增設備，設定：完成 (edited)")
+        self.assertNotIn("\ue000", i18n.tr(i18n.raw("王小明")))
+        self.assertEqual(i18n.tr(i18n.raw("新增")), "新增")
+
+    def test_raw_does_nothing_in_chinese(self):
+        i18n.set_language("zh")
+        self.assertEqual(i18n.raw("新增"), "新增")
+
     def test_chinese_mode_changes_nothing(self):
         i18n.set_language("zh")
         self.assertEqual(i18n.tr("儲存"), "儲存")

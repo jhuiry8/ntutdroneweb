@@ -12,7 +12,7 @@ the tray menu's 結束 really quits.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QSettings, Qt, QTimer
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import (QApplication, QDialog, QLabel, QMainWindow, QMenu, QMessageBox, QSplitter,
                                QStackedWidget, QSystemTrayIcon, QTreeWidget, QTreeWidgetItem)
 
@@ -199,12 +199,16 @@ class MainWindow(QMainWindow):
         help_menu.addActions([self.act_tutorial, self.act_quick, self.act_welcome])
         help_menu.addSeparator()
         language_menu = help_menu.addMenu("\u200bLanguage / 語言")
+        self.language_actions = {}
+        language_group = QActionGroup(self)  # exactly one is checked
         for code, name in i18n.LANGUAGES.items():
             act = QAction("\u200b" + name, self)
             act.setCheckable(True)
             act.setChecked(code == i18n.language())
             act.triggered.connect(lambda _=False, c=code: self.change_language(c))
+            language_group.addAction(act)
             language_menu.addAction(act)
+            self.language_actions[code] = act
         help_menu.addSeparator()
         help_menu.addAction(self.act_update)
         help_menu.addSeparator()
@@ -465,6 +469,7 @@ class MainWindow(QMainWindow):
         """The windows are built in one language, so a switch signs out and rebuilds them."""
         if code == i18n.language():
             return
+        self.language_actions[i18n.language()].setChecked(True)  # keep the current one checked unless it is switched
         # The language is switched only after the question, so it is asked in the current one.
         if QMessageBox.question(self, "\u200bLanguage / 語言", "切換語言會登出並重新開啟登入視窗。\n要繼續嗎？",
                                 QMessageBox.Yes | QMessageBox.No,

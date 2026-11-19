@@ -37,14 +37,19 @@ def switch_language(code: str) -> None:
     from PySide6.QtWidgets import QApplication
     from .style import apply_classic_style
     apply_classic_style(QApplication.instance())
+    i18n.apply_qt_locale(QApplication.instance())
 
 
 def run_login(factory):
     """Shows the login dialog (again after a language switch); returns it once accepted, else None."""
+    state = None
     while True:
         dialog = factory()
+        if state:
+            dialog.restore(state)
         result = dialog.exec()
         if result == LANGUAGE_CHANGED:
+            state = dialog.state()  # what was typed survives the language switch
             continue
         return dialog if result == QDialog.Accepted else None
 
@@ -186,6 +191,17 @@ class LoginDialog(QDialog):
     def check_update(self) -> None:
         if self.client and check_and_offer(self, self.client):
             self.reject()
+
+    def state(self) -> dict:
+        return {"server": self.server.text(), "username": self.username.text(), "password": self.password.text(),
+                "remember": self.remember.isChecked(), "autostart": self.autostart.isChecked()}
+
+    def restore(self, state: dict) -> None:
+        self.server.setText(state["server"])
+        self.username.setText(state["username"])
+        self.password.setText(state["password"])
+        self.remember.setChecked(state["remember"])
+        self.autostart.setChecked(state["autostart"])
 
     def language_changed(self) -> None:
         code = self.language.currentData()

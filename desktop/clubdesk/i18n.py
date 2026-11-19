@@ -81,8 +81,27 @@ def _tidy(text: str) -> str:
     return re.sub(r"[ ]{2,}", " ", re.sub(r" +([,.:;?!)])", r"\1", text))
 
 
+_OPEN, _CLOSE = "\ue000", "\ue001"
+_MARKED = re.compile(f"{_OPEN}(.*?){_CLOSE}", re.S)
+
+
+def raw(text):
+    """Marks server data inside a text built for display, so tr() leaves it exactly as it is.
+
+    Wrap the data (names, titles, article / chat bodies ...) where it is put into a label, a rich-text
+    view or a Word document next to program text. In Chinese mode this does nothing.
+    """
+    if _language != "en" or not isinstance(text, str) or not text:
+        return text
+    return f"{_OPEN}{text}{_CLOSE}"
+
+
 def tr(text, pieces: bool = True):
     """English text for a Chinese program text (anything else comes back unchanged)."""
+    if _language == "en" and isinstance(text, str) and _OPEN in text:
+        # Server data marked with raw() stays; the program text around it is translated.
+        parts = _MARKED.split(text)
+        return "".join(part if i % 2 else tr(part, pieces) for i, part in enumerate(parts))
     if _language != "en" or not isinstance(text, str) or not _CJK.search(text) or text.startswith("\u200b"):
         return text  # not Chinese, or marked (leading zero-width space) as text that must stay as written
     hit = _exact.get(text)
@@ -161,21 +180,27 @@ def _hook_text_arg(cls, name, pieces=True) -> None:
         pass
 
 
-def _first_string(args, pieces):
+def _first_string(args, pieces, count=1):
+    """Translates the first `count` string (or list of strings) arguments."""
+    args = list(args)
     for i, value in enumerate(args):
+        if count <= 0:
+            break
         if isinstance(value, str):
-            return args[:i] + (tr(value, pieces),) + args[i + 1:]
-        if isinstance(value, (list, tuple)) and value and all(isinstance(v, str) for v in value):
-            return args[:i] + (type(value)(tr(v, pieces) for v in value),) + args[i + 1:]
-    return args
+            args[i] = tr(value, pieces)
+            count -= 1
+        elif isinstance(value, (list, tuple)) and value and all(isinstance(v, str) for v in value):
+            args[i] = type(value)(tr(v, pieces) for v in value)
+            count -= 1
+    return tuple(args)
 
 
-def _hook_init(cls, pieces=True, every_string=False) -> None:
+def _hook_init(cls, pieces=True, count=1) -> None:
     original = cls.__init__
 
     def init(self, *args, **kwargs):
         if _language == "en":
-            args = _first_string(args, pieces)
+            args = _first_string(args, pieces, count)
         original(self, *args, **kwargs)
 
     try:
@@ -184,8 +209,11 @@ def _hook_init(cls, pieces=True, every_string=False) -> None:
         pass
 
 
-def _hook_static(cls, name, indexes, pieces=True) -> None:
-    """Static dialog helpers (QMessageBox.critical(parent, title, text, ...), QInputDialog.getText ...)."""
+def _hook_static(cls, name, indexes, pieces=True, exact_indexes=()) -> None:
+    """Static dialog helpers (QMessageBox.critical(parent, title, text, ...), QInputDialog.getText ...).
+
+    `exact_indexes` are arguments that may hold names or paths (default file name): whole-text matches only.
+    """
     original = getattr(cls, name, None)
     if original is None:
         return
@@ -196,6 +224,9 @@ def _hook_static(cls, name, indexes, pieces=True) -> None:
             for i in indexes:
                 if i < len(args) and isinstance(args[i], str):
                     args[i] = tr(args[i], pieces)
+            for i in exact_indexes:
+                if i < len(args) and isinstance(args[i], str):
+                    args[i] = tr(args[i], False)
             args = tuple(args)
         return original(*args, **kwargs)
 
@@ -217,8 +248,9 @@ def install() -> None:
     for cls in (W.QLabel, W.QAbstractButton):
         _hook(cls, "setText", (0,))
     for cls in (W.QLabel, W.QPushButton, W.QCheckBox, W.QRadioButton, W.QToolButton, W.QGroupBox, W.QMenu,
-                W.QProgressDialog, QtGui.QAction):
+                QtGui.QAction):
         _hook_init(cls)
+    _hook_init(W.QProgressDialog, count=2)  # label and cancel button
     _hook(W.QGroupBox, "setTitle", (0,))
     _hook(W.QMenu, "setTitle", (0,))
     for name in ("addMenu", "addAction", "addSection"):
@@ -232,10 +264,13 @@ def install() -> None:
         _hook(W.QWidget, name, (0,))
     for cls in (W.QLineEdit, W.QTextEdit, W.QPlainTextEdit):
         _hook(cls, "setPlaceholderText", (0,))
-    _hook(W.QTextEdit, "setHtml", (0,))
+    # Rich-text views show program text mixed with server data (mark that with raw()); editors hold server
+    # data that is saved back, so they only get whole-text matches. QTextBrowser first: it must wrap the
+    # native QTextEdit.setHtml, not the hooked one.
     _hook(W.QTextBrowser, "setHtml", (0,))
-    _hook(W.QTextEdit, "setPlainText", (0,))
-    _hook(W.QPlainTextEdit, "setPlainText", (0,))
+    _hook(W.QTextEdit, "setHtml", (0,), pieces=False)
+    _hook(W.QTextEdit, "setPlainText", (0,), pieces=False)
+    _hook(W.QPlainTextEdit, "setPlainText", (0,), pieces=False)
     for cls in (W.QSpinBox, W.QDoubleSpinBox):
         _hook(cls, "setSuffix", (0,))
         _hook(cls, "setPrefix", (0,))
@@ -277,11 +312,28 @@ def install() -> None:
     _hook_static(W.QInputDialog, "getInt", (1, 2))
     _hook_static(W.QInputDialog, "getItem", (1, 2))
     for name in ("getOpenFileName", "getSaveFileName", "getOpenFileNames"):
-        _hook_static(W.QFileDialog, name, (1, 2, 3))
+        _hook_static(W.QFileDialog, name, (1, 3), exact_indexes=(2,))
     _hook_static(W.QFileDialog, "getExistingDirectory", (1,))
     _hook(W.QSystemTrayIcon, "showMessage", (0, 1))
     _hook(W.QSystemTrayIcon, "setToolTip", (0,))
 
-    # Qt's own buttons (Yes / No / OK ...) and date names follow the English locale.
-    from PySide6.QtCore import QLocale
-    QLocale.setDefault(QLocale(QLocale.English, QLocale.UnitedStates))
+
+
+_translator = None
+
+
+def apply_qt_locale(app) -> None:
+    """Qt's own texts (Yes / No / OK ..., month names) in the interface language."""
+    global _translator
+    from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
+    if _translator is not None:
+        app.removeTranslator(_translator)
+        _translator = None
+    if is_english():
+        QLocale.setDefault(QLocale(QLocale.English, QLocale.UnitedStates))
+        return
+    QLocale.setDefault(QLocale(QLocale.Chinese, QLocale.Taiwan))
+    translator = QTranslator(app)
+    if translator.load("qtbase_zh_TW", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
+        app.installTranslator(translator)
+        _translator = translator
