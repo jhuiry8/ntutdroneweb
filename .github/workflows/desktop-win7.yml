@@ -1,0 +1,108 @@
+name: Desktop App (Windows 7 edition)
+
+# The Windows 7 SP1 edition of the desktop program (also runs on 8 / 10 / 11), built with
+# Python 3.8 + PySide2 (Qt 5.15), the newest combination that still runs on Windows 7.
+#   * pull requests and manual runs only build and test (the installer is a workflow artifact);
+#   * merges to main are released by release.yml, which attaches ClubDesk-Win7-Setup-<version>.exe
+#     to the same GitHub Release as the normal installer and the APK, as its own separate file.
+# This edition has no automatic update; the website never announces it.
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths: [ 'desktop/**', '.github/workflows/desktop-win7.yml' ]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: Version to build (x.y.z), chosen by release.yml
+        type: string
+        required: true
+    outputs:
+      version:
+        value: ${{ jobs.build.outputs.version }}
+      sha256:
+        value: ${{ jobs.build.outputs.sha256 }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+        shell: pwsh
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.8 (64-bit)
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.8'
+        architecture: x64
+
+    - name: Install dependencies
+      run: pip install -r requirements-win7.txt "pyinstaller>=5.13,<6.10"
+
+    - name: Run unit tests
+      timeout-minutes: 5
+      env:
+        # The real Windows platform plugin, as the installed program uses: Qt 5's "offscreen" plugin
+        # crashes PySide2 on Windows (access violation) as soon as any QMessageBox is shown.
+        QT_QPA_PLATFORM: windows
+      run: |
+        # faulthandler / unbuffered output: a native crash prints the Python stack instead of exiting silently.
+        python -X faulthandler -u -m unittest discover -s tests -v
+        if ($LASTEXITCODE -ne 0) { throw "unit tests exited with code $LASTEXITCODE" }
+
+    - name: Choose version
+      id: version
+      env:
+        RELEASE_VERSION: ${{ inputs.version }}
+      run: |
+        $version = if ($env:RELEASE_VERSION) { $env:RELEASE_VERSION } else { python -c "from clubdesk import __version__; print(__version__)" }
+        if ($version -notmatch '^\d{1,4}\.\d{1,4}\.\d{1,4}$') { throw "Invalid version '$version'" }
+        (Get-Content clubdesk/__init__.py -Raw) -replace '__version__ = "[^"]*"', "__version__ = `"$version`"" | Set-Content clubdesk/__init__.py -NoNewline -Encoding utf8
+        "version=$version" >> $env:GITHUB_OUTPUT
+
+    - name: Build program folder
+      run: pyinstaller --noconfirm ClubDesk.spec
+
+    - name: Smoke test the built program
+      run: |
+        # The frozen program must start and stay up; the login window needs no server to open.
+        $env:QT_QPA_PLATFORM = 'offscreen'
+        $p = Start-Process -FilePath dist\ClubDesk\ClubDesk.exe -PassThru
+        Start-Sleep -Seconds 8
+        if ($p.HasExited) { throw "ClubDesk.exe exited with code $($p.ExitCode) during start-up" }
+        Stop-Process -Id $p.Id -Force
+
+    - name: Build installer
+      run: |
+        # Inno Setup 6.x is pinned: later major versions may not produce installers that run on Windows 7.
+        $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+        if (-not (Test-Path $iscc)) { choco install innosetup --version 6.4.3 -y --no-progress }
+        & $iscc /DWin7 /DAppVersion=${{ steps.version.outputs.version }} installer\ClubDesk.iss
+        if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+
+    - name: Report size and checksum
+      id: setup
+      run: |
+        $file = Get-Item "dist\ClubDesk-Win7-Setup-${{ steps.version.outputs.version }}.exe"
+        $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+        "Installer: {0:N1} MB, SHA-256: {1}" -f ($file.Length / 1MB), $hash
+        if ($file.Length -gt 60MB) { throw "Installer is larger than 60 MB" }
+        "sha256=$hash" >> $env:GITHUB_OUTPUT
+
+    - name: Upload installer
+      uses: actions/upload-artifact@v4
+      with:
+        name: ClubDesk-Win7-Setup-${{ steps.version.outputs.version }}
+        path: desktop/dist/ClubDesk-Win7-Setup-*.exe
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha256: ${{ steps.setup.outputs.sha256 }}
+

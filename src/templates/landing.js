@@ -114,7 +114,8 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
         <script src="/vendor/lucide-1.65.0.min.js"></script>
         <link rel="stylesheet" href="/style.css">
-        <script>(function(){var t='dark';try{t=localStorage.getItem('ntut-theme')||'dark'}catch(e){}document.documentElement.setAttribute('data-theme',t)})();</script>
+        <link rel="stylesheet" href="/glass.css">
+        <script src="/theme.js"></script>
         <script type="application/ld+json">
         {
           "@context": "https://schema.org",
@@ -157,7 +158,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                         <span style="font-size: 1.1rem; margin-right: 4px;">🌐</span> ${t.langToggleText}
                     </a>
                     <!-- Theme Toggle -->
-                    <button id="theme-toggle-btn" class="theme-toggle-btn" onclick="toggleTheme()" title="切換深色/淺色模式">☀️</button>
+                    <button id="theme-toggle-btn" class="theme-toggle-btn" data-theme-toggle title="切換深色/淺色模式">☀️</button>
                     <a href="mailto:${emailLink}" class="social-icon-btn email" title="官方信箱: ${emailLink}" aria-label="Email">
                         <i data-lucide="mail"></i><span class="fallback-text">✉️</span>
                     </a>

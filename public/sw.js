@@ -1,7 +1,7 @@
 // NTUT Drone Club - Progressive Web App Service Worker
 // Bump this whenever the precached shell changes; activate() deletes every other cache
 // (v1 could hold private admin pages, so it must not survive).
-const CACHE_NAME = 'ntut-drone-pwa-v2';
+const CACHE_NAME = 'ntut-drone-pwa-v3';
 
 // Pages that depend on the logged-in user are never written to Cache Storage.
 const PRIVATE_PATHS = [/^\/admin(\/|$)/, /^\/meeting\//, /^\/forms\/[^/]+\/(responses|records)/, /^\/login(\/|$)/];
@@ -21,6 +21,7 @@ const STATIC_ASSETS = [
     '/',
     '/style.css',
     '/main.js',
+    '/theme.js',
     '/manifest.webmanifest',
     '/offline.html',
     '/vendor/lucide-1.65.0.min.js',

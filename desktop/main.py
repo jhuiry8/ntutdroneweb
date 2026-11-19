@@ -2,6 +2,7 @@
 
 import sys
 
+from clubdesk import qtcompat  # noqa: F401  (PySide2 fallback for Windows 7; must come first)
 from PySide6.QtCore import QLibraryInfo, QLocale, QTimer, QTranslator
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QApplication, QDialog, QMenu, QSystemTrayIcon
