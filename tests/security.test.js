@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import { readFileSync } from 'node:fs';
 import { parseDocument } from 'htmlparser2';
 import worker from '../src/worker.js';
 import { renderAdminDashboard } from '../src/templates.js';
@@ -169,10 +170,8 @@ test('sanitizer rejects active HTML while retaining ordinary rich content', () =
 });
 
 test('editor preview ignores stale responses and falls back to text on failure', async () => {
-    const script = elements(renderAdminDashboard([], [], { role: 'member' }))
-        .filter(node => node.name === 'script')
-        .map(node => node.children.map(child => child.data || '').join(''))
-        .find(code => code.includes('const previewTimers'));
+    const script = readFileSync(new URL('../public/admin.js', import.meta.url), 'utf8');
+    assert.ok(script.includes('const previewTimers'));
     const textarea = { value: 'old' };
     const body = { dataset: {}, innerHTML: '', textContent: '' };
     const timers = new Map();

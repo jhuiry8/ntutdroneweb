@@ -25,21 +25,25 @@ test('Templates test suite - HTML Rendering & Component Generator', async (t) =>
         }
     ];
 
-    await t.test('All inline client <script> tags in generated HTML must parse cleanly in V8 JS VM', () => {
+    await t.test('dashboard scripts parse cleanly in V8 JS VM', () => {
         const adminHtml = renderAdminDashboard(mockPosts, mockPages, { role: 'president' });
-        const scriptRegex = /<script>([\s\S]*?)<\/script>/gi;
-        let match;
-        let scriptCount = 0;
-        
-        while ((match = scriptRegex.exec(adminHtml)) !== null) {
-            const scriptCode = match[1];
-            if (!scriptCode.trim()) continue;
-            scriptCount++;
-            assert.doesNotThrow(() => {
-                new vm.Script(scriptCode);
-            }, `Inline script failed V8 syntax check: ${scriptCode.slice(0, 150)}...`);
+        for (const match of adminHtml.matchAll(/<script>([\s\S]*?)<\/script>/gi)) {
+            if (match[1].trim()) assert.doesNotThrow(() => new vm.Script(match[1]), `Inline script failed V8 syntax check: ${match[1].slice(0, 150)}...`);
         }
-        assert.ok(scriptCount >= 2, 'Admin dashboard should contain at least 2 script blocks');
+        for (const file of ['admin-nav.js', 'admin.js']) {
+            assert.match(adminHtml, new RegExp(`<script src="/${file.replace('.', '\\.')}"></script>`));
+            const code = readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8');
+            assert.doesNotThrow(() => new vm.Script(code), `${file} failed V8 syntax check`);
+        }
+        assert.match(adminHtml, /<link rel="stylesheet" href="\/admin\.css">/);
+    });
+
+    await t.test('dashboard passes the account permissions to admin.js', () => {
+        const config = html => JSON.parse(html.match(/<body data-admin="([^"]*)">/)[1].replaceAll('&quot;', '"'));
+        assert.deepEqual(config(renderAdminDashboard([], [], { username: 'boss', role: 'president' })),
+            { username: 'boss', isPresident: true, viewCms: true, editCms: true, manageMembers: true });
+        assert.deepEqual(config(renderAdminDashboard([], [], { username: 'm', role: 'member' })),
+            { username: 'm', isPresident: false, viewCms: false, editCms: false, manageMembers: false });
     });
 
     await t.test('renderLandingPage should render complete homepage HTML with SEO tags', () => {
@@ -91,7 +95,7 @@ test('Templates test suite - HTML Rendering & Component Generator', async (t) =>
         assert.match(cadreHtml, /id="panel-equipment"/);
         assert.match(cadreHtml, /標籤尺寸：4 × 2 cm/);
         assert.match(cadreHtml, /標籤尺寸：2 × 1 cm/);
-        assert.match(cadreHtml, /管理人：/);
+        assert.match(readFileSync(new URL('../public/admin.js', import.meta.url), 'utf8'), /管理人：/);
     });
 
     await t.test('mobile navigation uses the same open state in script and stylesheet', () => {
