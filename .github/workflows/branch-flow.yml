@@ -1,0 +1,23 @@
+name: Branch flow (develop → main)
+
+# Work goes feature branch → develop → main.
+#   develop  integration branch: tests and build checks only, nothing is deployed.
+#   main     release branch: every push deploys the website, and releases the desktop
+#            installer / Android APK when their folders changed.
+# A pull request into main must come from develop (or a hotfix/* branch for urgent fixes).
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, reopened, synchronize, edited ]
+
+jobs:
+  only-from-develop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require develop (or hotfix/*) as the source
+        run: |
+          head="${{ github.head_ref }}"
+          if [ "$head" != "develop" ] && [[ "$head" != hotfix/* ]]; then
+            echo "::error::PRs into main (a release) must come from develop or hotfix/*, not '$head'. Open the PR against develop instead."
+            exit 1
+          fi

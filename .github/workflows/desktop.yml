@@ -14,7 +14,7 @@ on:
     paths: [ 'desktop/**', '.github/workflows/desktop.yml' ]
     tags: [ 'desktop-v*' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
     paths: [ 'desktop/**', '.github/workflows/desktop.yml' ]
   workflow_dispatch:
 
