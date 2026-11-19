@@ -127,3 +127,33 @@ test('PWA & Mobile Ready test suite', async (t) => {
 });
 
 
+
+test('admin dashboard is fully usable on phones (tab bar, drawer, iOS install hint)', async () => {
+    const { renderAdminDashboard } = await import('../src/templates.js');
+    const html = renderAdminDashboard([], [], { username: 'u', role: 'president' });
+    assert.match(html, /class="mobile-tabbar"/);
+    assert.match(html, /id="admin-backdrop"/);
+    assert.match(html, /id="install-hint"/);
+    assert.match(html, /admin-mobile\.js/);
+    const js = readFileSync('public/admin-mobile.js', 'utf8');
+    assert.match(js, /releases\/latest/);
+    assert.match(js, /加入主畫面/);
+    assert.match(js, /navigator\.standalone/);
+    const css = readFileSync('public/admin.css', 'utf8');
+    assert.match(css, /safe-area-inset-bottom/);
+    assert.match(css, /table\.card-table/);
+});
+
+test('light mode + liquid glass are wired for phones', async () => {
+    const { renderAdminDashboard, renderLandingPage } = await import('../src/templates.js');
+    const admin = renderAdminDashboard([], [], { username: 'u', role: 'president' });
+    for (const asset of ['/theme.js', '/glass.css', '/admin-theme.css']) assert.ok(admin.includes(asset), `admin must load ${asset}`);
+    for (const f of ['public/theme.js', 'public/glass.css', 'public/admin-theme.css']) assert.ok(existsSync(f), `${f} must exist`);
+    const theme = readFileSync('public/theme.js', 'utf8');
+    assert.match(theme, /prefers-color-scheme: light/);
+    const glass = readFileSync('public/glass.css', 'utf8');
+    assert.match(glass, /backdrop-filter/);
+    assert.match(glass, /prefers-reduced-transparency/);
+    assert.match(readFileSync('public/admin-theme.css', 'utf8'), /\[data-theme="light"\]/);
+    assert.match(readFileSync('android/app/src/main/res/values-night/colors.xml', 'utf8'), /bg_dark/);
+});

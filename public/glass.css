@@ -1,0 +1,53 @@
+/* Liquid-glass tokens + primitives shared by the public site and the back-office.
+   Glass is only applied on phones (<=768px) where the floating chrome sits over content. */
+:root {
+    --glass-blur: blur(26px) saturate(185%);
+    --glass-bg: rgba(30, 41, 59, .52);
+    --glass-bg-strong: rgba(15, 23, 42, .68);
+    --glass-border: rgba(255, 255, 255, .20);
+    --glass-spec: inset 0 1px 0 rgba(255, 255, 255, .38), inset 0 -1px 0 rgba(255, 255, 255, .06), inset 0 0 18px rgba(255, 255, 255, .05);
+    --glass-shadow: 0 10px 34px rgba(0, 0, 0, .38);
+    --glass-pill: rgba(255, 255, 255, .16);
+}
+[data-theme="light"] {
+    --glass-bg: rgba(255, 255, 255, .58);
+    --glass-bg-strong: rgba(255, 255, 255, .78);
+    --glass-border: rgba(255, 255, 255, .85);
+    --glass-spec: inset 0 1px 0 rgba(255, 255, 255, .95), inset 0 -1px 0 rgba(15, 23, 42, .05), inset 0 0 18px rgba(255, 255, 255, .35);
+    --glass-shadow: 0 10px 30px rgba(30, 58, 110, .18);
+    --glass-pill: rgba(37, 99, 235, .13);
+}
+@media (max-width: 768px) {
+    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        .glass, .mobile-bottom-nav, .pwa-smart-banner, .navbar {
+            -webkit-backdrop-filter: var(--glass-blur);
+            backdrop-filter: var(--glass-blur);
+        }
+        .mobile-bottom-nav {
+            left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+            height: 62px; padding-bottom: 0; border-radius: 31px; box-sizing: border-box;
+            background: var(--glass-bg); border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-spec), var(--glass-shadow);
+        }
+        .mobile-nav-item { border-radius: 26px; margin: 5px 3px; min-height: 0; }
+        .mobile-nav-item.active { background: var(--glass-pill); box-shadow: inset 0 1px 0 rgba(255,255,255,.3); }
+        body { padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
+        .navbar { background: var(--glass-bg-strong); border-bottom: 1px solid var(--glass-border); box-shadow: var(--glass-spec); }
+        .pwa-smart-banner { bottom: calc(86px + env(safe-area-inset-bottom, 0px)); background: var(--glass-bg-strong); border: 1px solid var(--glass-border); box-shadow: var(--glass-spec), var(--glass-shadow); border-radius: 22px; color: var(--text-primary); }
+        .mobile-drawer { -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); background: var(--glass-bg-strong); border-left: 1px solid var(--glass-border); box-shadow: var(--glass-spec), var(--glass-shadow); border-radius: 28px 0 0 28px; }
+        .pwa-modal-card { background: var(--glass-bg-strong); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); border: 1px solid var(--glass-border); box-shadow: var(--glass-spec), var(--glass-shadow); color: var(--text-primary); border-radius: 28px; }
+    }
+    /* Ambient colour behind the glass so it has something to refract */
+    body { background-image: radial-gradient(60vmax 60vmax at 0% 0%, rgba(59,130,246,.22), transparent 60%), radial-gradient(50vmax 50vmax at 100% 30%, rgba(167,139,250,.16), transparent 60%); background-attachment: fixed; }
+    [data-theme="light"] body { background-image: radial-gradient(60vmax 60vmax at 0% 0%, rgba(96,165,250,.35), transparent 60%), radial-gradient(50vmax 50vmax at 100% 30%, rgba(196,181,253,.35), transparent 60%); }
+    [data-theme="light"] .mobile-nav-item.active, [data-theme="light"] .mobile-nav-item:hover { color: #2563eb; }
+    [data-theme="light"] .pwa-modal-card, [data-theme="light"] .pwa-smart-banner { color: #0f172a; }
+    [data-theme="light"] .pwa-modal-card *, [data-theme="light"] .pwa-smart-banner * { border-color: rgba(15,23,42,.12); }
+    [data-theme="light"] .pwa-modal-card p, [data-theme="light"] .pwa-modal-card li, [data-theme="light"] .pwa-modal-card h3, [data-theme="light"] .pwa-modal-card h4, [data-theme="light"] .pwa-modal-card span { color: #1e293b !important; }
+}
+/* Respect accessibility settings: solid surfaces, no blur */
+@media (prefers-reduced-transparency: reduce) {
+    .glass, .mobile-bottom-nav, .pwa-smart-banner, .navbar, .mobile-drawer, .pwa-modal-card { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background: var(--bg-section, #0f172a) !important; }
+}
+/* iOS standalone + light theme: status bar text is white (black-translucent), so keep the notch strip dark */
+html.is-ios.is-standalone[data-theme="light"] body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top, 0px); background: #0f172a; z-index: 5000; }
