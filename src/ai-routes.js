@@ -10,15 +10,16 @@ import {
     assistContent, reviewFinance, financeChecks, cleanMemberImport, AI_MEMBER_IMPORT_MAX_ROWS,
     reviewAmendment, summarizeReport, runAssistant
 } from './ai.js';
+import { FINANCE_BUDGETS_KEY, FINANCE_TRANSACTIONS_KEY, MEMBERS_KEY, REGULATIONS_KEY, REGULATION_AMENDMENTS_KEY, NOTES_KEY, AI_REPORTS_KEY } from './kv-keys.js';
 
 export const KEYS = {
-    budgets: 'finance:budgets',
-    transactions: 'finance:transactions',
-    members: 'members:list',
-    regulations: 'club:regulations',
-    amendments: 'club:regulation-amendments',
-    notes: 'club:class-notes',
-    reports: 'ai:reports'
+    budgets: FINANCE_BUDGETS_KEY,
+    transactions: FINANCE_TRANSACTIONS_KEY,
+    members: MEMBERS_KEY,
+    regulations: REGULATIONS_KEY,
+    amendments: REGULATION_AMENDMENTS_KEY,
+    notes: NOTES_KEY,
+    reports: AI_REPORTS_KEY
 };
 const MAX_STORED_REPORTS = 12;
 
