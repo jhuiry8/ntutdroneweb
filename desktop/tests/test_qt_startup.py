@@ -38,10 +38,20 @@ class QtStartupTests(unittest.TestCase):
         QTimer.singleShot(0, dialog.accept)
         self.assertEqual(dialog.exec(), QDialog.Accepted)
 
-    def test_message_box_exec(self):
-        box = QMessageBox()
-        QTimer.singleShot(0, box.accept)
-        box.exec()
+    def test_error_message_box_exec(self):
+        """The same call the program makes for every error: a modal box with text and a button."""
+        from clubdesk.api import ApiError
+        from clubdesk.widgets import show_error
+
+        def close_it():
+            box = QApplication.activeModalWidget()
+            if box is None:  # not shown yet: look again
+                QTimer.singleShot(50, close_it)
+            else:
+                box.accept()
+
+        QTimer.singleShot(50, close_it)
+        show_error(None, ApiError("測試錯誤"))
 
     def test_update_check_is_off_in_the_win7_edition(self):
         from clubdesk import WIN7_EDITION, updater
