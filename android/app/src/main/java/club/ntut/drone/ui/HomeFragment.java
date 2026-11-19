@@ -31,11 +31,9 @@ public class HomeFragment extends Fragment {
         tvAnnTitle = view.findViewById(R.id.tv_home_ann_title);
         tvAnnDate = view.findViewById(R.id.tv_home_ann_date);
 
-        view.findViewById(R.id.btn_home_loan).setOnClickListener(v -> {
-            if (getActivity() instanceof MainActivity) {
-                ((MainActivity) getActivity()).selectTab(R.id.nav_equipment);
-            }
-        });
+        // The loan form needs a CAPTCHA and the full item list, so it is filled on the website.
+        view.findViewById(R.id.btn_home_loan).setOnClickListener(v ->
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(ApiClient.LOAN_FORM_URL))));
 
         view.findViewById(R.id.btn_home_checkin).setOnClickListener(v -> {
             if (getActivity() instanceof MainActivity) {
@@ -66,16 +64,22 @@ public class HomeFragment extends Fragment {
         ApiClient.getInstance(getContext()).fetchAnnouncements(new ApiClient.ApiCallback<List<Post>>() {
             @Override
             public void onSuccess(List<Post> result) {
-                if (!result.isEmpty() && isAdded()) {
-                    Post p = result.get(0);
-                    tvAnnTitle.setText(p.getTitle());
-                    tvAnnDate.setText(p.getDate() + " · " + p.getTag());
+                if (!isAdded()) return;
+                if (result.isEmpty()) {
+                    tvAnnTitle.setText("目前沒有公告");
+                    tvAnnDate.setText("點擊查看所有消息");
+                    return;
                 }
+                Post p = result.get(0);
+                tvAnnTitle.setText(p.getTitle());
+                tvAnnDate.setText(p.getDate() + " · " + p.getTag());
             }
 
             @Override
             public void onError(String error) {
-                // Ignore, fallback used
+                if (!isAdded()) return;
+                tvAnnTitle.setText(error);
+                tvAnnDate.setText("點擊查看所有消息");
             }
         });
     }

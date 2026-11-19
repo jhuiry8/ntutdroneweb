@@ -46,7 +46,18 @@ public class MeetingAdapter extends RecyclerView.Adapter<MeetingAdapter.ViewHold
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Meeting item = items.get(position);
         holder.tvTitle.setText(item.getTitle());
-        holder.tvDate.setText("會議日期：" + item.getDate());
+        String type = item.getTypeLabel().isEmpty() ? "" : item.getTypeLabel() + " · ";
+        holder.tvDate.setText(type + item.getDate() + " · " + item.getStatusLabel());
+        if (item.isCheckedIn()) {
+            holder.btnCheckin.setEnabled(false);
+            holder.btnCheckin.setText("已簽到");
+        } else if (item.canCheckIn()) {
+            holder.btnCheckin.setEnabled(true);
+            holder.btnCheckin.setText("會議簽到");
+        } else {
+            holder.btnCheckin.setEnabled(false);
+            holder.btnCheckin.setText("closed".equals(item.getStatus()) ? "已散會" : "尚未開放簽到");
+        }
 
         holder.btnCheckin.setOnClickListener(v -> {
             if (listener != null) {

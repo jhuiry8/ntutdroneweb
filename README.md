@@ -82,7 +82,8 @@
   * **純網頁 PWA 一鍵安裝**：以 Chrome 開啟網站時點擊「安裝應用程式」或「新增至主畫面」即可安裝至桌面。
   * **100% 原生 Material Design APK 安裝包**：專案目錄 `android/` 提供**全原生 Android 專案**（**徹底拋棄 WebView 瀏覽器包殼做法**），採用 Material Components 原生 UI 架構：
     * 底部原生導覽列 (`BottomNavigationView`) 整合首頁動態、最新公告、設備借用、會議簽到與個人社員中心。
-    * 支援原生 `RecyclerView` 卡片清單、`SwipeRefreshLayout` 手勢下拉更新、原生借用與會議簽到對話框。
+    * 支援原生 `RecyclerView` 卡片清單、`SwipeRefreshLayout` 手勢下拉更新；登入（含圖形驗證碼）後可看社內公告、會議並以簽到碼簽到，幹部可查看設備清單，借用一律開啟官網線上借用表單。
+    * 正式版 APK 須以固定金鑰簽署才能覆蓋更新，發佈前請依 `android/README.md` 設定 GitHub Secrets。
     * 原生非同步網路層直接對接後端 RESTful API (`/api/*`)，自動管理 Session Cookie 與本機安全儲存。
     * 透過 GitHub Actions（`.github/workflows/android.yml`）每次推送皆會自動編譯 APK，社員與幹部可直接在 GitHub Releases / Actions 下載安裝。
 

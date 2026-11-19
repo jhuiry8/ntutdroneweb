@@ -1,5 +1,21 @@
 // NTUT Drone Club - Progressive Web App Service Worker
-const CACHE_NAME = 'ntut-drone-pwa-v1';
+// Bump this whenever the precached shell changes; activate() deletes every other cache
+// (v1 could hold private admin pages, so it must not survive).
+const CACHE_NAME = 'ntut-drone-pwa-v2';
+
+// Pages that depend on the logged-in user are never written to Cache Storage.
+const PRIVATE_PATHS = [/^\/admin(\/|$)/, /^\/meeting\//, /^\/forms\/[^/]+\/(responses|records)/, /^\/login(\/|$)/];
+
+function isPrivatePath(pathname) {
+    return PRIVATE_PATHS.some((pattern) => pattern.test(pathname));
+}
+
+// Cache Storage ignores Cache-Control, so honour the server's no-store / private here.
+function isCacheable(response) {
+    if (!response || response.status !== 200 || response.type === 'opaqueredirect') return false;
+    const cacheControl = (response.headers.get('Cache-Control') || '').toLowerCase();
+    return !cacheControl.includes('no-store') && !cacheControl.includes('private');
+}
 
 const STATIC_ASSETS = [
     '/',
@@ -64,14 +80,14 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(
             fetch(request)
                 .then((response) => {
-                    if (response && response.status === 200) {
+                    if (!isPrivatePath(url.pathname) && isCacheable(response)) {
                         const copy = response.clone();
                         caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
                     }
                     return response;
                 })
                 .catch(async () => {
-                    const cachedResponse = await caches.match(request);
+                    const cachedResponse = isPrivatePath(url.pathname) ? null : await caches.match(request);
                     if (cachedResponse) return cachedResponse;
                     const offlinePage = await caches.match('/offline.html');
                     return offlinePage || new Response('離線模式', {
@@ -83,9 +99,25 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Static assets (CSS, JS, images, fonts): Stale-while-revalidate or Cache-first
+    // Same-origin JS/CSS: network-first so a deploy never pairs new HTML with stale scripts.
+    if (url.origin === self.location.origin && /\.(css|js)$/i.test(url.pathname) && !url.pathname.startsWith('/vendor/')) {
+        event.respondWith(
+            fetch(request)
+                .then((response) => {
+                    if (isCacheable(response)) {
+                        const copy = response.clone();
+                        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+                    }
+                    return response;
+                })
+                .catch(() => caches.match(request))
+        );
+        return;
+    }
+
+    // Images, fonts and versioned vendor files: stale-while-revalidate
     const isStatic = (
-        url.pathname.match(/\.(css|js|png|jpg|jpeg|svg|webp|woff2?|ico)$/i) ||
+        url.pathname.match(/\.(png|jpg|jpeg|svg|webp|woff2?|ico)$/i) ||
         url.pathname.startsWith('/assets/') ||
         url.pathname.startsWith('/vendor/') ||
         url.hostname.includes('fonts.gstatic.com') ||
@@ -96,7 +128,7 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(
             caches.match(request).then((cachedResponse) => {
                 const fetchPromise = fetch(request).then((networkResponse) => {
-                    if (networkResponse && networkResponse.status === 200) {
+                    if (isCacheable(networkResponse)) {
                         const copy = networkResponse.clone();
                         caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
                     }

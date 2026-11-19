@@ -15,21 +15,20 @@
         android:textSize="18sp"
         android:textStyle="bold" />
 
-    <EditText
-        android:id="@+id/et_checkin_student_id"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:hint="學號"
-        android:textColor="@color/text_light"
-        android:textColorHint="@color/text_secondary" />
-
-    <EditText
-        android:id="@+id/et_checkin_name"
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:hint="姓名"
+        android:text="請輸入主席在現場公布的簽到碼。"
+        android:textColor="@color/text_secondary" />
+
+    <EditText
+        android:id="@+id/et_checkin_code"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:hint="簽到碼"
+        android:inputType="textCapCharacters|textNoSuggestions"
         android:textColor="@color/text_light"
         android:textColorHint="@color/text_secondary" />
 

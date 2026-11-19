@@ -59,6 +59,7 @@ public class NewsFragment extends Fragment {
                 progressBar.setVisibility(View.GONE);
                 swipeRefresh.setRefreshing(false);
                 adapter.setItems(result);
+                tvEmpty.setText("目前沒有公告");
                 tvEmpty.setVisibility(result.isEmpty() ? View.VISIBLE : View.GONE);
             }
 
@@ -67,6 +68,9 @@ public class NewsFragment extends Fragment {
                 if (!isAdded()) return;
                 progressBar.setVisibility(View.GONE);
                 swipeRefresh.setRefreshing(false);
+                adapter.setItems(null);
+                tvEmpty.setText(error);
+                tvEmpty.setVisibility(View.VISIBLE);
             }
         });
     }

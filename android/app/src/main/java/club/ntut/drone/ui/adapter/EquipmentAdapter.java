@@ -47,20 +47,26 @@ public class EquipmentAdapter extends RecyclerView.Adapter<EquipmentAdapter.View
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Equipment item = items.get(position);
         holder.tvName.setText(item.getName());
-        holder.tvCategory.setText("類別：" + item.getCategory());
+        String location = item.getLocation().isEmpty() ? "" : " · 位置：" + item.getLocation();
+        holder.tvCategory.setText("類別：" + item.getCategory() + location);
 
         if (item.isAvailable()) {
             holder.tvStatus.setText("可借用");
             holder.tvStatus.setBackgroundResource(R.drawable.bg_badge_available);
             holder.btnBorrow.setEnabled(true);
-            holder.btnBorrow.setText("申請借用");
+            holder.btnBorrow.setText("線上借用表單");
         } else if ("in_use".equalsIgnoreCase(item.getStatus())) {
             holder.tvStatus.setText("出借中");
             holder.tvStatus.setBackgroundResource(R.drawable.bg_badge_in_use);
             holder.btnBorrow.setEnabled(false);
             holder.btnBorrow.setText("已出借");
+        } else if ("retired".equalsIgnoreCase(item.getStatus())) {
+            holder.tvStatus.setText("已報廢");
+            holder.tvStatus.setBackgroundResource(R.drawable.bg_badge_maintenance);
+            holder.btnBorrow.setEnabled(false);
+            holder.btnBorrow.setText("不可借用");
         } else {
-            holder.tvStatus.setText("保養維護中");
+            holder.tvStatus.setText("維修中");
             holder.tvStatus.setBackgroundResource(R.drawable.bg_badge_maintenance);
             holder.btnBorrow.setEnabled(false);
             holder.btnBorrow.setText("暫停借用");

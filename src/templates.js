@@ -91,8 +91,24 @@ function getHeader(title, lang = 'zh') {
 }
 
 
+// Helper: Mobile bottom navigation (shown at <= 768px). `active` is home | blog | loan | admin.
+function mobileBottomNav(lang, active = '') {
+    const items = [
+        ['home', `/?lang=${lang}`, 'home', '首頁'],
+        ['blog', `/blog?lang=${lang}`, 'newspaper', '公告'],
+        ['loan', '/forms/equipment-loan', 'clipboard-list', '借用'],
+        ['admin', '/admin', 'user', '後台']
+    ];
+    return `<nav class="mobile-bottom-nav" aria-label="手機快捷導覽列">
+            ${items.map(([key, href, icon, label]) => `<a href="${href}" class="mobile-nav-item${key === active ? ' active' : ''}"${key === active ? ' aria-current="page"' : ''}>
+                <i data-lucide="${icon}"></i>
+                <span>${label}</span>
+            </a>`).join('\n            ')}
+        </nav>`;
+}
+
 // Helper: Common Footer
-function getFooter(lang = 'zh') {
+function getFooter(lang = 'zh', active = '') {
     lang = lang === 'en' ? 'en' : 'zh';
     const t = locales[lang];
     return `
@@ -124,25 +140,7 @@ function getFooter(lang = 'zh') {
             </div>
         </footer>
 
-        <!-- Mobile Bottom Navigation Bar -->
-        <nav class="mobile-bottom-nav" aria-label="手機快捷導覽列">
-            <a href="/?lang=${lang}" class="mobile-nav-item">
-                <i data-lucide="home"></i>
-                <span>首頁</span>
-            </a>
-            <a href="/blog?lang=${lang}" class="mobile-nav-item">
-                <i data-lucide="newspaper"></i>
-                <span>公告</span>
-            </a>
-            <a href="/forms/equipment-loan" class="mobile-nav-item">
-                <i data-lucide="clipboard-list"></i>
-                <span>借用</span>
-            </a>
-            <a href="/admin" class="mobile-nav-item">
-                <i data-lucide="user"></i>
-                <span>後台</span>
-            </a>
-        </nav>
+        ${mobileBottomNav(lang, active)}
 
         <script src="/main.js"></script>
     </body>
@@ -241,7 +239,7 @@ export function renderPublicLoanForm(turnstileSiteKey = '', captcha = null) {
         </section>
     </main>
     <script src="/public-loan.js" defer></script>
-    ${getFooter('zh')}`;
+    ${getFooter('zh', 'loan')}`;
 }
 
 // 1. Render Landing Page with Dynamic Blog Posts
@@ -853,25 +851,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
             </div>
         </footer>
 
-        <!-- Mobile Bottom Navigation Bar -->
-        <nav class="mobile-bottom-nav" aria-label="手機快捷導覽列">
-            <a href="/?lang=${lang}" class="mobile-nav-item active">
-                <i data-lucide="home"></i>
-                <span>首頁</span>
-            </a>
-            <a href="/blog?lang=${lang}" class="mobile-nav-item">
-                <i data-lucide="newspaper"></i>
-                <span>公告</span>
-            </a>
-            <a href="/forms/equipment-loan" class="mobile-nav-item">
-                <i data-lucide="clipboard-list"></i>
-                <span>借用</span>
-            </a>
-            <a href="/admin" class="mobile-nav-item">
-                <i data-lucide="user"></i>
-                <span>後台</span>
-            </a>
-        </nav>
+        ${mobileBottomNav(lang, 'home')}
 
         <script src="/main.js"></script>
     </body>
@@ -923,7 +903,7 @@ export function renderBlogList(posts = [], lang = 'zh') {
                 </div>
             </div>
         </main>
-        ${getFooter(lang)}
+        ${getFooter(lang, 'blog')}
     `;
 }
 
@@ -1011,7 +991,7 @@ export function renderBlogPost(post, parsedContentHtml, lang = 'zh') {
             .markdown-body a { color: var(--color-cyan); text-decoration: underline; }
             .markdown-body a:hover { color: var(--color-purple); }
         </style>
-        ${getFooter(lang)}
+        ${getFooter(lang, 'blog')}
     `;
 }
 

@@ -26,7 +26,6 @@ import club.ntut.drone.ui.adapter.MeetingAdapter;
 
 public class MeetingsFragment extends Fragment implements MeetingAdapter.OnCheckinClickListener {
     private SwipeRefreshLayout swipeRefresh;
-    private RecyclerView recyclerView;
     private ProgressBar progressBar;
     private TextView tvEmpty;
     private MeetingAdapter adapter;
@@ -37,7 +36,7 @@ public class MeetingsFragment extends Fragment implements MeetingAdapter.OnCheck
         View view = inflater.inflate(R.layout.fragment_meetings, container, false);
 
         swipeRefresh = view.findViewById(R.id.swipe_refresh_meetings);
-        recyclerView = view.findViewById(R.id.recycler_meetings);
+        RecyclerView recyclerView = view.findViewById(R.id.recycler_meetings);
         progressBar = view.findViewById(R.id.progress_meetings);
         tvEmpty = view.findViewById(R.id.tv_meetings_empty);
 
@@ -62,6 +61,7 @@ public class MeetingsFragment extends Fragment implements MeetingAdapter.OnCheck
                 progressBar.setVisibility(View.GONE);
                 swipeRefresh.setRefreshing(false);
                 adapter.setItems(result);
+                tvEmpty.setText("目前沒有會議");
                 tvEmpty.setVisibility(result.isEmpty() ? View.VISIBLE : View.GONE);
             }
 
@@ -70,6 +70,9 @@ public class MeetingsFragment extends Fragment implements MeetingAdapter.OnCheck
                 if (!isAdded()) return;
                 progressBar.setVisibility(View.GONE);
                 swipeRefresh.setRefreshing(false);
+                adapter.setItems(null);
+                tvEmpty.setText(error);
+                tvEmpty.setVisibility(View.VISIBLE);
             }
         });
     }
@@ -77,38 +80,45 @@ public class MeetingsFragment extends Fragment implements MeetingAdapter.OnCheck
     @Override
     public void onCheckinClick(Meeting item) {
         if (getContext() == null) return;
+        if (!item.requiresCode()) {
+            submitCheckin(item, "");
+            return;
+        }
 
         View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.dialog_checkin, null);
         TextView tvTitle = dialogView.findViewById(R.id.tv_dialog_checkin_title);
-        EditText etStudentId = dialogView.findViewById(R.id.et_checkin_student_id);
-        EditText etName = dialogView.findViewById(R.id.et_checkin_name);
-
+        EditText etCode = dialogView.findViewById(R.id.et_checkin_code);
         tvTitle.setText("會議簽到：" + item.getTitle());
 
         new AlertDialog.Builder(getContext(), android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setView(dialogView)
                 .setPositiveButton("送出簽到", (dialog, which) -> {
-                    String studentId = etStudentId.getText().toString().trim();
-                    String name = etName.getText().toString().trim();
-
-                    if (studentId.isEmpty() || name.isEmpty()) {
-                        Toast.makeText(getContext(), "請輸入完整學號與姓名", Toast.LENGTH_SHORT).show();
+                    String code = etCode.getText().toString().trim();
+                    if (code.isEmpty()) {
+                        Toast.makeText(getContext(), "請輸入主席公布的簽到碼", Toast.LENGTH_SHORT).show();
                         return;
                     }
-
-                    ApiClient.getInstance(getContext()).submitCheckin(item.getId(), studentId, name, new ApiClient.ApiCallback<String>() {
-                        @Override
-                        public void onSuccess(String result) {
-                            Toast.makeText(getContext(), result, Toast.LENGTH_LONG).show();
-                        }
-
-                        @Override
-                        public void onError(String error) {
-                            Toast.makeText(getContext(), "簽到失敗：" + error, Toast.LENGTH_SHORT).show();
-                        }
-                    });
+                    submitCheckin(item, code);
                 })
                 .setNegativeButton("取消", null)
                 .show();
+    }
+
+    private void submitCheckin(Meeting item, String code) {
+        if (getContext() == null) return;
+        ApiClient.getInstance(getContext()).checkIn(item.getId(), code, new ApiClient.ApiCallback<String>() {
+            @Override
+            public void onSuccess(String result) {
+                if (!isAdded()) return;
+                Toast.makeText(getContext(), result, Toast.LENGTH_LONG).show();
+                loadMeetings();
+            }
+
+            @Override
+            public void onError(String error) {
+                if (!isAdded()) return;
+                Toast.makeText(getContext(), "簽到失敗：" + error, Toast.LENGTH_LONG).show();
+            }
+        });
     }
 }

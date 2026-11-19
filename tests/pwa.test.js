@@ -51,6 +51,13 @@ test('PWA & Mobile Ready test suite', async (t) => {
         assert.match(sw, /\/offline\.html/);
     });
 
+    await t.test('sw.js never caches private or no-store pages', () => {
+        const sw = readFileSync('public/sw.js', 'utf8');
+        assert.match(sw, /no-store/, 'must honour Cache-Control: no-store');
+        assert.match(sw, /\^\\\/admin/, 'must treat /admin as private');
+        assert.doesNotMatch(sw, /ntut-drone-pwa-v1'/, 'cache version must be bumped so old caches holding admin pages are purged');
+    });
+
     await t.test('HTML templates inject Apple iOS PWA meta tags and manifest links', () => {
         const landingHtml = renderLandingPage([], 'zh', {});
         assert.match(landingHtml, /rel="manifest"\s+href="\/manifest\.webmanifest"/);
@@ -89,7 +96,10 @@ test('PWA & Mobile Ready test suite', async (t) => {
         assert.ok(existsSync('.github/workflows/android.yml'), '.github/workflows/android.yml must exist');
 
         const manifestXml = readFileSync('android/app/src/main/AndroidManifest.xml', 'utf8');
-        assert.match(manifestXml, /package="club\.ntut\.drone"/);
+        // AGP 8 takes the package from `namespace` in build.gradle; a manifest package attribute is a build error.
+        assert.doesNotMatch(manifestXml, /package="/);
+        assert.match(readFileSync('android/app/build.gradle', 'utf8'), /namespace 'club\.ntut\.drone'/);
+        assert.doesNotMatch(manifestXml, /usesCleartextTraffic="true"/);
         assert.match(manifestXml, /android\.permission\.INTERNET/);
         assert.match(manifestXml, /android:name="\.MainActivity"/);
 

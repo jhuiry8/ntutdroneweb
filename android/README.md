@@ -8,12 +8,13 @@
 2. **🌐 原生 RESTful API 連線**：直接透過原生 `ApiClient` 呼叫後端 `/api/*` 服務，資料以原生 JSON 傳輸與解析，告別網頁載入延遲與白畫面。
 3. **🔄 原生下拉更新 (SwipeRefreshLayout)**：首頁、最新公告、設備清單與會議簽到皆支援原生流暢下拉更新。
 4. **🛸 完整功能模組**：
-   - 🏠 **首頁動態 (Home)**：社團特色、公告摘要、借用與簽到快捷入口、社群跳轉。
-   - 📢 **消息發布 (News)**：公告與活動列表，依類別與日期標籤化排版。
-   - 🛸 **設備租借 (Equipment)**：無人機機隊與配件清單，即時狀態標籤，1 鍵彈出原生申請對話框。
-   - 🗳️ **會議簽到 (Meetings)**：近期社務會議清單，學號與姓名 1 鍵快速簽到。
-   - 👤 **社員中心 (Profile)**：社員/幹部帳號安全登入、Session 自動保存、官方社群管道。
-5. **📴 離線自適應與安全**：Session Cookie 自動於本機安全儲存，網路中斷時自動啟動離線緩存，操作不卡死。
+   - 🏠 **首頁動態 (Home)**：社團特色、最新公告摘要、線上借用表單與簽到入口、社群跳轉。
+   - 📢 **社內公告 (News)**：讀取 `/api/announcements`，需登入社員帳號。
+   - 🛸 **設備清單 (Equipment)**：讀取 `/api/equipment`，伺服器僅開放幹部查看；借用一律開啟官網的線上借用表單（需驗證碼與完整借用明細）。
+   - 🗳️ **會議簽到 (Meetings)**：讀取 `/api/meetings`，會議「開會中」時以登入帳號簽到（需要時輸入主席公布的簽到碼）。沒有帳號的社員請用主席提供的 `/meeting/<id>` 網頁簽到。
+   - 👤 **社員中心 (Profile)**：帳號＋密碼＋圖形驗證碼登入；登出時會一併註銷伺服器上的 Session。
+5. **⚠️ 錯誤一律如實顯示**：網路中斷、未登入或權限不足時直接顯示原因，不會用範例資料冒充，也不會把失敗的送出顯示為成功。
+6. **ℹ️ 限制**：若伺服器設定了 Cloudflare Turnstile（`TURNSTILE_SECRET_KEY`），App 無法完成 Turnstile 驗證，請改用網頁版登入。
 
 
 ---
@@ -22,7 +23,7 @@
 
 ### 方式一：直接下載 APK 安裝檔 (Android)
 1. 前往 GitHub 儲存庫的 **Releases** 或 **Actions** 頁面。
-2. 下載最新版本的 `NTUT-Drone-Club.apk`（或 `NTUT-Drone-Club-Debug.apk`）。
+2. 下載最新版本的 `NTUT-Drone-Club.apk`（Releases 中的正式簽章版本，可直接覆蓋更新）。Actions Artifact 中的 `NTUT-Drone-Club-Debug.apk` 僅供測試，每次建置簽章都不同，無法覆蓋安裝。
 3. 在手機點擊安裝。若系統提示「未知的應用程式」，點擊「設定」並勾選「允許來自此來源的應用程式」即可完成安裝。
 
 ### 方式二：純網頁 PWA 加入主畫面 (蘋果 iOS 與 Android 皆適用)
@@ -74,3 +75,21 @@ chmod +x gradlew
 本專案已配置 `.github/workflows/android.yml`：
 - 每次將程式碼推送到 GitHub，系統會自動在雲端使用 Ubuntu + Android SDK 編譯最新 APK，並可於 Actions 頁面下載 Artifact。
 - 當建立並推送標籤（例如 `git tag android-v1.0.0 && git push origin android-v1.0.0`）時，GitHub Actions 會自動建立 GitHub Release 並附上可直接下載的 APK 安裝包。
+
+### 🔑 正式版簽章（發佈 Release 前必須設定一次）
+
+Android 只允許「相同簽章」的 APK 覆蓋更新，因此正式版必須固定用同一把金鑰簽署。推送 `android-v*` 標籤時，若沒有下列 Secrets，工作流程會直接失敗，不會發佈。
+
+1. 在自己的電腦產生金鑰（請妥善備份，遺失後就無法再發佈可更新的版本）：
+   ```bash
+   keytool -genkeypair -v -keystore ntut-drone-release.jks -alias ntutdrone -keyalg RSA -keysize 4096 -validity 10000
+   ```
+2. 轉成 Base64：
+   ```bash
+   base64 -w0 ntut-drone-release.jks > keystore.b64
+   ```
+3. 到 GitHub 儲存庫 **Settings → Secrets and variables → Actions** 新增：
+   - `ANDROID_KEYSTORE_BASE64`：`keystore.b64` 的內容
+   - `ANDROID_KEYSTORE_PASSWORD`：金鑰庫密碼
+   - `ANDROID_KEY_ALIAS`：`ntutdrone`
+   - `ANDROID_KEY_PASSWORD`：金鑰密碼
