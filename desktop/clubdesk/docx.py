@@ -20,6 +20,8 @@ import zipfile
 from datetime import datetime, timezone
 from xml.sax.saxutils import escape
 
+from .i18n import is_english, tr, tr_exact
+
 EAST_ASIA_FONT = "PMingLiU"
 LATIN_FONT = "Times New Roman"
 # Characters XML 1.0 forbids (control codes other than tab/newline/CR).
@@ -81,8 +83,8 @@ def inline_runs(text: str, size: int | None = None) -> str:
 
 class Document:
     def __init__(self, title: str = "", landscape: bool = False, author: str = "北科無人機社 社務管理系統"):
-        self.title = title
-        self.author = author
+        self.title = tr(title)
+        self.author = tr(author)
         self.landscape = landscape
         self.body: list[str] = []
         self.uses_numbering = False
@@ -108,14 +110,15 @@ class Document:
         self.body.append(f"<w:p>{ppr}{runs}</w:p>")
 
     def heading(self, text: str, level: int = 1) -> None:
-        self._paragraph(inline_runs(text), style=f"Heading{min(max(level, 1), 3)}", keep_next=True)
+        self._paragraph(inline_runs(tr(text)), style=f"Heading{min(max(level, 1), 3)}", keep_next=True)
 
     def title_block(self, title: str, subtitle: str = "") -> None:
-        self._paragraph(_run(title), style="Title", align="center")
+        self._paragraph(_run(tr(title)), style="Title", align="center")
         if subtitle:
-            self._paragraph(_run(subtitle, size=18, colour="606060"), align="center", spacing_after=240)
+            self._paragraph(_run(tr(subtitle), size=18, colour="606060"), align="center", spacing_after=240)
 
     def paragraph(self, text: str = "", bold=False, align: str = "", size: int | None = None) -> None:
+        text = tr(text)
         runs = _run(text, bold=True, size=size) if bold else inline_runs(text, size=size)
         self._paragraph(runs, align=align)
 
@@ -150,6 +153,8 @@ class Document:
               align_right: set[int] | None = None, font_size: int = 18) -> None:
         """A bordered table; the shaded header row repeats on every page."""
         align_right = align_right or set()
+        headers = [tr(h) for h in headers]
+        rows = [[tr_exact(v) for v in row] for row in rows]
         columns = max(len(headers), max((len(r) for r in rows), default=0)) or 1
         usable = 14400 if self.landscape else 9600  # twips between margins
         if not widths:
@@ -253,7 +258,7 @@ class Document:
             archive.writestr("word/document.xml", self._document())
             archive.writestr("word/styles.xml", STYLES)
             archive.writestr("word/numbering.xml", self._numbering())
-            archive.writestr("word/footer1.xml", FOOTER)
+            archive.writestr("word/footer1.xml", _footer())
             archive.writestr("word/settings.xml", SETTINGS)
 
     def _document(self) -> str:
@@ -393,6 +398,13 @@ STYLES = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:insideH w:val="single" w:sz="4" w:space="0" w:color="808080"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="808080"/>
 </w:tblBorders></w:tblPr></w:style>
 </w:styles>"""
+
+
+def _footer() -> str:
+    """The page-number footer in the interface language."""
+    if not is_english():
+        return FOOTER
+    return (FOOTER.replace(">第 </w:t>", ">Page </w:t>").replace("> 頁　北科無人機社</w:t>", "> · NTUT Drone Club</w:t>"))
 
 
 def export_table(path: str, title: str, headers: list[str], rows: list[list], subtitle: str = "",

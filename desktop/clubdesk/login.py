@@ -5,9 +5,10 @@ from __future__ import annotations
 from PySide6.QtCore import QByteArray, QSettings, Qt, QTimer
 from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFrame, QGridLayout, QGroupBox,
+from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QFrame, QGridLayout, QGroupBox,
                                QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout)
 
+from . import i18n
 from .api import DEFAULT_SERVER, ApiClient, ApiError, normalize_base_url
 from .icons import app_icon, app_pixmap, icon
 from .updater import check_and_offer
@@ -23,6 +24,29 @@ def svg_pixmap(svg: str) -> QPixmap:
     renderer.render(painter)
     painter.end()
     return pixmap
+
+
+LANGUAGE_CHANGED = 2  # result code: the language was switched, show the dialog again in the new language
+
+
+def switch_language(code: str) -> None:
+    """Saves and activates an interface language for the windows built from now on."""
+    i18n.save_language(code)
+    i18n.set_language(code)
+    i18n.install()
+    from PySide6.QtWidgets import QApplication
+    from .style import apply_classic_style
+    apply_classic_style(QApplication.instance())
+
+
+def run_login(factory):
+    """Shows the login dialog (again after a language switch); returns it once accepted, else None."""
+    while True:
+        dialog = factory()
+        result = dialog.exec()
+        if result == LANGUAGE_CHANGED:
+            continue
+        return dialog if result == QDialog.Accepted else None
 
 
 class LoginDialog(QDialog):
@@ -83,6 +107,12 @@ class LoginDialog(QDialog):
             label = grid.itemAtPosition((0, 1, 2, 4)[i], 0).widget()
             label.setBuddy(widget)
 
+        self.language = QComboBox()
+        for code, name in i18n.LANGUAGES.items():
+            self.language.addItem(name, code)
+        self.language.setCurrentIndex(max(0, self.language.findData(i18n.language())))
+        self.language.currentIndexChanged.connect(self.language_changed)
+
         buttons = QDialogButtonBox()
         self.ok = buttons.addButton("登入", QDialogButtonBox.AcceptRole)
         buttons.addButton("取消", QDialogButtonBox.RejectRole)
@@ -99,6 +129,8 @@ class LoginDialog(QDialog):
         hint.setStyleSheet("color: #404040;")
         inner.addWidget(hint)
         row = QHBoxLayout()
+        row.addWidget(QLabel("\u200bLanguage / 語言："))
+        row.addWidget(self.language)
         row.addStretch(1)
         row.addWidget(buttons)
         inner.addLayout(row)
@@ -145,6 +177,12 @@ class LoginDialog(QDialog):
     def check_update(self) -> None:
         if self.client and check_and_offer(self, self.client):
             self.reject()
+
+    def language_changed(self) -> None:
+        code = self.language.currentData()
+        if code and code != i18n.language():
+            switch_language(code)
+            self.done(LANGUAGE_CHANGED)
 
     def try_login(self) -> None:
         url = normalize_base_url(self.server.text())

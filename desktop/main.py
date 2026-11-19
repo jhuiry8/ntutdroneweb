@@ -4,11 +4,11 @@ import sys
 
 from clubdesk import qtcompat  # noqa: F401  (PySide2 fallback for Windows 7; must come first)
 from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication
 
-from clubdesk import __version__
+from clubdesk import __version__, i18n
 from clubdesk.icons import app_icon
-from clubdesk.login import LoginDialog
+from clubdesk.login import LoginDialog, run_login
 from clubdesk.mainwindow import MainWindow
 from clubdesk.style import apply_classic_style
 
@@ -26,15 +26,19 @@ def main() -> int:
     app.setOrganizationName("NTUT Drone Club")
     app.setApplicationName("ClubDesk")
     app.setApplicationVersion(__version__)
+    # Interface language: Traditional Chinese (default) or English (Help -> Language).
+    i18n.set_language(i18n.saved_language())
+    i18n.install()
     apply_classic_style(app)
-    # Chinese text on Qt's own buttons (Yes/No, OK/Cancel in message boxes).
-    QLocale.setDefault(QLocale(QLocale.Chinese, QLocale.Taiwan))
-    translator = QTranslator(app)
-    if translator.load("qtbase_zh_TW", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
-        app.installTranslator(translator)
+    if not i18n.is_english():
+        # Chinese text on Qt's own buttons (Yes/No, OK/Cancel in message boxes).
+        QLocale.setDefault(QLocale(QLocale.Chinese, QLocale.Taiwan))
+        translator = QTranslator(app)
+        if translator.load("qtbase_zh_TW", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
+            app.installTranslator(translator)
 
-    login = LoginDialog()
-    if login.exec() != QDialog.Accepted:
+    login = run_login(LoginDialog)
+    if login is None:
         return 0
     window = MainWindow(login.client, login.user, LoginDialog)
     window.show()
