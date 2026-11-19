@@ -7,7 +7,7 @@
     var main = document.querySelector('.main-content');
     if (!nav || !main) return;
 
-    var state = { me: {}, people: [], conversations: [], announcements: [], conv: '', messages: [], lastSeq: 0, tab: 'chat', summary: null, notified: {} };
+    var state = { me: {}, people: [], conversations: [], announcements: [], conv: '', messages: [], lastSeq: 0, tab: 'chat', summary: null };
     var chatTimer = null;
 
     function esc(value) { return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -324,13 +324,26 @@
             var badge = document.getElementById('msg-nav-badge');
             if (badge) badge.innerHTML = total ? '<span class="msg-badge">' + (total > 99 ? '99+' : total) + '</span>' : '';
             document.title = (total ? '(' + total + ') ' : '') + document.title.replace(/^\(\d+\+?\) /, '');
-            var fresh = s.announcements.filter(function (a) { return !state.notified[a.id]; });
-            fresh.forEach(function (a) { state.notified[a.id] = true; });
-            if (fresh.length && state.polled) toast('新公告：' + fresh[0].title);
-            state.polled = true;
+            // admin-notifications.js turns new items into pop-ups and the bell's list.
+            window.dispatchEvent(new CustomEvent('club:summary', { detail: s }));
             if (panel.classList.contains('active')) renderTabs();
         } catch (e) { /* offline or feature not deployed: keep quiet */ }
     }
+    // Used by the notification centre to jump to a conversation or announcement.
+    window.ClubMessages = {
+        show: async function (tab, conv) {
+            if (typeof showPanel === 'function') showPanel('messages');
+            await open(tab || 'chat');
+            if (conv && (tab === 'chat' || tab === 'dm')) {
+                var button = document.querySelector('.msg-conv[data-conv="' + (window.CSS && CSS.escape ? CSS.escape(conv) : conv) + '"]');
+                if (button) button.click();
+            }
+        },
+        refresh: function () { return poll().then(function () { if (panel.classList.contains('active')) open(state.tab); }); },
+        current: function () { return panel.classList.contains('active') && (state.tab === 'chat' || state.tab === 'dm') ? state.conv : ''; }
+    };
     poll();
     setInterval(poll, 20000);
+    // Check right away when the tab comes back to the foreground (timers are throttled in the background).
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
 })();
