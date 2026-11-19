@@ -22,6 +22,8 @@ if DESKTOP_DIR not in sys.path:
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
+from clubdesk import qtcompat  # noqa: E402,F401  (PySide2 fallback)
+
 
 class MockApiHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):

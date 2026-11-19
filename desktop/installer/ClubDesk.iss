@@ -5,21 +5,33 @@
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
-#define AppName "北科無人機社 社務管理系統"
+#ifdef Win7
+  ; Separate Windows 7 edition:  iscc /DWin7 /DAppVersion=1.2.0 installer\ClubDesk.iss
+  #define AppName "北科無人機社 社務管理系統 (Windows 7 版)"
+  #define OutName "ClubDesk-Win7-Setup"
+#else
+  #define AppName "北科無人機社 社務管理系統"
+  #define OutName "ClubDesk-Setup"
+#endif
 
 [Setup]
+#ifdef Win7
+AppId={{A3C54D0E-7B21-4E5F-8C19-5D6F0B7E92A4}
+DefaultDirName={autopf}\NTUT Drone Club\ClubDesk-Win7
+#else
 AppId={{6E1B7C52-3F0A-4C9E-9B8D-2D7A41C0D5E3}
+DefaultDirName={autopf}\NTUT Drone Club\ClubDesk
+#endif
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher=國立臺北科技大學無人機社
 AppPublisherURL=https://github.com/jhuiry8/ntutdroneweb
-DefaultDirName={autopf}\NTUT Drone Club\ClubDesk
 DefaultGroupName=北科無人機社
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=..\dist
-OutputBaseFilename=ClubDesk-Setup-{#AppVersion}
+OutputBaseFilename={#OutName}-{#AppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=classic
@@ -33,7 +45,11 @@ VersionInfoVersion={#AppVersion}
 VersionInfoDescription={#AppName} 安裝程式
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+#ifdef Win7
+MinVersion=6.1sp1
+#else
 MinVersion=10.0
+#endif
 
 [Languages]
 Name: "cht"; MessagesFile: "ChineseTraditional.isl"

@@ -21,7 +21,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QApplication, QCheckBox, QDialog, QFormLayout, QLabel, QLineEdit,
                                QMessageBox, QPlainTextEdit, QProgressDialog, QPushButton, QVBoxLayout)
 
-from . import __version__
+from . import WIN7_EDITION, __version__
 from .api import USER_AGENT, ApiClient, ApiError, ssl_context
 from .widgets import busy, show_error
 
@@ -125,6 +125,13 @@ def offer_update(parent, release: dict) -> bool:
 
 
 def check_and_offer(parent, api: ApiClient, quiet: bool = True) -> bool:
+    if WIN7_EDITION:
+        # The Windows 7 edition is a separate frozen build: the website's update channel belongs
+        # to the normal edition, so offering its installer here would replace this edition.
+        if not quiet:
+            QMessageBox.information(parent, "檢查更新", "Windows 7 版不提供自動更新。\n"
+                                    "需要時請到 GitHub Releases 下載最新的 ClubDesk-Win7-Setup。")
+        return False
     try:
         with busy():
             release = latest_release(api)
@@ -155,7 +162,9 @@ def github_latest_release() -> dict:
         asset = next((a for a in release.get("assets", []) if a.get("name", "").lower().endswith(".exe")), None)
         if not asset:
             continue
-        sha = (asset.get("digest") or "").removeprefix("sha256:")
+        sha = (asset.get("digest") or "")
+        if sha.startswith("sha256:"):
+            sha = sha[len("sha256:"):]
         if not re.fullmatch(r"[0-9a-f]{64}", sha):
             found = re.search(r"SHA-?256[^0-9a-fA-F]*([0-9a-fA-F]{64})", release.get("body") or "")
             sha = found.group(1).lower() if found else ""

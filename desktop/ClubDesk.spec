@@ -1,7 +1,10 @@
 # PyInstaller build recipe:  pyinstaller --noconfirm ClubDesk.spec
 #
 # Produces dist/ClubDesk/ (a folder, packed by installer/ClubDesk.iss into one setup
-# program). Only the Qt pieces the program uses are kept: QtCore, QtGui, QtWidgets
+# program). The release is built with Python 3.8 + PySide2 (Qt 5.15), the newest
+# combination that still runs on Windows 7 SP1 (it also runs on Windows 8 - 11);
+# with Python 3.9+ the same spec builds against PySide6 (Qt 6, Windows 10+ only).
+# Only the Qt pieces the program uses are kept: QtCore, QtGui, QtWidgets
 # and QtSvg, the Windows platform plugin, the SVG/ICO image plugins and the
 # Traditional Chinese translation for standard dialog buttons. Everything else
 # (QML, Quick, PDF, networking, the 20 MB software OpenGL renderer...) is left out
@@ -10,7 +13,7 @@ import re
 import sys
 
 sys.path.insert(0, SPECPATH)
-from clubdesk import __version__  # noqa: E402
+from clubdesk import __version__, qtcompat  # noqa: E402
 
 VERSION_INFO = None  # the Windows "Details" tab of ClubDesk.exe; needs pefile, which exists only on Windows
 if sys.platform == "win32":
@@ -35,18 +38,17 @@ if sys.platform == "win32":
         ],
     )
 
-UNUSED_MODULES = [
-    "tkinter", "unittest", "pydoc", "doctest", "lib2to3", "sqlite3", "xmlrpc", "multiprocessing",
-    "PySide6.QtNetwork", "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtPdf", "PySide6.QtOpenGL",
-    "PySide6.QtOpenGLWidgets", "PySide6.QtDBus", "PySide6.QtPrintSupport", "PySide6.QtSql",
-    "PySide6.QtTest", "PySide6.QtXml", "PySide6.QtConcurrent", "PySide6.QtSvgWidgets",
-    "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.QtWebChannel",
-]
+_UNUSED_QT = ["QtNetwork", "QtQml", "QtQuick", "QtPdf", "QtOpenGL", "QtOpenGLWidgets", "QtDBus", "QtPrintSupport",
+              "QtSql", "QtTest", "QtXml", "QtConcurrent", "QtSvgWidgets", "QtWebEngineCore", "QtWebEngineWidgets",
+              "QtWebChannel", "QtMultimedia", "QtMultimediaWidgets", "QtWebSockets", "QtScript", "QtQuickWidgets",
+              "QtXmlPatterns", "QtHelp", "QtLocation", "QtPositioning", "QtSensors", "QtBluetooth", "QtNfc"]
+UNUSED_MODULES = ["tkinter", "unittest", "pydoc", "doctest", "lib2to3", "sqlite3", "xmlrpc", "multiprocessing"]
+UNUSED_MODULES += [f"{binding}.{name}" for binding in ("PySide2", "PySide6") for name in _UNUSED_QT]
 
 DROP = re.compile(r"""(?ix)
     (^|[/\\])(
         opengl32sw\.dll | d3dcompiler_\d+\.dll |
-        (lib)?Qt6(Quick|Qml|Pdf|Network|OpenGL|VirtualKeyboard|DBus|WaylandClient|WaylandEglClientHwIntegration|
+        (lib)?Qt[56](Quick|Qml|Pdf|Network|OpenGL|VirtualKeyboard|DBus|WaylandClient|WaylandEglClientHwIntegration|
                   EglFSDeviceIntegration|XcbQpa|SvgWidgets|PrintSupport|Sql|Test|Xml|Concurrent|WebEngine|WebChannel|
                   Positioning|ShaderTools|LanguageServer|QmlModels|QmlWorkerScript)[^/\\]*
     )$
@@ -56,13 +58,13 @@ DROP = re.compile(r"""(?ix)
     | [/\\]plugins[/\\]platforms[/\\](?!(lib)?q(windows|xcb|offscreen|cocoa)\b)
     | [/\\]translations[/\\](?!qtbase_zh_TW\.qm$)
     | [/\\]QtNetwork\.(pyd|abi3\.so)$
-    | [/\\]PySide6[/\\]qml[/\\]
+    | [/\\]PySide[26][/\\]qml[/\\]
 """)
 
 
 def keep(entry) -> bool:
     name = entry[0].replace("\\", "/")
-    # Qt on Linux links the platform plugin to libQt6XcbQpa, so keep it there.
+    # Qt on Linux links the platform plugin to libQt5/6XcbQpa, so keep it there.
     if "XcbQpa" in name and not name.lower().endswith(".dll"):
         return True
     return not DROP.search("/" + name)
@@ -73,7 +75,9 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[("clubdesk/resources/app.ico", "clubdesk/resources"), ("clubdesk/resources/app.png", "clubdesk/resources")],
-    hiddenimports=[],
+    # qtcompat loads PySide2 by name, which PyInstaller's static analysis cannot follow.
+    hiddenimports=["PySide2.QtCore", "PySide2.QtGui", "PySide2.QtWidgets", "PySide2.QtSvg"]
+    if qtcompat.BINDING == "PySide2" else [],
     hookspath=[],
     hooksconfig={},
     excludes=UNUSED_MODULES,
