@@ -86,11 +86,23 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def ssl_context() -> ssl.SSLContext:
+    """System certificates plus the bundled certifi list, so HTTPS also works on Windows PCs
+    whose certificate store lacks an intermediate/root (e.g. GitHub's download host)."""
+    context = ssl.create_default_context()
+    try:
+        import certifi
+        context.load_verify_locations(cafile=certifi.where())
+    except (ImportError, OSError):
+        pass
+    return context
+
+
 class UrllibTransport:
     """Sends one HTTP request and never follows redirects."""
 
     def __init__(self):
-        context = ssl.create_default_context()
+        context = ssl_context()
         self.opener = urllib.request.build_opener(_NoRedirect(), urllib.request.HTTPSHandler(context=context))
 
     def send(self, method: str, url: str, headers: dict, body: bytes | None, timeout: float) -> Response:

@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QDialog, QFormLayout, QL
                                QMessageBox, QPlainTextEdit, QProgressDialog, QPushButton, QVBoxLayout)
 
 from . import __version__
-from .api import USER_AGENT, ApiClient, ApiError
+from .api import USER_AGENT, ApiClient, ApiError, ssl_context
 from .widgets import busy, show_error
 
 GITHUB_REPO = "jhuiry8/ntutdroneweb"
@@ -62,7 +62,7 @@ def download(url: str, sha256: str, parent) -> str | None:
     digest = hashlib.sha256()
     try:
         request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(request, timeout=30) as response, open(path, "wb") as handle:
+        with urllib.request.urlopen(request, timeout=30, context=ssl_context()) as response, open(path, "wb") as handle:
             total = int(response.headers.get("Content-Length") or 0)
             done = 0
             while True:
@@ -144,7 +144,7 @@ def github_latest_release() -> dict:
     request = urllib.request.Request(f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=20",
                                      headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"})
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
+        with urllib.request.urlopen(request, timeout=20, context=ssl_context()) as response:
             releases = json.loads(response.read().decode("utf-8"))
     except (OSError, ValueError) as error:
         raise ApiError(f"無法讀取 GitHub Release：{error}") from error
