@@ -6,7 +6,7 @@ name: Desktop App (Windows installer)
 #     number to use and publishes ONE GitHub Release with every package.
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
     paths: [ 'desktop/**', '.github/workflows/desktop.yml' ]
   workflow_dispatch:
   workflow_call:

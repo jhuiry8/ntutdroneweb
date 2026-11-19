@@ -69,5 +69,9 @@ Name: "{group}\{#AppName}"; Filename: "{app}\ClubDesk.exe"
 Name: "{group}\解除安裝 {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\ClubDesk.exe"; Tasks: desktopicon
 
+[Registry]
+; The program adds this itself (start with Windows); remove it on uninstall.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "ClubDesk"; Flags: uninsdeletevalue
+
 [Run]
 Filename: "{app}\ClubDesk.exe"; Description: "立即執行 {#AppName}"; Flags: nowait postinstall skipifsilent

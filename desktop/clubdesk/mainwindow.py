@@ -16,8 +16,8 @@ from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QApplication, QDialog, QLabel, QMainWindow, QMenu, QMessageBox, QSplitter,
                                QStackedWidget, QSystemTrayIcon, QTreeWidget, QTreeWidgetItem)
 
-from . import __version__
-from .api import (ROLE_LABELS, ApiClient, can_manage_equipment, can_manage_finance, can_manage_members,
+from . import __version__, autostart, saved_session
+from .api import (ROLE_LABELS, ApiClient, ApiError, can_manage_equipment, can_manage_finance, can_manage_members,
                   can_manage_users, can_view_cms)
 from .help import HelpWindow, WelcomeDialog
 from .icons import app_icon, icon
@@ -32,7 +32,7 @@ from .pages.messages import AnnouncementsPage, MessagesPage, PushSettingsDialog
 from .pages.other import AccountPage, RegulationsPage
 from .pages.website import HomepagePage, PagesPage, PostsPage
 from .updater import PublishDialog, check_and_offer
-from .widgets import background, open_url
+from .widgets import background, open_url, show_error
 
 APP_TITLE = "北科無人機社 社務管理系統"
 POLL_MS = 30000
@@ -120,7 +120,8 @@ class MainWindow(QMainWindow):
         self.poll.timeout.connect(self.check_messages)
         self.poll.start()
         QTimer.singleShot(500, self.check_messages)
-        QTimer.singleShot(300, lambda: WelcomeDialog.maybe_show(self))
+        # Not while hidden in the tray (start with Windows): wait until the window is opened.
+        QTimer.singleShot(300, lambda: WelcomeDialog.maybe_show(self) if self.isVisible() else None)
 
     # ------------------------------------------------------------- chrome
     def build_actions(self) -> None:
@@ -149,6 +150,11 @@ class MainWindow(QMainWindow):
                                           "右下角通知、提示音、勿擾模式與背景執行")
         self.act_dnd = action("勿擾模式(&D)", self.toggle_dnd, None, None, "暫停右下角通知")
         self.act_dnd.setCheckable(True)
+        self.act_autostart = action("開機自動啟動(&B)", self.toggle_autostart, None, None,
+                                    "Windows 開機登入後自動啟動並縮小到系統匣（使用 30 天保持登入）")
+        self.act_autostart.setCheckable(True)
+        self.act_autostart.setChecked(autostart.is_enabled())
+        self.act_autostart.setEnabled(autostart.supported())
         self.act_dnd.setChecked(not setting("enabled"))
         self.act_to_tray = action("縮小到系統匣(&Y)", self.hide_to_tray, "Ctrl+H", "tray",
                                   "隱藏視窗到右下角系統匣，程式在背景繼續執行並接收通知")
@@ -181,7 +187,7 @@ class MainWindow(QMainWindow):
         tools_menu = menu.addMenu("工具(&T)")
         tools_menu.addActions([self.act_notify, self.act_messages])
         tools_menu.addSeparator()
-        tools_menu.addActions([self.act_notify_settings, self.act_dnd, self.act_to_tray])
+        tools_menu.addActions([self.act_notify_settings, self.act_dnd, self.act_autostart, self.act_to_tray])
         tools_menu.addSeparator()
         tools_menu.addAction(self.act_password)
         if president:
@@ -350,6 +356,23 @@ class MainWindow(QMainWindow):
             self.tray.showMessage("仍在背景執行", "程式已縮小到右下角系統匣，會繼續接收新訊息與公告通知。"
                                   "點圖示可開回視窗；右鍵選「結束」可完全關閉。", app_icon(), 8000)
 
+    def hide_to_tray_silently(self) -> None:
+        """Started with Windows: show only the tray icon, no window and no first-time hint."""
+        self.hide()
+
+    def toggle_autostart(self, checked: bool) -> None:
+        try:
+            autostart.set_enabled(checked)
+        except OSError as error:
+            self.act_autostart.setChecked(autostart.is_enabled())
+            show_error(self, ApiError(f"無法設定開機自動啟動：{error}"))
+            return
+        QSettings().setValue("login/autostart", checked)
+        if checked and not (saved_session.load() or {}).get("token"):
+            QMessageBox.information(self, APP_TITLE, "開機自動啟動需要「保持登入 30 天」才能自動登入。"
+                                    "請從「檔案 → 登出並切換使用者」重新登入並勾選保持登入。")
+        self.set_message("已設定開機自動啟動" if checked else "已取消開機自動啟動")
+
     def notification_settings(self) -> None:
         if NotificationSettingsDialog(self).exec() == QDialog.Accepted:
             self.act_dnd.setChecked(not setting("enabled"))
@@ -433,6 +456,7 @@ class MainWindow(QMainWindow):
         self.quitting = True
         self.poll.stop()
         self.api.logout()
+        saved_session.clear()  # signing out ends the 30-day stay-signed-in too
         if self.tray:
             self.tray.hide()
         if not self.login_factory:
@@ -443,6 +467,9 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.Accepted:
             window = MainWindow(dialog.client, dialog.user, self.login_factory)
             window.show()
+            instances = getattr(QApplication.instance(), "instances", None)
+            if instances:  # a later second start must open this window, not the closed one
+                instances.set_handler(window.restore_window)
             # Keep a reference so the new window is not garbage-collected.
             self.successor = window
         self.save_geometry()
