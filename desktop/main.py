@@ -19,7 +19,9 @@ def main() -> int:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("NTUTDroneClub.ClubDesk")
     app = QApplication(sys.argv)
     app.setWindowIcon(app_icon())
-    app.setQuitOnLastWindowClosed(True)
+    # Closing the main window can leave the program running in the system tray;
+    # MainWindow quits the application itself when it really closes.
+    app.setQuitOnLastWindowClosed(False)
     app.setOrganizationName("NTUT Drone Club")
     app.setApplicationName("ClubDesk")
     app.setApplicationVersion(__version__)

@@ -146,3 +146,21 @@ self.addEventListener('fetch', (event) => {
         fetch(request).catch(() => caches.match(request))
     );
 });
+
+// 通知中心 (admin-notifications.js): clicking a system notification focuses an open
+// back-office tab (and tells it which conversation to show) or opens a new one.
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const data = event.notification.data || {};
+    const target = new URL(data.url || '/admin/dashboard', self.location.origin).href;
+    event.waitUntil(
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+            const tab = clients.find((client) => new URL(client.url).pathname.startsWith('/admin'));
+            if (tab) {
+                tab.postMessage({ type: 'notification-click', tab: data.tab || 'chat', conv: data.conv || '' });
+                return tab.focus();
+            }
+            return self.clients.openWindow(target);
+        })
+    );
+});
