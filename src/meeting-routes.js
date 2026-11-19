@@ -6,9 +6,9 @@ import { membershipStatus } from './membership.js';
 import { sanitizeContent, escapeHtml } from './html.js';
 import { aiProvider } from './forms.js';
 import { draftMeetingNotice, draftMinutes } from './ai.js';
+import { MEMBERS_KEY } from './kv-keys.js';
 import { MEETING_TYPES, AGENDA_KINDS, THRESHOLDS, MEETING_STATUSES, meetingView, canSeeMeeting, minutesFacts, publicMeetingView, findMemberByIdentity } from './meetings.js';
 
-const MEMBERS_KEY = 'members:list';
 
 // All meetings, or [] when the binding is missing (older deployments, unit tests).
 export async function listMeetings(env) {
