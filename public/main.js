@@ -1,27 +1,8 @@
 // NTUT Drone Club Landing Page - Interactivity Script
 
-// ─── Theme (Dark / Light) Init — runs immediately to prevent FOUC ───
-(function() {
-    var savedTheme = 'dark';
-    try { savedTheme = localStorage.getItem('ntut-theme') || 'dark'; } catch (_) {}
-    document.documentElement.setAttribute('data-theme', savedTheme);
-})();
-
-window.toggleTheme = function() {
-    var current = document.documentElement.getAttribute('data-theme') || 'dark';
-    var next = current === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    try { localStorage.setItem('ntut-theme', next); } catch (_) {}
-    // Update icon
-    var btn = document.getElementById('theme-toggle-btn');
-    if (btn) btn.textContent = next === 'dark' ? '☀️' : '🌙';
-};
+// Theme handling lives in /theme.js (auto / light / dark, follows the phone's setting).
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 0. Sync theme toggle icon on load
-    var savedTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-    var btn = document.getElementById('theme-toggle-btn');
-    if (btn) btn.textContent = savedTheme === 'dark' ? '☀️' : '🌙';
 
     // 1. Initialize Lucide Icons
     if (window.lucide && lucide.createIcons) lucide.createIcons();

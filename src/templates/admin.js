@@ -28,11 +28,14 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
         <title>後台管理面板 | 北科無人機社</title>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
         <script src="/vendor/lucide-1.65.0.min.js"></script>
+        <script src="/theme.js"></script>
         <script src="/admin-nav.js"></script>
         <link rel="stylesheet" href="/admin.css">
+        <link rel="stylesheet" href="/glass.css">
+        <link rel="stylesheet" href="/admin-theme.css">
     </head>
     <body data-admin="${escapeHtml(JSON.stringify(adminConfig))}">
-        <div class="mobile-admin-bar"><button type="button" onclick="toggleAdminMenu()" aria-label="開啟後台選單" aria-controls="admin-sidebar" aria-expanded="false">☰</button><strong id="mobile-admin-title">NTUT DRONE 後台</strong><span id="offline-badge" class="offline-badge" hidden role="status">離線中</span></div>
+        <div class="mobile-admin-bar"><button type="button" onclick="toggleAdminMenu()" aria-label="開啟後台選單" aria-controls="admin-sidebar" aria-expanded="false">☰</button><strong id="mobile-admin-title">NTUT DRONE 後台</strong><button type="button" class="theme-btn" data-theme-toggle aria-label="切換外觀"><span class="theme-icon">🌓</span></button><span id="offline-badge" class="offline-badge" hidden role="status">離線中</span></div>
         <div id="install-hint" class="install-hint" hidden><span id="install-hint-text"></span><button type="button" id="install-hint-btn" class="btn btn-primary" hidden>安裝</button><button type="button" id="install-hint-close" aria-label="關閉提示">✕</button></div>
         <div id="admin-backdrop" class="admin-backdrop"></div>
         <div class="sidebar" id="admin-sidebar">
@@ -61,6 +64,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 </div>
             </div>
             <div>
+                <button type="button" class="nav-item" data-theme-toggle style="margin-bottom: 8px;"><span class="theme-icon">🌓</span> <span class="theme-label">外觀</span></button>
                 <a href="/" target="_blank" class="nav-item" style="margin-bottom: 8px;"><i data-lucide="external-link"></i> 前台首頁</a>
                 <button class="nav-item" onclick="logout()" style="color: #f87171;"><i data-lucide="log-out"></i> 安全登出</button>
             </div>

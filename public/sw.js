@@ -21,6 +21,7 @@ const STATIC_ASSETS = [
     '/',
     '/style.css',
     '/main.js',
+    '/theme.js',
     '/manifest.webmanifest',
     '/offline.html',
     '/vendor/lucide-1.65.0.min.js',
