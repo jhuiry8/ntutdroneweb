@@ -169,6 +169,30 @@
 * 有後台帳號的社員，需在「帳號與權限」綁定社員資料才能在後台簽到與投票。
 * 部署：新增了 `MEETING_STORE` Durable Object（`wrangler.toml` 的 migration `v4`），推送後 GitHub Actions 會自動建立。
 
+### 3-4. 社團通訊與外部推播（Durable Object MessageStore）
+後台與桌面版提供專屬「社團通訊 / 訊息中心」（`/api/messages/*`、`/api/announcements/*`），所有訊息資料由 Cloudflare Workers **`MESSAGE_STORE` Durable Object**（原生 SQLite 儲存架構，`wrangler.toml` migration `v5`）集中管理，支援多端同步、未讀狀態追蹤與安全防護：
+
+1. **聊天室（Channels）**：
+   * 支援「全體社員」、「幹部限定」及「指定成員」專屬群組。
+   * 可設定「公告用頻道（僅幹部可發言）」，適合社務重要通知與課堂宣告。
+   * 支援訊息作者編輯、刪除，社長具備全站頻道管理與封存權限。
+2. **私人訊息（Direct Messages）**：
+   * 任何登入帳號皆可與社團其他成員開啟一對一私密對話。
+   * 具備已讀位置（`seq`）精確標記，未讀訊息即時統計。
+3. **社團公告（Announcements）**：
+   * 幹部可發布正式公告，支援置頂、全體／幹部限定發布。
+   * 幹部可即時查看「已讀人數」與展開「已讀名單」，掌握通知觸及率。
+4. **外部推播模組（選用模組，社長專屬設定）**：
+   * 預設關閉。啟用後，當發布「全體社員公告」或「網站新文章」時，自動推播至外部社群平台：
+     * **Webhook 整合**：支援 Discord 頻道 Webhook、Slack、Google Chat、Microsoft Teams 的 Incoming Webhook（最多可設定 5 組 Webhook 頻道）。
+     * **LINE 官方帳號**：設定 Channel Access Token 即可透過 LINE Messaging API Broadcast 廣播推播至社團官方 LINE 好友。
+   * **隱私隔離**：聊天室內容、私人訊息與「幹部限定公告」永遠不會外流至外部平台；Webhook 網址在查詢介面中皆自動遮蔽保護。
+5. **跨端同步與桌面版整合**：
+   * 網頁後台提供紅色未讀徽章、瀏覽器標題未讀提示 `(N)` 與即時 Toast 提醒。
+   * 桌面版「社務管理系統」支援背景執行、Windows 系統匣氣泡推播通知與側邊功能樹未讀計數。
+* **部署說明**：使用 `MESSAGE_STORE` Durable Object（`wrangler.toml` 的 migration `v5`），推送至 GitHub 後 GitHub Actions 自動部署套用 migration，無須手動設定。
+
+
 ### 4. 獨立網頁建立 (Custom Pages)
 * 如果您需要為社團迎新、比賽報名或贊助招商建立專屬介紹頁，前往 **「頁面管理」** -> 「新增獨立網頁」。
 * 填寫標題與路徑（例如 `join-us`；文章與頁面的路徑只能使用英文字母、數字、底線或連字號，最多 100 字），儲存後即可直接透過 `https://您的網站網址/page/join-us` 分享給所有人，無須修改任何一行程式碼！

@@ -176,5 +176,129 @@ class SemesterTests(unittest.TestCase):
         self.assertEqual(semester_of(date(2027, 3, 1)), "115-2")
 
 
+class WebsiteCmsTests(unittest.TestCase):
+    def test_posts_crud_and_preview(self):
+        api, sent = client(
+            reply(200, [{"id": "p1", "title": "測試文章", "slug": "test"}]),
+            reply(201, {"id": "p2", "slug": "new-post"}),
+            reply(200, {"html": "<p>預覽</p>"}),
+        )
+        posts = api.posts()
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0]["slug"], "test")
+
+        res = api.save_post({"title": "新文章", "slug": "new-post", "body": "內文"})
+        self.assertEqual(res["id"], "p2")
+        self.assertEqual(sent.calls[1]["method"], "POST")
+        self.assertEqual(sent.calls[1]["url"], "https://club.example/api/posts")
+
+        preview = api.preview_markdown("# 標題")
+        self.assertIn("預覽", preview)
+        self.assertEqual(sent.calls[2]["url"], "https://club.example/api/preview")
+
+    def test_pages_and_homepage_and_notes(self):
+        api, sent = client(
+            reply(200, [{"id": "page1", "path": "about"}]),
+            reply(200, {"heroTitle": "無人機社"}),
+            reply(200, [{"id": "n1", "title": "第 1 週社課"}]),
+        )
+        pages = api.pages()
+        self.assertEqual(len(pages), 1)
+
+        hp = api.homepage()
+        self.assertEqual(hp["heroTitle"], "無人機社")
+
+        notes = api.notes()
+        self.assertEqual(len(notes), 1)
+
+
+class MessagesTests(unittest.TestCase):
+    def test_conversations_and_messages_flow(self):
+        api, sent = client(
+            reply(200, {"unreadMessages": 2, "unreadAnnouncements": 1}),
+            reply(200, [{"conv": "general", "name": "一般討論"}]),
+            reply(200, {"messages": [{"seq": 1, "text": "嗨"}], "conv": "general"}),
+            reply(200, {"seq": 2, "text": "測試"}),
+        )
+        summary = api.message_summary()
+        self.assertEqual(summary["unreadMessages"], 2)
+
+        convs = api.conversations()
+        self.assertEqual(len(convs), 1)
+
+        msgs = api.messages("general")
+        self.assertEqual(len(msgs["messages"]), 1)
+
+        send_res = api.send_message("general", "測試")
+        self.assertEqual(send_res["seq"], 2)
+
+    def test_channels_announcements_and_push(self):
+        api, sent = client(
+            reply(200, {"id": "ch1", "name": "新頻道"}),
+            reply(200, [{"id": "a1", "title": "重要公告"}]),
+            reply(200, {"enabled": False, "webhooks": []}),
+        )
+        ch = api.create_channel({"name": "新頻道"})
+        self.assertEqual(ch["name"], "新頻道")
+
+        anns = api.announcements()
+        self.assertEqual(len(anns), 1)
+
+        push = api.push_settings()
+        self.assertFalse(push["enabled"])
+
+
+class MeetingsTests(unittest.TestCase):
+    def test_meetings_and_agenda_flows(self):
+        api, sent = client(
+            reply(200, {"meetings": [{"id": "m1", "title": "期初大會"}], "me": {"officer": True}}),
+            reply(200, {"id": "m1", "title": "期初大會"}),
+            reply(200, {"ok": True, "count": 1}),
+        )
+        data = api.meetings()
+        self.assertEqual(len(data["meetings"]), 1)
+
+        created = api.create_meeting({"title": "期初大會"})
+        self.assertEqual(created["title"], "期初大會")
+
+        checked = api.meeting_action("m1", "attendance", {"code": "1234"})
+        self.assertTrue(checked["ok"])
+
+
+class AiAndAdminTests(unittest.TestCase):
+    def test_ai_status_assistant_and_reports(self):
+        api, sent = client(
+            reply(200, {"enabled": True, "provider": "groq"}),
+            reply(200, {"reply": "社費收費標準為每學期 500 元"}),
+            reply(200, [{"id": "r1", "title": "第 10 週社務週報"}]),
+        )
+        st = api.ai_status()
+        self.assertTrue(st["enabled"])
+
+        chat = api.ai_assistant([{"role": "user", "content": "社費多少？"}])
+        self.assertIn("500", chat["reply"])
+
+        reps = api.reports()
+        self.assertEqual(len(reps), 1)
+
+    def test_finance_equipment_users_and_settings(self):
+        api, sent = client(
+            reply(200, {"cash": 1000, "post": 5000}),
+            reply(200, [{"id": "eq1", "name": "無人機"}]),
+            reply(200, [{"username": "admin", "role": "president"}]),
+        )
+        finance = api.finance_summary()
+        self.assertEqual(finance["cash"], 1000)
+
+        eqs = api.equipment()
+        self.assertEqual(len(eqs), 1)
+
+        users = api.users()
+        self.assertEqual(len(users), 1)
+
+
+
 if __name__ == "__main__":
     unittest.main()
+
+

@@ -691,7 +691,10 @@ class MeetingsPage(Page):
 
     def refresh(self) -> None:
         data = self.api.meetings()
-        self.meetings, self.me, self.options, self.roster = data["meetings"], data["me"], data["options"], data["roster"]
+        self.meetings = data.get("meetings", [])
+        self.me = data.get("me", {})
+        self.options = data.get("options", {})
+        self.roster = data.get("roster", [])
         officer = bool(self.me.get("officer"))
         for widget in (self.new, self.template, self.remove_button):
             widget.setVisible(officer)
