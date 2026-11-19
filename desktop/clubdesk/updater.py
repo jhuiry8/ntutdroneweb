@@ -159,7 +159,11 @@ def github_latest_release() -> dict:
         tag = release.get("tag_name", "")
         if not tag.startswith(RELEASE_TAG_PREFIX) or release.get("draft"):
             continue
-        asset = next((a for a in release.get("assets", []) if a.get("name", "").lower().endswith(".exe")), None)
+        # The release also holds the Windows 7 installer and the Android APK: take only this edition's installer.
+        asset = next((a for a in release.get("assets", []) if re.fullmatch(r"ClubDesk-Setup-.*\.exe", a.get("name", ""), re.I)), None)
+        if not asset:   # older releases: any single installer
+            asset = next((a for a in release.get("assets", [])
+                          if a.get("name", "").lower().endswith(".exe") and "win7" not in a.get("name", "").lower()), None)
         if not asset:
             continue
         sha = (asset.get("digest") or "")
@@ -169,7 +173,7 @@ def github_latest_release() -> dict:
             found = re.search(r"SHA-?256[^0-9a-fA-F]*([0-9a-fA-F]{64})", release.get("body") or "")
             sha = found.group(1).lower() if found else ""
         return {"version": tag[len(RELEASE_TAG_PREFIX):], "url": asset.get("browser_download_url", ""),
-                "sha256": sha, "notes": (release.get("body") or "").split("SHA")[0].strip()[:2000]}
+                "sha256": sha, "notes": (release.get("body") or "").split("###")[0].split("SHA")[0].strip()[:2000]}
     raise ApiError(f"GitHub 上找不到 {RELEASE_TAG_PREFIX}* 的 Release 安裝檔")
 
 

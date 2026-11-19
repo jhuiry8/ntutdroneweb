@@ -59,14 +59,14 @@
 
 ## Windows 7 版（獨立版本）
 
-給無法升級作業系統的舊電腦使用，**另外打包、另外發行**，不影響上面的一般版（Windows 10 / 11）：
+給無法升級作業系統的舊電腦使用，**另外打包成獨立的安裝檔**（和一般版、Android APK 一起放在同一個 Release），不影響上面的一般版（Windows 10 / 11）：
 
 | | 一般版 | Windows 7 版 |
 | :--- | :--- | :--- |
 | 系統 | Windows 10 / 11（64 位元） | Windows 7 SP1 以上（64 位元，也能在 8 / 10 / 11 執行） |
 | 技術 | Python 3.12 + PySide6（Qt 6） | Python 3.8 + PySide2（Qt 5.15） |
 | 安裝檔 | `ClubDesk-Setup-x.y.z.exe` | `ClubDesk-Win7-Setup-x.y.z.exe` |
-| 發行 | 每次合併自動發行（`desktop-v*`） | 手動推 `desktop-win7-v*` 標籤才發行 |
+| 發行 | 每次合併自動發行（`desktop-v*`） | 與一般版、Android APK 放在**同一個 Release**，是獨立的檔案 |
 | 自動更新 | 有 | **沒有**（「檢查更新」只會提示去 Releases 下載） |
 
 * Windows 7 需先安裝 SP1 與「通用 C 執行階段」更新（KB2999226）。
@@ -107,7 +107,7 @@
    * 主、次版本取自 `desktop/clubdesk/__init__.py` 的 `__version__`（例如 `1.2`）。
    * 修訂號自動加一：第一次發布 `1.2.0`，之後依序 `1.2.1`、`1.2.2`…
    * 要升大版本時，把 `__version__` 改成例如 `1.3.0` 再合併，就會從 `1.3.0` 開始。
-2. 建立標籤 `desktop-vX.Y.Z` 與 GitHub Release（附 SHA-256，說明取自 PR 標題）。
+2. 建立標籤 `desktop-vX.Y.Z` 與**單一 GitHub Release**（`.github/workflows/release.yml`），同一個 Release 內附上一般版安裝檔、Windows 7 版安裝檔與 Android APK（各自獨立檔案，附 SHA-256，說明取自 PR 標題）。有改到 `android/` 也會觸發，桌面版版號因此一併遞增。
 3. **自動通知網站**：若設定了 GitHub Secret `DESKTOP_RELEASE_TOKEN`，會直接更新網站的
    `/api/desktop/version`，所有社員下次開啟程式就會收到更新通知，社長不用再手動操作。
 
@@ -126,7 +126,7 @@ PR 只會測試與打包，不會發布；Actions 紀錄中會顯示「Merging t
 
 #### 手動發布（選用）
 
-仍可手動推送標籤 `desktop-vX.Y.Z` 來發布指定版本。網站只接受 `https://github.com/` 的下載網址；
+在 Actions 頁面手動執行 **Release** 流程即可重新發布；要指定版本時，先把 `__version__` 改成該版本再合併。網站只接受 `https://github.com/` 的下載網址；
 人工發布只有社長能做，自動通知用的權杖不會把網站上的版本改回較舊的版本。
 
 ## 檔案大小

@@ -1,19 +1,27 @@
 name: Desktop App (Windows 7 edition)
 
-# A separate, frozen edition of the desktop program for Windows 7 SP1 (also runs on 8 / 10 / 11).
-# It is built with Python 3.8 + PySide2 (Qt 5.15), the newest combination that still runs on
-# Windows 7, and is NOT updated automatically:
+# The Windows 7 SP1 edition of the desktop program (also runs on 8 / 10 / 11), built with
+# Python 3.8 + PySide2 (Qt 5.15), the newest combination that still runs on Windows 7.
 #   * pull requests and manual runs only build and test (the installer is a workflow artifact);
-#   * pushing a desktop-win7-v<version> tag publishes a GitHub Release with ClubDesk-Win7-Setup-<version>.exe.
-# The release is never marked "latest" and never announced to the website, so the normal edition's
-# automatic update (desktop-v* releases) is not affected. Tags are not matched by desktop.yml.
+#   * merges to main are released by release.yml, which attaches ClubDesk-Win7-Setup-<version>.exe
+#     to the same GitHub Release as the normal installer and the APK, as its own separate file.
+# This edition has no automatic update; the website never announces it.
 on:
-  push:
-    tags: [ 'desktop-win7-v*' ]
   pull_request:
     branches: [ main ]
     paths: [ 'desktop/**', '.github/workflows/desktop-win7.yml' ]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: Version to build (x.y.z), chosen by release.yml
+        type: string
+        required: true
+    outputs:
+      version:
+        value: ${{ jobs.build.outputs.version }}
+      sha256:
+        value: ${{ jobs.build.outputs.sha256 }}
 
 permissions:
   contents: read
@@ -51,12 +59,10 @@ jobs:
 
     - name: Choose version
       id: version
+      env:
+        RELEASE_VERSION: ${{ inputs.version }}
       run: |
-        if ($env:GITHUB_REF_TYPE -eq 'tag') {
-          $version = $env:GITHUB_REF_NAME -replace '^desktop-win7-v', ''
-        } else {
-          $version = python -c "from clubdesk import __version__; print(__version__)"
-        }
+        $version = if ($env:RELEASE_VERSION) { $env:RELEASE_VERSION } else { python -c "from clubdesk import __version__; print(__version__)" }
         if ($version -notmatch '^\d{1,4}\.\d{1,4}\.\d{1,4}$') { throw "Invalid version '$version'" }
         (Get-Content clubdesk/__init__.py -Raw) -replace '__version__ = "[^"]*"', "__version__ = `"$version`"" | Set-Content clubdesk/__init__.py -NoNewline -Encoding utf8
         "version=$version" >> $env:GITHUB_OUTPUT
@@ -100,29 +106,3 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       sha256: ${{ steps.setup.outputs.sha256 }}
 
-  release:
-    if: startsWith(github.ref, 'refs/tags/desktop-win7-v')
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-    - uses: actions/download-artifact@v4
-      with:
-        name: ClubDesk-Win7-Setup-${{ needs.build.outputs.version }}
-
-    - name: Publish GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ github.ref_name }}
-        name: 社務管理系統 Windows 7 版 ${{ needs.build.outputs.version }}
-        make_latest: false
-        files: ClubDesk-Win7-Setup-*.exe
-        body: |
-          北科無人機社 社務管理系統 **Windows 7 版** ${{ needs.build.outputs.version }}（獨立版本，不會自動更新）
-
-          * 適用 Windows 7 SP1 以上（64 位元）。Windows 10 / 11 請使用一般版（desktop-v* 的 Release）。
-          * Windows 7 已停止安全更新，本版使用的 Python 3.8 與 Qt 5.15 也已結束維護；請只在無法升級作業系統的電腦上使用。
-          * Windows 7 需先安裝 SP1 與「通用 C 執行階段」更新（KB2999226）。
-
-          SHA-256: ${{ needs.build.outputs.sha256 }}
