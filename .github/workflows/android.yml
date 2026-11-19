@@ -1,12 +1,17 @@
-name: Android App (APK build)
+name: Android App (APK build & auto release)
 
-# Builds Android APK on every change to android/ or manual trigger.
-# Pushing a tag such as android-v1.0.0 automatically creates a GitHub Release
-# with the downloadable APKs attached.
+# Fully automatic:
+# - Pull requests: build a debug APK to check the change compiles.
+# - Every push to main that touches android/: build, sign with the club key,
+#   bump the version (1.0.<run number>), tag it and publish a GitHub Release.
+# The only one-time manual step is adding the signing key secrets
+# (see android/README.md). Without them main still builds a debug APK artifact,
+# but nothing is published, because an APK signed with a throwaway key cannot
+# update an installed copy.
 on:
   push:
     branches: [ main ]
-    tags: [ 'android-v*' ]
+    paths: [ 'android/**', '.github/workflows/android.yml' ]
   pull_request:
     branches: [ main ]
     paths: [ 'android/**', '.github/workflows/android.yml' ]
@@ -15,12 +20,26 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_VERSION_CODE: ${{ github.run_number }}
+      ANDROID_VERSION_NAME: 1.0.${{ github.run_number }}
+    outputs:
+      signed: ${{ steps.release.outputs.signed }}
+      version: ${{ steps.version.outputs.name }}
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Compute version
+      id: version
+      run: echo "name=$ANDROID_VERSION_NAME" >> "$GITHUB_OUTPUT"
 
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -39,10 +58,9 @@ jobs:
         cd android
         ./gradlew assembleDebug --stacktrace
 
-    # Tagged releases are signed with the club's long-lived key so every new version
-    # installs over the previous one. Debug builds use a throwaway key per runner.
     - name: Build signed release APK
-      if: startsWith(github.ref, 'refs/tags/android-v')
+      id: release
+      if: github.event_name != 'pull_request'
       env:
         ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -50,13 +68,16 @@ jobs:
         ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       run: |
         if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-          echo "::error::Missing ANDROID_KEYSTORE_BASE64 secret; refusing to publish an APK signed with a temporary debug key."
-          exit 1
+          echo "::warning::Signing secrets are not set; skipping the release. See android/README.md."
+          echo "signed=false" >> "$GITHUB_OUTPUT"
+          exit 0
         fi
         export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/release.jks"
         echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$ANDROID_KEYSTORE_PATH"
         cd android
         ./gradlew assembleRelease --stacktrace
+        rm -f "$ANDROID_KEYSTORE_PATH"
+        echo "signed=true" >> "$GITHUB_OUTPUT"
 
     - name: Prepare APK outputs
       run: |
@@ -65,7 +86,6 @@ jobs:
         if [ -f android/app/build/outputs/apk/release/app-release.apk ]; then
           cp android/app/build/outputs/apk/release/app-release.apk dist/apk/NTUT-Drone-Club.apk
         fi
-        echo "Built APK files:"
         ls -la dist/apk/
 
     - name: Upload APK artifact
@@ -76,11 +96,9 @@ jobs:
         retention-days: 30
 
   release:
-    if: startsWith(github.ref, 'refs/tags/android-v')
     needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.build.outputs.signed == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
     - uses: actions/download-artifact@v4
       with:
@@ -90,12 +108,16 @@ jobs:
     - name: Publish GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        name: 北科無人機社 Android App ${{ github.ref_name }}
+        tag_name: android-v${{ needs.build.outputs.version }}
+        target_commitish: ${{ github.sha }}
+        name: 北科無人機社 Android App v${{ needs.build.outputs.version }}
+        make_latest: true
         files: dist/apk/NTUT-Drone-Club.apk
         body: |
-          ### 📱 北科無人機社 Android APK 安裝包 (${{ github.ref_name }})
+          ### 📱 北科無人機社 Android APK（v${{ needs.build.outputs.version }}）
 
-          此版本為國立臺北科技大學無人機社官方 Android 原生 App，支援：
+          此版本由 GitHub Actions 自動建置與簽署，可直接覆蓋安裝舊版。
+
           - 📢 社內公告（需登入）
           - 🗳️ 會議列表與簽到碼簽到（需登入）
           - 🛸 設備清單（幹部）與線上借用表單

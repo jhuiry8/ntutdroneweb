@@ -70,17 +70,18 @@ chmod +x gradlew
 
 ---
 
-## 🤖 GitHub Actions 自動化編譯 (CI/CD)
+## 🤖 GitHub Actions 全自動建置與發佈 (CI/CD)
 
-本專案已配置 `.github/workflows/android.yml`：
-- 每次將程式碼推送到 GitHub，系統會自動在雲端使用 Ubuntu + Android SDK 編譯最新 APK，並可於 Actions 頁面下載 Artifact。
-- 當建立並推送標籤（例如 `git tag android-v1.0.0 && git push origin android-v1.0.0`）時，GitHub Actions 會自動建立 GitHub Release 並附上可直接下載的 APK 安裝包。
+`.github/workflows/android.yml` 會自動處理：
+- **Pull Request**：自動編譯 Debug APK，確認改動能成功建置。
+- **合併到 `main`（且有改到 `android/`）**：自動編譯、用社團金鑰簽署、版本號自動遞增（`1.0.<建置編號>`）、自動打標籤 `android-v1.0.x` 並發佈 GitHub Release。社員到 Releases 下載最新版即可覆蓋更新。
+- 也可以在 Actions 頁面手動按 **Run workflow** 重新建置發佈。
 
-### 🔑 正式版簽章（發佈 Release 前必須設定一次）
+### 🔑 唯一需要手動的一次性設定：簽署金鑰
 
-Android 只允許「相同簽章」的 APK 覆蓋更新，因此正式版必須固定用同一把金鑰簽署。推送 `android-v*` 標籤時，若沒有下列 Secrets，工作流程會直接失敗，不會發佈。
+儲存庫是公開的，簽署金鑰不能放在程式碼裡（否則任何人都能簽出冒充的更新版），必須存在 GitHub Secrets。**沒設定時只會產生測試用 Debug APK，不會發佈 Release。**
 
-1. 在自己的電腦產生金鑰（請妥善備份，遺失後就無法再發佈可更新的版本）：
+1. 在自己的電腦產生金鑰（請妥善備份，遺失後就無法再發佈可覆蓋更新的版本）：
    ```bash
    keytool -genkeypair -v -keystore ntut-drone-release.jks -alias ntutdrone -keyalg RSA -keysize 4096 -validity 10000
    ```

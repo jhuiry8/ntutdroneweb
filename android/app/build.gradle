@@ -10,8 +10,9 @@ android {
         applicationId "club.ntut.drone"
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName "1.0.0"
+        // CI sets these from the run number so every automatic release is a newer version.
+        versionCode((System.getenv("ANDROID_VERSION_CODE") ?: "1") as int)
+        versionName(System.getenv("ANDROID_VERSION_NAME") ?: "1.0.0")
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
