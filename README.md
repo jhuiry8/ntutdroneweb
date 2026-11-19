@@ -204,6 +204,10 @@
 5. **跨端同步與桌面版整合**：
    * 網頁後台提供紅色未讀徽章、瀏覽器標題未讀提示 `(N)` 與即時 Toast 提醒。
    * 桌面版「社務管理系統」支援背景執行、Windows 系統匣氣泡推播通知與側邊功能樹未讀計數。
+6. **瀏覽器推播通知（Web Push）**：後台「通知中心 → 通知設定 → 顯示系統通知」開啟後，即使網站分頁已關閉、人在背景（手機加入主畫面的 PWA、電腦瀏覽器在背景），有新公告或聊天訊息時仍會收到系統通知，點擊直接開啟對應對話。
+   * 每個瀏覽器各自訂閱；可個別設定要收「公告」「訊息」或勿擾。只會推給有權限看到該內容的人（幹部限定公告與幹部聊天室不會推給一般社員），內容以 VAPID＋端對端加密傳送。
+   * **一次性設定（沒設定則不會推播，其他功能不受影響）**：本機執行 `node tools/generate-vapid.mjs` 產生金鑰，到 Cloudflare Dashboard → Workers → 此網站 → Settings → Variables and Secrets，新增 Secret：`VAPID_PUBLIC_KEY`、`VAPID_PRIVATE_KEY`，以及 `VAPID_SUBJECT`（如 `mailto:你的信箱`）。重新部署後各人在通知設定重新勾選一次即可。
+   * iPhone 需 iOS 16.4 以上並先「加入主畫面」才支援網頁推播。
 * **部署說明**：使用 `MESSAGE_STORE` Durable Object（`wrangler.toml` 的 migration `v5`），推送至 GitHub 後 GitHub Actions 自動部署套用 migration，無須手動設定。
 
 

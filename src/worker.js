@@ -23,6 +23,7 @@ import { handleDesktopRequest } from './desktop-routes.js';
 import { handleAiRequest, generateClubReport } from './ai-routes.js';
 import { handleMeetingRequest } from './meeting-routes.js';
 import { handleMessageRequest } from './message-routes.js';
+import { handlePushRequest } from './push-routes.js';
 import { equipmentStoreRequest } from './equipment-store.js';
 export { EquipmentStore } from './equipment-store.js';
 export { FormStore } from './form-store.js';
@@ -72,7 +73,8 @@ const ROUTES = [
     handleAuthRequest,
     (request, env) => handleAiRequest(request, env, aiDeps),
     (request, env) => handleMeetingRequest(request, env, aiDeps),
-    (request, env) => handleMessageRequest(request, env, aiDeps),
+    (request, env, ctx) => handleMessageRequest(request, env, aiDeps, ctx),
+    (request, env, ctx) => handlePushRequest(request, env, ctx, aiDeps),
     handleCmsRequest,
     handleFinanceRequest,
     handleEquipmentRequest,
