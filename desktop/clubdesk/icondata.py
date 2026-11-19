@@ -189,6 +189,18 @@ ICONS = {
         '<line x1="11" y1="13.5" x2="17" y2="13.5" stroke="#FFFFFF" stroke-width="0.8"/>'
         '<line x1="11" y1="16" x2="15" y2="16" stroke="#FFFFFF" stroke-width="0.8"/>'
     ),
+    "bell": (
+        "#F9A825",
+        '<path d="M12 3a6 6 0 0 0-6 6v4l-2 3h16l-2-3V9a6 6 0 0 0-6-6z" fill="#FFD54F" stroke="#F57F17" stroke-width="1"/>'
+        '<path d="M10 18a2 2 0 0 0 4 0" fill="#F57F17" stroke="#F57F17" stroke-width="1"/>'
+    ),
+    "tray": (
+        "#1565C0",
+        '<rect x="3" y="4" width="18" height="13" rx="1.5" fill="#E3F2FD" stroke="#1565C0" stroke-width="1"/>'
+        '<rect x="3" y="17" width="18" height="3" fill="#1565C0"/>'
+        '<rect x="15" y="17.8" width="4" height="1.4" fill="#FFD54F"/>'
+        '<path d="M9 8l3 4 3-4" fill="none" stroke="#1565C0" stroke-width="1.6"/>'
+    ),
     "announce": (
         "#FFA000",
         '<polygon points="4,9 10,6 10,16 4,13" fill="#FFC107" stroke="#FFA000" stroke-width="0.8"/>'

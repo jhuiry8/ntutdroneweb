@@ -695,6 +695,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
         <script src="/admin-meetings.js" defer></script>
         <script src="/admin-ai.js" defer></script>
         <script src="/admin-messages.js" defer></script>
+        <script src="/admin-notifications.js" defer></script>
     </body>
     </html>
     `;
