@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 # Ensure desktop/ is on Python path
-DESKTOP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DESKTOP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if DESKTOP_DIR not in sys.path:
     sys.path.insert(0, DESKTOP_DIR)
 

@@ -7,7 +7,8 @@ from PySide6.QtWidgets import (QDialog, QFormLayout, QGroupBox, QLabel, QLineEdi
                                QListWidgetItem, QMessageBox, QPushButton, QSplitter, QTextBrowser)
 
 from ..api import ROLE_LABELS, ApiError
-from ..widgets import DataTable, Page, busy, button_row, money, show_error
+from ..docx import Document
+from ..widgets import DataTable, Page, busy, button_row, docx_path, export_info, money, save_docx, show_error
 from .members import FEE_TYPE_LABELS, dialog_buttons
 
 
@@ -41,6 +42,25 @@ class RegulationsPage(Page):
         if self.list.count():
             self.list.setCurrentRow(0)
         self.status(f"法規 {len(regulations)} 種")
+
+    def export_docx(self) -> None:
+        """Every regulation in force, in full, with one heading per regulation."""
+        regulations = [self.list.item(i).data(Qt.UserRole) for i in range(self.list.count())]
+        if not regulations:
+            return
+        path = docx_path(self, "社團法規彙編.docx")
+        if not path:
+            return
+        document = Document("北科無人機社 社團法規彙編")
+        document.title_block("北科無人機社 社團法規彙編", export_info(self.user, self.api.base_url))
+        for index, regulation in enumerate(r for r in regulations if not r.get("repealed")):
+            if index:
+                document.page_break()
+            document.heading(regulation.get("title", ""), 1)
+            document.paragraph(f"〔{regulation.get('category', '')}　{regulation.get('version', '')}〕", size=18)
+            for line in (regulation.get("content") or "").splitlines():
+                document.paragraph(line)
+        save_docx(self, document, path)
 
     def show_regulation(self, item) -> None:
         if not item:

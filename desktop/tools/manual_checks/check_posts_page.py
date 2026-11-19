@@ -3,7 +3,7 @@ import sys
 import time
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
-DESKTOP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DESKTOP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if DESKTOP_DIR not in sys.path:
     sys.path.insert(0, DESKTOP_DIR)
 
@@ -13,7 +13,7 @@ app = QApplication.instance() or QApplication([])
 
 from clubdesk.api import ApiClient
 from clubdesk.pages.website import PostsPage
-from tests.run_offscreen_tests import start_mock_server
+from tools.manual_checks.mock_server_ui import start_mock_server
 
 server, base_url = start_mock_server()
 api = ApiClient(base_url)

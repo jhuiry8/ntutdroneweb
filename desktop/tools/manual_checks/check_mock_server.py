@@ -1,12 +1,12 @@
 import os
 import sys
 
-DESKTOP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DESKTOP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if DESKTOP_DIR not in sys.path:
     sys.path.insert(0, DESKTOP_DIR)
 
 from clubdesk.api import ApiClient
-from tests.run_offscreen_tests import start_mock_server
+from tools.manual_checks.mock_server_ui import start_mock_server
 
 print("Starting server...", flush=True)
 server, base_url = start_mock_server()

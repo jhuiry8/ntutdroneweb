@@ -46,7 +46,8 @@ export function dmParticipants(conv) {
 }
 
 export function canSeeChannel(channel, actor) {
-    if (!channel || channel.archived && !actor.president) return false;
+    // Archived rooms stay visible to the president and to whoever created them, so they can be reopened.
+    if (!channel || (channel.archived && !actor.president && channel.createdBy !== actor.username)) return false;
     if (channel.audience === 'all') return true;
     if (channel.audience === 'officers') return Boolean(actor.officer);
     return actor.president || channel.createdBy === actor.username || (channel.members || []).includes(actor.username);
@@ -78,6 +79,11 @@ export function normalizeAnnouncement(fields) {
     return { title, content, audience: fields?.audience === 'officers' ? 'officers' : 'all', pinned: fields?.pinned === true };
 }
 
+// A user's read announcement ids, without deleted announcements (so the cap never pushes out real ones).
+function trimRead(ids, existing) {
+    return ids.filter(id => existing.has(id)).slice(-MAX_ANNOUNCEMENTS);
+}
+
 async function readState(storage, username) {
     return (await storage.get(`read:${username}`)) || { announcements: [] };
 }
@@ -95,7 +101,8 @@ async function access(storage, conv, actor, people) {
     if (!CONVERSATION.test(conv)) throw new MessageError('對話不存在', 404);
     const pair = dmParticipants(conv);
     if (pair) {
-        if (!pair.includes(actor.username) || pair[0] === pair[1]) throw new MessageError('對話不存在', 404);
+        // Only the canonical id (names sorted) is accepted, so two people always share one thread.
+        if (!pair.includes(actor.username) || pair[0] === pair[1] || conv !== dmConversation(pair[0], pair[1])) throw new MessageError('對話不存在', 404);
         const other = pair[0] === actor.username ? pair[1] : pair[0];
         if (people && !people.has(other)) throw new MessageError('對方帳號不存在或已停用', 404);
         return { channel: null, participants: pair };
@@ -235,10 +242,18 @@ export async function messageOp(storage, op, payload, now = new Date().toISOStri
 
     if (op === 'read-all') {
         for (const item of await conversations(storage, actor, read)) read[item.conv] = item.lastSeq;
-        for (const item of await announcementList(storage, actor, read)) {
+        const existing = new Set();
+        for (const item of (await storage.list({ prefix: 'ann:' })).values()) {
+            existing.add(item.id);
+            if (!canSeeAnnouncement(item, actor)) continue;
             if (!read.announcements.includes(item.id)) read.announcements.push(item.id);
+            // Read receipts for officers (已讀名單) count this as read too.
+            if (!item.readBy.includes(actor.username) && item.createdBy !== actor.username) {
+                item.readBy.push(actor.username);
+                await storage.put(`ann:${item.id}`, item);
+            }
         }
-        read.announcements = read.announcements.slice(-MAX_ANNOUNCEMENTS);
+        read.announcements = trimRead(read.announcements, existing);
         await storage.put(`read:${actor.username}`, read);
         return { success: true };
     }
@@ -293,7 +308,8 @@ export async function messageOp(storage, op, payload, now = new Date().toISOStri
 
     if (op === 'read-announcement') {
         if (!read.announcements.includes(annId)) {
-            read.announcements = [...read.announcements, annId].slice(-MAX_ANNOUNCEMENTS);
+            const existing = new Set([...(await storage.list({ prefix: 'ann:' })).values()].map(item => item.id));
+            read.announcements = trimRead([...read.announcements, annId], existing);
             await storage.put(`read:${actor.username}`, read);
         }
         if (!announcement.readBy.includes(actor.username)) {

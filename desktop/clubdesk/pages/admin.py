@@ -11,7 +11,9 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout, QGrou
                                QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget)
 
 from ..api import ROLE_LABELS, ApiError, can_edit_cms, can_manage_finance, can_manage_users
-from ..widgets import DataTable, Page, background, busy, button_row, confirm, icon_button, open_url, show_error
+from ..docx import Document
+from ..widgets import (DataTable, Page, background, busy, button_row, confirm, docx_path, export_info, icon_button,
+                       open_url, save_docx, show_error)
 from .members import combo, date_edit, date_text, dialog_buttons
 
 ROLES = [("member", "社員"), ("cadre", "幹部"), ("finance", "財務"), ("president", "社長")]
@@ -104,6 +106,27 @@ class NotesPage(Page):
         links = "".join(f'<li><a href="{html.escape(link["url"])}">{html.escape(link.get("label") or link["url"])}</a></li>' for link in note.get("links", []))
         self.detail.setHtml(f"<h3>{html.escape(note.get('title', ''))}</h3><p>{html.escape(note.get('date', ''))}・{html.escape(note.get('createdBy', ''))}</p>"
                             f"<p>{rich_text(note.get('content', ''))}</p>" + (f"<ul>{links}</ul>" if links else ""))
+
+    def export_docx(self) -> None:
+        """All class notes with their content and links (as shown, newest first)."""
+        notes = self.table.rows
+        if not notes:
+            QMessageBox.information(self, "匯出 Word", "目前沒有社課紀錄。")
+            return
+        path = docx_path(self, "社課備忘錄.docx")
+        if not path:
+            return
+        document = Document("社課備忘錄")
+        document.title_block("社課備忘錄", export_info(self.user, self.api.base_url))
+        for note in notes:
+            document.heading(f"{note.get('date', '')}　{note.get('title', '')}", 2)
+            for line in (note.get("content") or "").splitlines():
+                document.paragraph(line)
+            links = [f"[{link.get('label') or link['url']}]({link['url']})" for link in note.get("links", [])]
+            if links:
+                document.bullets(links)
+            document.paragraph(f"建立者：{note.get('createdBy', '')}", size=18)
+        save_docx(self, document, path)
 
     def add(self) -> None:
         dialog = NoteDialog(self)
@@ -234,7 +257,7 @@ class UsersPage(Page):
             show_error(self, error)
         self.status("網站設定已儲存")
 
-    def update(self, username: str, changes: dict) -> None:
+    def update_user(self, username: str, changes: dict) -> None:
         try:
             with busy():
                 self.api.update_user({"username": username, **changes})
@@ -279,7 +302,7 @@ class UsersPage(Page):
         if dialog.password.text():
             changes["password"] = dialog.password.text()
         if changes:
-            self.update(user["username"], changes)
+            self.update_user(user["username"], changes)
 
     def toggle(self) -> None:
         user = self.selected()
@@ -287,7 +310,7 @@ class UsersPage(Page):
             return
         if user.get("active") and not confirm(self, f"確定停用帳號 {user['username']}？停用後對方會立即被登出。"):
             return
-        self.update(user["username"], {"active": not user.get("active")})
+        self.update_user(user["username"], {"active": not user.get("active")})
 
     def reset_password(self) -> None:
         user = self.selected()
@@ -299,7 +322,7 @@ class UsersPage(Page):
         if len(password) < 8:
             QMessageBox.warning(self, "重設密碼", "密碼至少需要 8 個字元。")
             return
-        self.update(user["username"], {"password": password})
+        self.update_user(user["username"], {"password": password})
 
 
 # ───────────────────────────── AI 社務助理 ─────────────────────────────
@@ -358,6 +381,21 @@ class AssistantPage(Page):
     def clear(self) -> None:
         self.history = []
         self.render()
+
+    def export_docx(self) -> None:
+        turns = [m for m in self.history if not m.get("pending")]
+        if not turns:
+            QMessageBox.information(self, "匯出 Word", "目前沒有對話內容。")
+            return
+        path = docx_path(self, "AI 社務助理對話.docx")
+        if not path:
+            return
+        document = Document("AI 社務助理對話")
+        document.title_block("AI 社務助理對話", export_info(self.user, self.api.base_url))
+        for message in turns:
+            document.heading("您" if message["role"] == "user" else "助理", 3)
+            document.markdown(message.get("content", ""))
+        save_docx(self, document, path)
 
     def render(self) -> None:
         if not self.history:
@@ -468,6 +506,20 @@ class ReportsPage(Page):
             return
         note = f"<p style='color:#A11D1D'>AI 摘要失敗：{html.escape(report['aiError'])}</p>" if report.get("aiError") else ""
         self.text.setHtml(f"<p>{rich_text(report.get('text', ''))}</p>" + note)
+
+    def export_docx(self) -> None:
+        report = self.table.current_row_data()
+        if not report:
+            QMessageBox.information(self, "匯出 Word", "請先選取一份週報。")
+            return
+        stamp = (report.get("createdAt") or "")[:10]
+        path = docx_path(self, f"社團週報-{stamp}.docx")
+        if not path:
+            return
+        document = Document(f"社團週報 {stamp}")
+        document.title_block(f"北科無人機社 社團週報（{stamp}）", export_info(self.user, self.api.base_url))
+        document.markdown(report.get("text", ""))
+        save_docx(self, document, path)
 
     def create(self) -> None:
         try:

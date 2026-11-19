@@ -21,7 +21,9 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout, QGrid
 
 from ..api import ApiError, can_manage_users, can_view_cms
 from ..icons import icon
-from ..widgets import DataTable, Page, background, busy, button_row, confirm, icon_button, show_error
+from ..docx import Document
+from ..widgets import (DataTable, Page, background, busy, button_row, confirm, docx_path, export_info, icon_button,
+                       save_docx, show_error)
 from .members import dialog_buttons
 
 
@@ -33,6 +35,14 @@ def when(iso: str) -> str:
     except ValueError:
         return iso[:16]
     return moment.strftime("%H:%M") if moment.date() == datetime.now().date() else moment.strftime("%m/%d %H:%M")
+
+
+def local_day(iso: str) -> str:
+    """The date in this computer's time zone (the server stores UTC)."""
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d")
+    except ValueError:
+        return iso[:10]
 
 
 def message_html(text: str) -> str:
@@ -262,9 +272,16 @@ class MessagesPage(Page):
         self.fetching = True
         conv, after = self.conv, self.last_seq
 
+        def stale() -> bool:
+            # The user switched (or reopened) a conversation while this request ran: load that one now.
+            if conv != self.conv or after != self.last_seq:
+                self.fetch_new()
+                return True
+            return False
+
         def done(data):
             self.fetching = False
-            if data.get("conv") != self.conv or after != self.last_seq:
+            if stale():
                 return
             new = data.get("messages", [])
             if new:
@@ -277,6 +294,8 @@ class MessagesPage(Page):
 
         def failed(error):
             self.fetching = False
+            if stale():
+                return
             self.stream.setHtml(f"<p style='color:#A11D1D'>{html.escape(str(error))}</p>")
 
         background(lambda: self.api.messages(conv, after), done, failed)
@@ -412,7 +431,37 @@ class MessagesPage(Page):
             window.check_messages()
 
     def export_csv(self) -> None:
-        QMessageBox.information(self, "匯出", "聊天內容不提供匯出。")
+        QMessageBox.information(self, "匯出", "聊天內容請用「匯出 Word」（Ctrl+Shift+E）匯出目前的對話。")
+
+    def export_docx(self) -> None:
+        """Transcript of the open conversation (up to its latest 200 messages)."""
+        if not self.conv:
+            QMessageBox.information(self, "匯出 Word", "請先選擇一個對話。")
+            return
+        try:
+            with busy():
+                messages = self.api.messages(self.conv, 0, 200).get("messages", [])
+        except ApiError as error:
+            show_error(self, error)
+            return
+        title = self.heading.text().strip().split("　")[0]
+        safe = re.sub(r'[\\/:*?"<>|]', "_", title)[:40]
+        path = docx_path(self, f"對話紀錄-{safe}.docx")
+        if not path:
+            return
+        document = Document(title)
+        document.title_block(f"對話紀錄：{title}", export_info(self.user, self.api.base_url) + f"・{len(messages)} 則")
+        day = ""
+        for message in messages:
+            stamp = when(message.get("createdAt", ""))
+            moment = local_day(message.get("createdAt", ""))
+            if moment != day:
+                day = moment
+                document.heading(day, 3)
+            author = message.get("authorName") or message.get("author", "")
+            text = "（訊息已刪除）" if message.get("deleted") else message.get("text", "")
+            document.paragraph(f"**{author}**　{stamp}{'（已編輯）' if message.get('editedAt') and not message.get('deleted') else ''}\n{text}")
+        save_docx(self, document, path)
 
 
 # ───────────────────────────── 公告 ─────────────────────────────
@@ -519,6 +568,26 @@ class AnnouncementsPage(Page):
                 if hasattr(window, "check_messages"):
                     window.check_messages()
             background(lambda: self.api.read_announcement(item["id"]), done, lambda _e: None)
+
+    def export_docx(self) -> None:
+        """All announcements shown, with their full text (and read counts for officers)."""
+        items = self.table.rows
+        if not items:
+            QMessageBox.information(self, "匯出 Word", "目前沒有公告。")
+            return
+        path = docx_path(self, "社團公告.docx")
+        if not path:
+            return
+        document = Document("社團公告")
+        document.title_block("北科無人機社 社團公告", export_info(self.user, self.api.base_url))
+        for item in items:
+            document.heading(("📌 " if item.get("pinned") else "") + item.get("title", ""), 2)
+            extra = f"・已讀 {item.get('readCount', 0)} 人" if self.officer else ""
+            audience = "幹部限定" if item.get("audience") == "officers" else "全體社員"
+            document.paragraph(f"{item.get('createdByName') or item.get('createdBy', '')}・{when(item.get('createdAt', ''))}・{audience}{extra}", size=18)
+            for line in (item.get("content") or "").splitlines():
+                document.paragraph(line)
+        save_docx(self, document, path)
 
     def add(self) -> None:
         dialog = AnnouncementDialog(self)

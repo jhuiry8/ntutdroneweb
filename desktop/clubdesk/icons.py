@@ -1,8 +1,9 @@
 """Coloured toolbar, menu and navigation icons, plus the program icon.
 
-The shapes come from icondata.py (generated from the Lucide set the website
-already uses). Each icon is drawn at 16, 20, 24 and 32 px so it stays sharp on
-high-DPI screens; results are cached.
+The shapes are hand-drawn Windows 98/2000-style vector icons in icondata.py
+(edit that file directly). Each icon is drawn at 16, 20, 24, 32 and 48 px so it
+stays sharp on high-DPI screens, with a greyed-out copy for disabled buttons;
+results are cached.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QSize, Qt
-from PySide6.QtGui import QIcon, QImage, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
 from .icondata import ICONS
@@ -28,7 +29,12 @@ def resource_path(name: str) -> Path:
 
 
 def svg_markup(name: str, colour: str | None = None, stroke_width: float = 2.0) -> str:
-    default_colour, body = ICONS[name]
+    entry = ICONS[name]
+    default_colour, body = entry if isinstance(entry, (tuple, list)) else ("#000000", entry)
+    if body.startswith("<svg"):
+        return body
+    if "<rect" in body or "<polygon" in body or "<circle" in body or "<ellipse" in body or "<text" in body or "fill=" in body:
+        return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">{body}</svg>'
     return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
             f'stroke="{colour or default_colour}" stroke-width="{stroke_width}" '
             f'stroke-linecap="round" stroke-linejoin="round">{body}</svg>')
@@ -45,17 +51,30 @@ def _render(markup: str, size: int) -> QPixmap:
     return QPixmap.fromImage(image)
 
 
+def _make_disabled(pixmap: QPixmap) -> QPixmap:
+    img = pixmap.toImage().convertToFormat(QImage.Format_ARGB32)
+    for y in range(img.height()):
+        for x in range(img.width()):
+            c = img.pixelColor(x, y)
+            if c.alpha() > 0:
+                gray = int(0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue())
+                img.setPixelColor(x, y, QColor(gray, gray, gray, int(c.alpha() * 0.45)))
+    return QPixmap.fromImage(img)
+
+
 @lru_cache(maxsize=None)
 def icon(name: str, light: bool = False) -> QIcon:
-    """Named icon (white when light=True, for dark caption bars); empty for unknown names."""
+    """Named icon (cached at standard sizes with normal and disabled states); empty for unknown names.
+
+    `light` is kept for callers that used white line icons on dark bars; the
+    full-colour icons read well on any background, so it no longer changes anything."""
     if name not in ICONS:
         return QIcon()
     result = QIcon()
     for size in SIZES:
-        # Thicker strokes at small sizes keep 16 px icons from looking washed out.
-        width = 2.4 if size <= 16 else 2.2 if size <= 20 else 2.0
-        result.addPixmap(_render(svg_markup(name, "#FFFFFF" if light else None, width), size), QIcon.Normal)
-        result.addPixmap(_render(svg_markup(name, "#A0A0A0", width), size), QIcon.Disabled)
+        pm = _render(svg_markup(name), size)
+        result.addPixmap(pm, QIcon.Normal)
+        result.addPixmap(_make_disabled(pm), QIcon.Disabled)
     return result
 
 

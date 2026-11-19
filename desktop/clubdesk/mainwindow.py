@@ -125,6 +125,7 @@ class MainWindow(QMainWindow):
         president = can_manage_users(self.user.get("role", ""))
         self.act_refresh = action("重新整理(&R)", self.refresh_current, "F5", "refresh", "重新從伺服器讀取資料")
         self.act_export = action("匯出 CSV(&E)...", self.export_current, "Ctrl+E", "export", "將目前表格匯出成 Excel 可開啟的 CSV 檔")
+        self.act_word = action("匯出 Word(&W)...", self.export_word, "Ctrl+Shift+E", "word", "將目前畫面的資料匯出成 Word（.docx）文件")
         self.act_messages = action("訊息中心(&M)", lambda: self.show_class(MessagesPage), "Ctrl+M", "messages", "社團聊天室與私人訊息")
         self.act_site = action("開啟社團網站(&W)", lambda: open_url(self, self.api.base_url + "/"), None, "site", "用瀏覽器開啟社團網站首頁")
         self.act_admin = action("開啟網站後台(&B)", lambda: open_url(self, self.api.base_url + "/admin"), None, "open-web", "用瀏覽器開啟網站後台")
@@ -144,7 +145,7 @@ class MainWindow(QMainWindow):
 
         menu = self.menuBar()
         file_menu = menu.addMenu("檔案(&F)")
-        file_menu.addActions([self.act_refresh, self.act_export])
+        file_menu.addActions([self.act_refresh, self.act_export, self.act_word])
         file_menu.addSeparator()
         file_menu.addActions([self.act_site, self.act_admin])
         file_menu.addSeparator()
@@ -171,7 +172,7 @@ class MainWindow(QMainWindow):
         toolbar = self.addToolBar("標準按鈕")
         toolbar.setMovable(False)
         toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        toolbar.addActions([self.act_refresh, self.act_export])
+        toolbar.addActions([self.act_refresh, self.act_export, self.act_word])
         toolbar.addSeparator()
         toolbar.addActions([self.act_messages, self.act_site])
         toolbar.addSeparator()
@@ -282,6 +283,11 @@ class MainWindow(QMainWindow):
         if page:
             page.export_csv()
 
+    def export_word(self) -> None:
+        page = self.current_page()
+        if page:
+            page.export_docx()
+
     def change_password(self) -> None:
         for index, page in enumerate(self.pages):
             if isinstance(page, AccountPage):
@@ -295,7 +301,7 @@ class MainWindow(QMainWindow):
                           "國立臺北科技大學無人機社 社務管理桌面程式。<br>"
                           f"社團網站：<a href='{self.api.base_url}'>{self.api.base_url}</a><br>"
                           "資料與社團網站後台共用，所有變更會即時寫入網站伺服器。<br><br>"
-                          "圖示取自 Lucide（ISC 授權）。")
+                          "圖示為仿 Windows 98／2000 風格的自繪向量圖示。")
 
     def relogin(self) -> None:
         """Sign out and show the login dialog again; quit if it is cancelled."""

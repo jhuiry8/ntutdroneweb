@@ -18,7 +18,9 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDateEdit, QD
                                QWidget)
 
 from ..api import ApiError
-from ..widgets import DataTable, Page, background, busy, button_row, confirm, icon_button, open_html, open_url, show_error
+from ..docx import Document
+from ..widgets import (DataTable, Page, background, busy, button_row, confirm, docx_path, export_info, icon_button,
+                       open_html, open_url, save_docx, show_error)
 from .admin import rich_text
 from .members import dialog_buttons
 
@@ -256,7 +258,7 @@ class MeetingWindow(QDialog):
         self.ai_notice = icon_button("AI 產生開會通知", "ai")
         self.ai_notice.clicked.connect(self.draft_notice)
         save = icon_button("儲存通知", "save")
-        save.clicked.connect(lambda: self.update({"notice": self.notice.toPlainText()}, "通知已儲存"))
+        save.clicked.connect(lambda: self.update_meeting({"notice": self.notice.toPlainText()}, "通知已儲存"))
         as_post = icon_button("發布成網站文章", "posts")
         as_post.clicked.connect(self.publish_post)
         as_announcement = icon_button("發布成社團公告", "notes", "所有社員登入時會收到通知；若社長啟用外部推播也會同步發送")
@@ -376,7 +378,9 @@ class MeetingWindow(QDialog):
         self.unfinalize.clicked.connect(lambda: self.minutes_action({"unfinalize": True}, "已取消定稿"))
         print_ = icon_button("列印／另存 PDF", "print")
         print_.clicked.connect(self.print_minutes)
-        layout.addLayout(button_row(self.ai_minutes, self.save_minutes, self.finalize, self.unfinalize, print_))
+        word = icon_button("匯出 Word...", "word", "會議資料、出席名單、各案表決結果與會議紀錄存成 Word 檔")
+        word.clicked.connect(self.export_word)
+        layout.addLayout(button_row(self.ai_minutes, self.save_minutes, self.finalize, self.unfinalize, print_, word))
         return widget
 
     # ------------------------------------------------------------- loading
@@ -506,13 +510,13 @@ class MeetingWindow(QDialog):
         self.apply(meeting, message)
         return True
 
-    def update(self, fields: dict, message: str) -> None:
+    def update_meeting(self, fields: dict, message: str) -> None:
         self.call(lambda: self.api.update_meeting(self.meeting_id, fields), message)
 
     def edit(self) -> None:
         dialog = MeetingDialog(self, self.page.options, self.meeting)
         if dialog.exec() == QDialog.Accepted:
-            self.update(dialog.values(), "會議已更新")
+            self.update_meeting(dialog.values(), "會議已更新")
 
     def change_status(self, status: str) -> None:
         data = {"status": status}
@@ -650,9 +654,60 @@ class MeetingWindow(QDialog):
             return
         open_html(self, page, f"minutes-{self.meeting_id}")
 
+    def export_word(self) -> None:
+        path = docx_path(self, f"{self.meeting.get('date', '')} {self.meeting.get('title', '會議')}.docx")
+        if path:
+            save_docx(self, meeting_document(self.meeting, self.page.options, self.page.user, self.api.base_url,
+                                             self.minutes.toPlainText()), path)
+
     def done(self, result: int) -> None:  # noqa: D401 - Qt override
         self.timer.stop()
         super().done(result)
+
+
+def meeting_document(m: dict, options: dict, user: dict, server: str, minutes: str = "") -> Document:
+    """The whole meeting on paper: details, notice, attendance, agenda with vote results, minutes and signatures."""
+    document = Document(m.get("title", ""))
+    document.title_block(m.get("title", ""), f"{m.get('typeLabel', '')}・{m.get('statusLabel', '')}・{export_info(user, server)}")
+    total = m.get("totalMembers")
+    document.table(["項目", "內容"], [
+        ["日期時間", f"{m.get('date', '')} {m.get('time', '')}".strip()],
+        ["地點", m.get("location") or "—"], ["線上會議", m.get("onlineUrl") or "—"],
+        ["召集人／主席／紀錄", "／".join(x or "—" for x in (m.get("convener"), m.get("chair"), m.get("recorder")))],
+        ["出席", f"簽到 {m.get('attendanceCount', 0)} 人，計入法定人數 {m.get('counted', 0)} 人" + (f"，應出席 {total} 人" if total is not None else "")],
+    ], widths=[2400, 7200])
+    if m.get("notice"):
+        document.heading("開會通知", 1)
+        document.markdown(m["notice"])
+    document.heading("議程與表決結果", 1)
+    kinds = options.get("kinds", {})
+    for index, item in enumerate(m.get("agenda", []), 1):
+        document.heading(f"第 {index} 案　{item.get('title', '')}（{kinds.get(item.get('kind'), '')}）", 2)
+        if item.get("description"):
+            document.paragraph(item["description"])
+        document.paragraph(f"表決門檻：{item.get('thresholdLabel', '')}", size=18)
+        vote, result = item.get("vote", {}), item.get("vote", {}).get("result")
+        if result:
+            document.paragraph(f"表決結果：同意 {vote.get('agree', 0)}、反對 {vote.get('oppose', 0)}、棄權 {vote.get('abstain', 0)}"
+                               f"（{'線上投票' if vote.get('source') == 'online' else '現場表決'}）——**{result.get('reason', '')}**")
+        if item.get("notes"):
+            document.paragraph(f"討論紀錄：{item['notes']}")
+        if item.get("resolution"):
+            document.paragraph(f"**決議：**{item['resolution']}")
+    attendance = m.get("attendance", [])
+    if attendance:
+        document.heading("出席名單", 1)
+        document.table(["#", "姓名", "表決權", "簽到時間"],
+                       [[str(i), a.get("name", ""), "有" if a.get("voting") else "無", (a.get("at") or "")[11:16]] for i, a in enumerate(attendance, 1)],
+                       widths=[800, 4000, 1800, 3000])
+    text = minutes or (m.get("minutes") or {}).get("content", "")
+    if text.strip():
+        document.page_break()
+        document.heading("會議紀錄" + ("（已定稿）" if (m.get("minutes") or {}).get("finalizedAt") else "（草稿）"), 1)
+        document.markdown(text)
+    document.paragraph("")
+    document.paragraph("主席簽名：＿＿＿＿＿＿＿＿　　　　紀錄簽名：＿＿＿＿＿＿＿＿", align="center")
+    return document
 
 
 class MeetingsPage(Page):
@@ -679,6 +734,7 @@ class MeetingsPage(Page):
         self.new = icon_button("召開新會議(&N)...", "add")
         self.new.clicked.connect(lambda: self.create(""))
         self.template = QComboBox()
+        self.template.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         self.template.addItem("用範本建立…", "")
         for name in TEMPLATES:
             self.template.addItem(name, name)
@@ -691,7 +747,10 @@ class MeetingsPage(Page):
 
     def refresh(self) -> None:
         data = self.api.meetings()
-        self.meetings, self.me, self.options, self.roster = data["meetings"], data["me"], data["options"], data["roster"]
+        self.meetings = data.get("meetings", [])
+        self.me = data.get("me", {})
+        self.options = data.get("options", {})
+        self.roster = data.get("roster", [])
         officer = bool(self.me.get("officer"))
         for widget in (self.new, self.template, self.remove_button):
             widget.setVisible(officer)
@@ -726,6 +785,22 @@ class MeetingsPage(Page):
             return
         MeetingWindow(self, meeting["id"]).exec()
         self.safe_refresh()
+
+    def export_docx(self) -> None:
+        """The selected meeting's full record; with nothing selected, the meeting list."""
+        meeting = self.table.current_row_data()
+        if not meeting:
+            super().export_docx()
+            return
+        try:
+            with busy():
+                meeting = self.api.get(f"/api/meetings/{meeting['id']}")
+        except ApiError as error:
+            show_error(self, error)
+            return
+        path = docx_path(self, f"{meeting.get('date', '')} {meeting.get('title', '會議')}.docx")
+        if path:
+            save_docx(self, meeting_document(meeting, self.options, self.user, self.api.base_url), path)
 
     def remove(self) -> None:
         meeting = self.table.current_row_data()

@@ -23,7 +23,9 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDia
 
 from ..api import ApiError, can_edit_cms
 from ..icons import icon
-from ..widgets import DataTable, Page, background, busy, button_row, confirm, icon_button, open_url, show_error
+from ..docx import Document
+from ..widgets import (DataTable, Page, background, busy, button_row, confirm, docx_path, export_info, icon_button,
+                       open_url, save_docx, show_error)
 
 LANGS = [("zh", "中文"), ("en", "English")]
 SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")
@@ -349,6 +351,8 @@ class ContentEditor(QDialog):
         import_md.clicked.connect(self.import_markdown)
         export_md = icon_button("匯出 .md...", "export-md", "把內容存成 Markdown 檔案")
         export_md.clicked.connect(self.export_markdown)
+        export_word = icon_button("匯出 Word...", "word", "把內容存成 Word（.docx）文件，方便列印或交給學校")
+        export_word.clicked.connect(self.export_word)
         save = icon_button("儲存(&S)", "save")
         save.setDefault(True)
         save.clicked.connect(lambda: self.save(False))
@@ -359,6 +363,7 @@ class ContentEditor(QDialog):
         buttons = QHBoxLayout()
         buttons.addWidget(import_md)
         buttons.addWidget(export_md)
+        buttons.addWidget(export_word)
         self.draft_label = QLabel()
         self.draft_label.setStyleSheet("color: #404040;")
         buttons.addWidget(self.draft_label, 1)
@@ -484,6 +489,15 @@ class ContentEditor(QDialog):
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(front_matter(data))
 
+    def export_word(self) -> None:
+        data = self.fields()
+        if not data["content"].strip():
+            QMessageBox.information(self, "匯出 Word", "請先輸入內容。")
+            return
+        path = docx_path(self, f"{data['slug'] or slugify(data['title'])}.docx")
+        if path:
+            save_docx(self, content_document(data, self.kind, self.api.base_url), path)
+
     # -------------------------------------------------------------- save
     def save(self, open_after: bool) -> None:
         data = self.fields()
@@ -519,6 +533,18 @@ class ContentEditor(QDialog):
         super().reject()
 
 
+def content_document(data: dict, kind: str, base_url: str) -> Document:
+    """A post or page as a Word document: title, details line, summary and the Markdown body."""
+    document = Document(data.get("title", ""))
+    url = f"{base_url}/{'blog' if kind == 'post' else 'page'}/{data.get('slug', '')}"
+    details = "・".join(x for x in ((data.get("date") or "")[:10], "English" if data.get("lang") == "en" else "中文", url) if x)
+    document.title_block(data.get("title", ""), details)
+    if data.get("summary"):
+        document.quote(data["summary"])
+    document.markdown(data.get("content", ""))
+    return document
+
+
 # ───────────────────────────── Lists ─────────────────────────────
 
 class ContentPage(Page):
@@ -541,6 +567,7 @@ class ContentPage(Page):
         self.lang.addItem("（全部語言）", "")
         for value, label in LANGS:
             self.lang.addItem(label, value)
+        self.lang.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         self.lang.currentIndexChanged.connect(self.apply_filter)
         row.addWidget(QLabel("關鍵字："))
         row.addWidget(self.query, 1)
@@ -655,6 +682,22 @@ class ContentPage(Page):
             QApplication.clipboard().setText(self.item_url(item))
             self.status("網址已複製到剪貼簿")
 
+    def export_docx(self) -> None:
+        """The selected post/page in full; with nothing selected, the list as a table."""
+        item = self.table.current_row_data()
+        if not item:
+            super().export_docx()
+            return
+        try:
+            with busy():
+                full = {**item, **self.get_item(item["slug"])}
+        except ApiError as error:
+            show_error(self, error)
+            return
+        path = docx_path(self, f"{item['slug']}.docx")
+        if path:
+            save_docx(self, content_document(full, self.kind, self.api.base_url), path)
+
     def backup(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, f"選擇備份{self.noun}的資料夾")
         if not folder:
@@ -668,7 +711,8 @@ class ContentPage(Page):
                         handle.write(front_matter({**item, **full}))
                     count += 1
         except (ApiError, OSError) as error:
-            show_error(self, error if isinstance(error, ApiError) else ApiError(str(error)))
+            QMessageBox.warning(self, "備份未完成", f"備份中斷：{error}\n\n只備份了 {count} / {len(self.items)} 篇{self.noun}到\n{folder}\n請確認連線後重新備份。")
+            return
         QMessageBox.information(self, "備份完成", f"已備份 {count} 篇{self.noun}到\n{folder}")
 
 
@@ -779,7 +823,10 @@ class HomepagePage(Page):
         tabs = QTabWidget()
         for section, fields in HOMEPAGE_SECTIONS:
             page = QWidget()
-            form = QFormLayout(page)
+            column = QVBoxLayout(page)
+            form = QFormLayout()
+            column.addLayout(form)
+            column.addStretch(1)  # keep the fields together at the top
             for key, label, default, multi in fields:
                 if multi:
                     edit = QPlainTextEdit()
@@ -844,6 +891,18 @@ class HomepagePage(Page):
         self.saved = values
         self.status("首頁設定已儲存，網站立即生效")
         QMessageBox.information(self, "首頁設定", "已儲存，網站首頁立即更新。")
+
+    def export_docx(self) -> None:
+        path = docx_path(self, "首頁設定.docx")
+        if not path:
+            return
+        values = self.values()
+        document = Document("首頁設定")
+        document.title_block("社團網站 首頁設定", export_info(self.user, self.api.base_url))
+        for section, fields in HOMEPAGE_SECTIONS:
+            document.heading(section, 2)
+            document.table(["欄位", "內容"], [[label, values.get(key) or f"（預設）{default}".rstrip()] for key, label, default, _ in fields])
+        save_docx(self, document, path)
 
     def export_settings(self) -> None:
         path, _ = QFileDialog.getSaveFileName(self, "匯出首頁設定", f"首頁設定-{datetime.now():%Y%m%d}.json", "JSON (*.json)")

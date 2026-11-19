@@ -6,4 +6,3 @@ deno.lock
 desktop/screenshots/
 __pycache__/
 *.pyc
-
