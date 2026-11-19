@@ -1,0 +1,157 @@
+name: Android App (APK build & auto release)
+
+# Fully automatic:
+# - Pull requests: build a debug APK to check the change compiles.
+# - Every push to main that touches android/: build, sign with the club key,
+#   bump the version (1.0.<run number>), tag it and publish a GitHub Release.
+# The only one-time manual step is adding the ANDROID_SIGNING_PASSWORD secret
+# (see android/README.md). Without it main still builds a debug APK artifact,
+# but nothing is published, because an APK signed with a throwaway key cannot
+# update an installed copy.
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'android/**', '.github/workflows/android.yml' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'android/**', '.github/workflows/android.yml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_VERSION_CODE: ${{ github.run_number }}
+      ANDROID_VERSION_NAME: 1.0.${{ github.run_number }}
+    outputs:
+      signed: ${{ steps.release.outputs.signed }}
+      version: ${{ steps.version.outputs.name }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Compute version
+      id: version
+      run: echo "name=$ANDROID_VERSION_NAME" >> "$GITHUB_OUTPUT"
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v3
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x android/gradlew
+
+    - name: Build Debug APK
+      run: |
+        cd android
+        ./gradlew assembleDebug --stacktrace
+
+    # Signing needs only ONE secret: ANDROID_SIGNING_PASSWORD (set it in the GitHub web UI).
+    # The first run on main generates the keystore here, encrypts it with that password
+    # and commits android/release-keystore.p12.enc, so nothing has to be installed locally
+    # and the (encrypted) key is backed up in the repository. Later runs decrypt it.
+    - name: Build signed release APK
+      id: release
+      if: github.event_name != 'pull_request'
+      env:
+        SIGNING_PASSWORD: ${{ secrets.ANDROID_SIGNING_PASSWORD }}
+        ENCRYPTED_KEYSTORE: android/release-keystore.p12.enc
+      run: |
+        if [ -z "$SIGNING_PASSWORD" ]; then
+          echo "::warning::ANDROID_SIGNING_PASSWORD secret is not set; skipping the release. See android/README.md."
+          echo "signed=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if [ ${#SIGNING_PASSWORD} -lt 16 ]; then
+          echo "::error::ANDROID_SIGNING_PASSWORD must be at least 16 characters (the encrypted key is public)."
+          exit 1
+        fi
+        KEYSTORE="$RUNNER_TEMP/release.p12"
+        if [ ! -f "$ENCRYPTED_KEYSTORE" ]; then
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::No signing key yet; it is created automatically on the first run on main."
+            exit 1
+          fi
+          echo "Generating the club signing key (first run only)..."
+          keytool -genkeypair -noprompt -storetype PKCS12 -keystore "$KEYSTORE" -alias ntutdrone \
+            -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=NTUT Drone Club, O=NTUT Drone Club, C=TW" \
+            -storepass:env SIGNING_PASSWORD -keypass:env SIGNING_PASSWORD
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 -in "$KEYSTORE" -out "$ENCRYPTED_KEYSTORE" -pass env:SIGNING_PASSWORD
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$ENCRYPTED_KEYSTORE"
+          git commit -m "chore(android): add encrypted release signing key [skip ci]"
+          git push origin HEAD:main
+        else
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in "$ENCRYPTED_KEYSTORE" -out "$KEYSTORE" -pass env:SIGNING_PASSWORD \
+            || { echo "::error::Wrong ANDROID_SIGNING_PASSWORD: it must be the password used when the key was created."; exit 1; }
+        fi
+        export ANDROID_KEYSTORE_PATH="$KEYSTORE"
+        export ANDROID_KEYSTORE_PASSWORD="$SIGNING_PASSWORD"
+        export ANDROID_KEY_PASSWORD="$SIGNING_PASSWORD"
+        export ANDROID_KEY_ALIAS=ntutdrone
+        cd android
+        ./gradlew assembleRelease --stacktrace
+        rm -f "$KEYSTORE"
+        echo "signed=true" >> "$GITHUB_OUTPUT"
+
+    - name: Prepare APK outputs
+      run: |
+        mkdir -p dist/apk
+        cp android/app/build/outputs/apk/debug/app-debug.apk dist/apk/NTUT-Drone-Club-Debug.apk
+        if [ -f android/app/build/outputs/apk/release/app-release.apk ]; then
+          cp android/app/build/outputs/apk/release/app-release.apk dist/apk/NTUT-Drone-Club.apk
+        fi
+        ls -la dist/apk/
+
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: NTUT-Drone-Club-APK
+        path: dist/apk/*.apk
+        retention-days: 30
+
+  release:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.build.outputs.signed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: NTUT-Drone-Club-APK
+        path: dist/apk
+
+    - name: Publish GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: android-v${{ needs.build.outputs.version }}
+        target_commitish: ${{ github.sha }}
+        name: 北科無人機社 Android App v${{ needs.build.outputs.version }}
+        make_latest: true
+        files: dist/apk/NTUT-Drone-Club.apk
+        body: |
+          ### 📱 北科無人機社 Android APK（v${{ needs.build.outputs.version }}）
+
+          此版本由 GitHub Actions 自動建置與簽署，可直接覆蓋安裝舊版。
+
+          - 📢 社內公告（需登入）
+          - 🗳️ 會議列表與簽到碼簽到（需登入）
+          - 🛸 設備清單（幹部）與線上借用表單
+          - 🔄 下拉重新整理 (Pull-to-Refresh)
+
+          **安裝說明**：
+          1. 下載下方 `NTUT-Drone-Club.apk`。
+          2. 在 Android 手機點擊安裝（若出現未驗證來源提示，請選擇「允許來自此來源的安裝」）。
+          3. 開啟即可登入使用！

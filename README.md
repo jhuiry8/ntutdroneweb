@@ -76,7 +76,17 @@
 3. `admin` 到「系統設定」更換密碼，再到「帳號與權限」為每位社長、財務、幹部或社員建立個別帳號並提供初始密碼。每人登入後應更換自己的密碼。不要再共用 `admin` 帳號。
 4. 若舊 KV 尚未建立 `admin_password_hash`（例如舊站從未有人登入），需先設定 `ADMIN_INITIAL_PASSWORD`，用 `admin` 與該密碼首次登入，完成後移除該變數。
 
-網站前台與後台提供手機版版面與導覽，包含 iPhone Safari 的安全邊界與動態視窗高度處理。Apple 裝置可直接用 Safari 開啟網址；此網站目前不是可離線使用的原生 App。
+### 1-1. 手機版行動支援（PWA 純網頁加入主畫面 & 原生 Android APK）
+* **🍎 蘋果 iOS (iPhone / iPad)**：支援 **PWA 純網頁加入主畫面**。使用 Safari 開啟社團網站後，點擊下方「分享」圖示 ➔ 「加入主畫面」，即可像原生 App 一樣以獨立全螢幕開啟，自動隱藏網址列，享有 iPhone Safari 安全邊界適配（動態島／瀏海／底部 Home Bar）、Service Worker 離線快取與智慧安裝導引。
+* **🤖 安卓 Android**：
+  * **純網頁 PWA 一鍵安裝**：以 Chrome 開啟網站時點擊「安裝應用程式」或「新增至主畫面」即可安裝至桌面。
+  * **100% 原生 Material Design APK 安裝包**：專案目錄 `android/` 提供**全原生 Android 專案**（**徹底拋棄 WebView 瀏覽器包殼做法**），採用 Material Components 原生 UI 架構：
+    * 底部原生導覽列 (`BottomNavigationView`) 整合首頁動態、最新公告、設備借用、會議簽到與個人社員中心。
+    * 支援原生 `RecyclerView` 卡片清單、`SwipeRefreshLayout` 手勢下拉更新；登入（含圖形驗證碼）後可看社內公告、會議並以簽到碼簽到，幹部可查看設備清單，借用一律開啟官網線上借用表單。
+    * 合併到 `main` 後自動編譯、簽署、遞增版本並發佈 GitHub Release；只需依 `android/README.md` 在 GitHub 網頁設定一次簽署密碼 Secret（不用安裝任何軟體）。
+    * 原生非同步網路層直接對接後端 RESTful API (`/api/*`)，自動管理 Session Cookie 與本機安全儲存。
+    * 透過 GitHub Actions（`.github/workflows/android.yml`）每次推送皆會自動編譯 APK，社員與幹部可直接在 GitHub Releases / Actions 下載安裝。
+
 
 ### 2. 文章管理 (Blog Posts)
 * 文章與頁面保留 Markdown 格式、表格、圖片及基本文字格式；腳本、事件屬性、危險連結與 iframe 等主動內容會在顯示時移除，既有內容亦適用。後台預覽使用相同的伺服器過濾規則，需要連線；預覽無法載入時會顯示純文字。

@@ -3,6 +3,22 @@ import { locales } from './locales.js';
 import { canViewCms, canManageFinance, canManageMembers, canManageEquipment } from './auth.js';
 import { escapeHtml, safeUrl, sanitizeContent, sanitizeInline } from './html.js';
 
+// Helper: Common PWA Head Tags
+const PWA_HEAD_TAGS = `
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="北科無人機">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="/assets/icons/icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="/assets/icons/icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192x192.png">
+`;
+
 // Helper: Common Header
 function getHeader(title, lang = 'zh') {
     lang = lang === 'en' ? 'en' : 'zh';
@@ -12,7 +28,7 @@ function getHeader(title, lang = 'zh') {
     <html lang="${lang}">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        ${PWA_HEAD_TAGS}
         <title>${escapeHtml(title)} | 北科無人機社 NTUT Drone Club - 台北科技大學無人機平台</title>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -47,15 +63,52 @@ function getHeader(title, lang = 'zh') {
                     <a href="mailto:ntut.droneclub@gmail.com" class="social-icon-btn email" title="官方信箱"><i data-lucide="mail"></i><span class="fallback-text">✉️</span></a>
                     <a href="https://www.instagram.com/ntut_drone/" target="_blank" class="social-icon-btn ig" title="Instagram"><i data-lucide="instagram"></i><span class="fallback-text">IG</span></a>
                     <a href="https://lin.ee/s5YJgGI" target="_blank" class="social-icon-btn line" title="LINE 官方社群"><i data-lucide="message-square"></i><span class="fallback-text">LINE</span></a>
+                    <button class="mobile-menu-toggle" type="button" aria-label="開啟選單" aria-controls="mobile-drawer" aria-expanded="false">
+                        <i data-lucide="menu"></i>
+                    </button>
                 </div>
             </div>
         </header>
+
+        <div class="mobile-drawer" id="mobile-drawer">
+            <div class="drawer-header">
+                <span class="drawer-logo"><img src="/assets/images/logo_ntut.jpg" alt="NTUT Drone Logo" style="height: 28px; width: 28px; object-fit: contain; border-radius: 4px; vertical-align: middle; margin-right: 6px;"> NTUT DRONE</span>
+                <button class="drawer-close" type="button" aria-label="關閉選單"><i data-lucide="x"></i></button>
+            </div>
+            <nav class="drawer-links">
+                <a href="/?lang=${lang}#about" class="drawer-link">${t.navAbout}</a>
+                <a href="/?lang=${lang}#features" class="drawer-link">${t.navFeatures}</a>
+                <a href="/blog?lang=${lang}" class="drawer-link">${t.navBlog}</a>
+                <a href="/?lang=${lang}#faq" class="drawer-link">${t.navFaq}</a>
+                <a href="/admin" class="drawer-link">🔐 社務後台 / 會員專區</a>
+                <a href="/forms/equipment-loan" class="drawer-link">📋 設備借用申請</a>
+                <hr class="drawer-divider">
+                <a href="mailto:ntut.droneclub@gmail.com" class="drawer-cta-btn" style="background: #0284c7;"><i data-lucide="mail"></i> ntut.droneclub@gmail.com</a>
+                <a href="https://lin.ee/s5YJgGI" target="_blank" class="drawer-cta-btn"><i data-lucide="message-square"></i> LINE 聯絡加入</a>
+            </nav>
+        </div>
     `;
 }
 
 
+// Helper: Mobile bottom navigation (shown at <= 768px). `active` is home | blog | loan | admin.
+function mobileBottomNav(lang, active = '') {
+    const items = [
+        ['home', `/?lang=${lang}`, 'home', '首頁'],
+        ['blog', `/blog?lang=${lang}`, 'newspaper', '公告'],
+        ['loan', '/forms/equipment-loan', 'clipboard-list', '借用'],
+        ['admin', '/admin', 'user', '後台']
+    ];
+    return `<nav class="mobile-bottom-nav" aria-label="手機快捷導覽列">
+            ${items.map(([key, href, icon, label]) => `<a href="${href}" class="mobile-nav-item${key === active ? ' active' : ''}"${key === active ? ' aria-current="page"' : ''}>
+                <i data-lucide="${icon}"></i>
+                <span>${label}</span>
+            </a>`).join('\n            ')}
+        </nav>`;
+}
+
 // Helper: Common Footer
-function getFooter(lang = 'zh') {
+function getFooter(lang = 'zh', active = '') {
     lang = lang === 'en' ? 'en' : 'zh';
     const t = locales[lang];
     return `
@@ -77,6 +130,7 @@ function getFooter(lang = 'zh') {
                         <a href="/?lang=${lang}">回到首頁</a>
                         <a href="/blog?lang=${lang}">${t.navBlog}</a>
                         <a href="/forms/equipment-loan">設備借用申請</a>
+                        <a href="/admin">社務管理後台</a>
                         <a href="https://lin.ee/s5YJgGI" target="_blank">LINE 社群</a>
                     </div>
                 </div>
@@ -85,6 +139,9 @@ function getFooter(lang = 'zh') {
                 <p>&copy; 2026 北科無人機社 NTUT Drone Club. All rights reserved.</p>
             </div>
         </footer>
+
+        ${mobileBottomNav(lang, active)}
+
         <script src="/main.js"></script>
     </body>
     </html>
@@ -182,7 +239,7 @@ export function renderPublicLoanForm(turnstileSiteKey = '', captcha = null) {
         </section>
     </main>
     <script src="/public-loan.js" defer></script>
-    ${getFooter('zh')}`;
+    ${getFooter('zh', 'loan')}`;
 }
 
 // 1. Render Landing Page with Dynamic Blog Posts
@@ -284,7 +341,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
     <html lang="${lang}">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        ${PWA_HEAD_TAGS}
         <meta name="description" content="歡迎加入北科無人機社！我們提供最專業的多軸空拍機創作、FPV 穿越機飛行特技、機體組裝調參教學，並輔導民航局 CAA 無人機操作證照。無論是零基礎小白還是熱血極客，這裡都有你的藍天！">
         <meta name="keywords" content="北科無人機社, 北科大無人機社, NTUT Drone, 北科大無人機社團, 北科 FPV 穿越機, 北科 空拍機 課程, 北科無人機組裝教學, 台北無人機模擬器練習, 北科校園飛行空域申請, 民航局無人機考照題庫練習, Liftoff 模擬飛行新手訓練, 台北合法無人機飛場推薦, 台北科技大學">
         <meta property="og:title" content="北科無人機社 | NTUT Drone Club - 台北科技大學無人機、FPV 與空拍交流平台">
@@ -790,9 +847,11 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
             </div>
             <div class="footer-bottom">
                 <p>&copy; 2026 國立臺北科技大學無人機社 NTUT Drone Club. All rights reserved.</p>
-                <p class="developer-tag">Designed with <i data-lucide="heart" class="heart-icon"></i> for NTUT</p>
+                <p class="developer-tag">PWA & Mobile Ready · Designed with <i data-lucide="heart" class="heart-icon"></i> for NTUT</p>
             </div>
         </footer>
+
+        ${mobileBottomNav(lang, 'home')}
 
         <script src="/main.js"></script>
     </body>
@@ -844,7 +903,7 @@ export function renderBlogList(posts = [], lang = 'zh') {
                 </div>
             </div>
         </main>
-        ${getFooter(lang)}
+        ${getFooter(lang, 'blog')}
     `;
 }
 
@@ -932,7 +991,7 @@ export function renderBlogPost(post, parsedContentHtml, lang = 'zh') {
             .markdown-body a { color: var(--color-cyan); text-decoration: underline; }
             .markdown-body a:hover { color: var(--color-purple); }
         </style>
-        ${getFooter(lang)}
+        ${getFooter(lang, 'blog')}
     `;
 }
 
@@ -974,7 +1033,7 @@ export function renderLogin(errorMessage = '', turnstileSiteKey = '', captcha = 
     <html lang="zh-TW">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        ${PWA_HEAD_TAGS}
         <title>後台登入 | 北科無人機社</title>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
         ${turnstileSiteKey ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}
@@ -1125,7 +1184,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
     <html lang="zh-TW">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        ${PWA_HEAD_TAGS}
         <title>後台管理面板 | 北科無人機社</title>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
         <script src="/vendor/lucide-1.65.0.min.js"></script>

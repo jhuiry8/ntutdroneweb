@@ -305,4 +305,106 @@ document.addEventListener('DOMContentLoaded', () => {
         resizeCanvas();
         animateParticles();
     }
+
+    // ─── PWA & Mobile Installation Handlers ───
+    let deferredPrompt = null;
+    const pwaBtn = document.getElementById('btn-pwa-install');
+    const modalPwaBtn = document.getElementById('modal-pwa-btn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        if (pwaBtn) pwaBtn.style.display = 'inline-flex';
+        if (modalPwaBtn) modalPwaBtn.style.display = 'inline-flex';
+        checkAndShowPwaBanner();
+    });
+
+    window.addEventListener('appinstalled', () => {
+        deferredPrompt = null;
+        dismissPwaBanner();
+        console.log('[PWA] NTUT Drone App was installed');
+    });
+
+    window.triggerPwaInstall = async function() {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            try {
+                const choice = await deferredPrompt.userChoice;
+                if (choice && choice.outcome === 'accepted') {
+                    console.log('[PWA] User accepted install');
+                }
+            } catch (_) {}
+            deferredPrompt = null;
+            closePwaModal();
+            dismissPwaBanner();
+        } else {
+            showPwaInstallModal();
+        }
+    };
+
+    function isIos() {
+        return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+    }
+
+    function isStandalone() {
+        return ('standalone' in window.navigator && window.navigator.standalone) ||
+               window.matchMedia('(display-mode: standalone)').matches;
+    }
+
+    window.showPwaInstallModal = function(preferred) {
+        const modal = document.getElementById('pwa-install-modal');
+        if (!modal) return;
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        if (window.lucide && lucide.createIcons) lucide.createIcons();
+    };
+
+    window.closePwaModal = function() {
+        const modal = document.getElementById('pwa-install-modal');
+        if (modal) modal.style.display = 'none';
+        document.body.style.overflow = '';
+    };
+
+    window.dismissPwaBanner = function() {
+        const banner = document.getElementById('pwa-smart-banner');
+        if (banner) banner.style.display = 'none';
+        try { sessionStorage.setItem('ntut-pwa-banner-dismissed', '1'); } catch (_) {}
+    };
+
+    function checkAndShowPwaBanner() {
+        if (isStandalone()) return;
+        try {
+            if (sessionStorage.getItem('ntut-pwa-banner-dismissed')) return;
+        } catch (_) {}
+        const isMobile = window.innerWidth <= 768 || isIos();
+        if (isMobile) {
+            const banner = document.getElementById('pwa-smart-banner');
+            if (banner) {
+                banner.style.display = 'flex';
+                if (window.lucide && lucide.createIcons) lucide.createIcons();
+            }
+        }
+    }
+
+    // Auto check banner after a short delay
+    setTimeout(checkAndShowPwaBanner, 1500);
+
+    // Close modal on escape or background click
+    const pwaModal = document.getElementById('pwa-install-modal');
+    if (pwaModal) {
+        pwaModal.addEventListener('click', (e) => {
+            if (e.target === pwaModal) closePwaModal();
+        });
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closePwaModal();
+    });
 });
+
+// Register Service Worker outside of DOMContentLoaded for fast caching
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            .catch((err) => console.warn('[PWA] ServiceWorker registration failed:', err));
+    });
+}

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="社員 / 幹部登入"
+        android:textColor="@color/text_light"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <EditText
+        android:id="@+id/et_login_username"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:hint="使用者帳號"
+        android:textColor="@color/text_light"
+        android:textColorHint="@color/text_secondary" />
+
+    <EditText
+        android:id="@+id/et_login_password"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="密碼"
+        android:inputType="textPassword"
+        android:textColor="@color/text_light"
+        android:textColorHint="@color/text_secondary" />
+
+    <ImageView
+        android:id="@+id/iv_login_captcha"
+        android:layout_width="match_parent"
+        android:layout_height="72dp"
+        android:layout_marginTop="12dp"
+        android:adjustViewBounds="true"
+        android:background="#f4f1e8"
+        android:contentDescription="驗證碼圖片（點擊更換）"
+        android:scaleType="fitCenter" />
+
+    <TextView
+        android:id="@+id/tv_login_captcha_hint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="驗證碼載入中…（點擊圖片可更換）"
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp" />
+
+    <EditText
+        android:id="@+id/et_login_captcha"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="驗證碼"
+        android:inputType="textCapCharacters|textNoSuggestions"
+        android:textColor="@color/text_light"
+        android:textColorHint="@color/text_secondary" />
+
+</LinearLayout>
