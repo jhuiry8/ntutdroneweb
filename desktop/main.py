@@ -86,6 +86,7 @@ def main() -> int:
         if not client:
             return 0
         skipped_login_dialog = False
+        autostarted = False  # signed in by hand from the tray: show the window
     elif not client:
         login = run_login(lambda: LoginDialog(notice=notice))
         if login is None:

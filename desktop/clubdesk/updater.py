@@ -170,7 +170,8 @@ def github_latest_release() -> dict:
         if sha.startswith("sha256:"):
             sha = sha[len("sha256:"):]
         if not re.fullmatch(r"[0-9a-f]{64}", sha):
-            found = re.search(r"SHA-?256[^0-9a-fA-F]*([0-9a-fA-F]{64})", release.get("body") or "")
+            found = re.search(r"ClubDesk-Setup-[^\s:：]*\s*[）)]?\s*[:：]\s*([0-9a-fA-F]{64})", release.get("body") or "") \
+                or re.search(r"SHA-?256\s*[:：]\s*([0-9a-fA-F]{64})", release.get("body") or "")
             sha = found.group(1).lower() if found else ""
         return {"version": tag[len(RELEASE_TAG_PREFIX):], "url": asset.get("browser_download_url", ""),
                 "sha256": sha, "notes": (release.get("body") or "").split("###")[0].split("SHA")[0].strip()[:2000]}

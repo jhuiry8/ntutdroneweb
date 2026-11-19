@@ -114,7 +114,8 @@ export async function handleAuthRequest(request, env) {
             await siteStore(env, '/limit/clear', { key: attemptsKey });
             await giveBackAttempt(env, [ipAttemptsKey]);
             const token = crypto.randomUUID();
-            // Only the desktop program asks for the long session; web form logins always get one day.
+            // The desktop program asks for the long session; web form logins get one day. The User-Agent is
+            // client-supplied, so this is a best-effort limit, not a security boundary: it is no stronger than the password.
             const wantsRemember = ['1', 'true', 'on'].includes(String(formData.get('remember') || ''))
                 && (request.headers.get('User-Agent') || '').startsWith(DESKTOP_USER_AGENT_PREFIX);
             const sessionSeconds = wantsRemember ? REMEMBER_SESSION_SECONDS : SESSION_SECONDS;

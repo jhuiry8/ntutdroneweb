@@ -15,8 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Require develop (or hotfix/*) as the source
+        env:
+          HEAD_REF: ${{ github.head_ref }}
         run: |
-          head="${{ github.head_ref }}"
+          head="$HEAD_REF"
           if [ "$head" != "develop" ] && [[ "$head" != hotfix/* ]]; then
             echo "::error::PRs into main (a release) must come from develop or hotfix/*, not '$head'. Open the PR against develop instead."
             exit 1
