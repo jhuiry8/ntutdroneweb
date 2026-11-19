@@ -23,19 +23,29 @@ def _dpapi(data: bytes, decrypt: bool) -> bytes:
     from ctypes import wintypes
 
     class Blob(ctypes.Structure):
-        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.c_void_p)]
 
-    source = Blob(len(data), ctypes.cast(ctypes.create_string_buffer(data, len(data)), ctypes.POINTER(ctypes.c_char)))
+    crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
+    function = crypt32.CryptUnprotectData if decrypt else crypt32.CryptProtectData
+    function.restype = wintypes.BOOL
+    if decrypt:  # data, description out, entropy, reserved, prompt, flags, out
+        function.argtypes = [ctypes.POINTER(Blob), ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+                             ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(Blob)]
+    else:  # data, description, entropy, reserved, prompt, flags, out
+        function.argtypes = [ctypes.POINTER(Blob), wintypes.LPCWSTR, ctypes.c_void_p, ctypes.c_void_p,
+                             ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(Blob)]
+    buffer = ctypes.create_string_buffer(data, len(data))
+    source = Blob(len(data), ctypes.cast(buffer, ctypes.c_void_p))
     target = Blob()
-    function = ctypes.windll.crypt32.CryptUnprotectData if decrypt else ctypes.windll.crypt32.CryptProtectData
-    args = (ctypes.byref(source), None, None, None, None, 0, ctypes.byref(target)) if decrypt else \
-        (ctypes.byref(source), "ClubDesk", None, None, None, 0, ctypes.byref(target))
-    if not function(*args):
-        raise OSError("DPAPI failed")
+    if not function(ctypes.byref(source), None if decrypt else "ClubDesk", None, None, None, 0, ctypes.byref(target)):
+        raise OSError(ctypes.get_last_error(), "DPAPI failed")
     try:
         return ctypes.string_at(target.pbData, target.cbData)
     finally:
-        ctypes.windll.kernel32.LocalFree(target.pbData)
+        kernel32.LocalFree(target.pbData)
 
 
 def protect(text: str) -> str:

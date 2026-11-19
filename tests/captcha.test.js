@@ -112,15 +112,18 @@ test('captcha refresh endpoint issues a new challenge', async () => {
     assert.equal(turnstile.status, 404);
 });
 
-test('remember=1 keeps the session for 30 days, otherwise one day', async () => {
-    const login = async remember => {
+test('remember=1 keeps the session for 30 days for the desktop program only, otherwise one day', async () => {
+    const login = async (remember, userAgent = 'NTUTDroneClubDesk/1.2') => {
         const kv = createMockKV();
         const ttls = [];
         const put = kv.put;
         kv.put = async (key, val, options) => { if (key.startsWith('session:')) ttls.push(options.expirationTtl); return put(key, val); };
         const env = withSiteStore({ DRONE_DB: kv, ADMIN_INITIAL_PASSWORD: 'adminpass' });
         const id = captchaIdFrom(await loginPage(env));
-        const res = await postLogin(env, { username: 'admin', password: 'adminpass', captcha_id: id, captcha: env.SITE_STORE.captchaCode(id), ...(remember ? { remember: '1' } : {}) });
+        const res = await worker.fetch(new Request('https://example.com/api/login', {
+            method: 'POST', headers: { 'CF-Connecting-IP': '203.0.113.7', 'User-Agent': userAgent },
+            body: new URLSearchParams({ username: 'admin', password: 'adminpass', captcha_id: id, captcha: env.SITE_STORE.captchaCode(id), ...(remember ? { remember: '1' } : {}) })
+        }), env);
         assert.equal(res.status, 302);
         return { ttl: ttls[0], cookie: res.headers.get('Set-Cookie') };
     };
@@ -130,4 +133,5 @@ test('remember=1 keeps the session for 30 days, otherwise one day', async () => 
     const remembered = await login(true);
     assert.equal(remembered.ttl, 30 * 86400);
     assert.match(remembered.cookie, /Max-Age=2592000;/);
+    assert.equal((await login(true, 'Mozilla/5.0')).ttl, 86400, 'a browser form cannot ask for 30 days');
 });

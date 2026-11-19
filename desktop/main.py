@@ -1,44 +1,50 @@
 """Start the 北科無人機社 社務管理系統 desktop program."""
 
 import sys
-import time
 
 from PySide6.QtCore import QLibraryInfo, QLocale, QTimer, QTranslator
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import QApplication, QDialog, QMenu, QSystemTrayIcon
 
-from clubdesk import __version__, saved_session
-from clubdesk.api import ApiClient, ApiError
+from clubdesk import __version__
+from clubdesk.autologin import auto_login
 from clubdesk.icons import app_icon
 from clubdesk.login import LoginDialog
 from clubdesk.mainwindow import MainWindow
+from clubdesk.single_instance import InstanceServer, ask_running_instance
 from clubdesk.style import apply_classic_style
 from clubdesk.updater import check_and_offer
 
 
-def auto_login(autostarted: bool):
-    """Sign in with the saved 30-day session. Returns (client, user, notice).
+def wait_in_tray(app, instances, notice: str):
+    """Tray icon with 登入 / 結束 until the person signs in. Returns (client, user) or (None, None)."""
+    result = {}
+    tray = QSystemTrayIcon(app_icon(), app)
+    tray.setToolTip("北科無人機社 社務管理系統 - 尚未登入")
+    menu = QMenu()
+    sign_in = QAction("登入(&L)...", menu)
+    quit_action = QAction("結束(&X)", menu)
+    menu.addActions([sign_in, quit_action])
+    tray.setContextMenu(menu)
 
-    Right after Windows starts the network may not be ready yet, so an automatic
-    start retries for about a minute. An expired or rejected session is dropped
-    and the person is asked to sign in again with a note why.
-    """
-    saved = saved_session.load()
-    if not saved:
-        return None, None, ""
-    client = ApiClient(saved["server"])
-    client.token = saved["token"]
-    for attempt in range(20 if autostarted else 1):
-        try:
-            return client, client.me(), ""
-        except ApiError as error:
-            if error.status in (401, 403):
-                saved_session.clear()
-                return None, None, "30 天登入期限已到或登入已失效，請重新登入。"
-            if "無法連線" not in str(error) and error.status < 500:
-                break
-        if attempt < 19 and autostarted:
-            time.sleep(3)
-    return None, None, "目前無法連線到伺服器，無法自動登入。"
+    def ask_login() -> None:
+        sign_in.setEnabled(False)
+        dialog = LoginDialog(notice=notice)
+        if dialog.exec() == QDialog.Accepted:
+            result["login"] = (dialog.client, dialog.user)
+            app.quit()
+        sign_in.setEnabled(True)
+
+    sign_in.triggered.connect(ask_login)
+    quit_action.triggered.connect(app.quit)
+    tray.activated.connect(lambda reason: ask_login() if reason in (
+        QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick) else None)
+    instances.set_handler(ask_login)
+    tray.show()
+    tray.showMessage("請登入", notice or "請點此圖示登入。", app_icon(), 8000)
+    app.exec()
+    tray.hide()
+    return result.get("login", (None, None))
 
 
 def main() -> int:
@@ -61,15 +67,25 @@ def main() -> int:
     if translator.load("qtbase_zh_TW", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
         app.installTranslator(translator)
 
+    if ask_running_instance():
+        return 0  # already running (maybe hidden in the tray); it was asked to show itself
+    instances = InstanceServer(parent=app)
     autostarted = "--autostart" in sys.argv
     client, user, notice = auto_login(autostarted)
     skipped_login_dialog = bool(client)
-    if not client:
+    if not client and autostarted and QSystemTrayIcon.isSystemTrayAvailable():
+        # Started with Windows but cannot sign in: wait in the tray instead of popping up a dialog.
+        client, user = wait_in_tray(app, instances, notice)
+        if not client:
+            return 0
+        skipped_login_dialog = False
+    elif not client:
         login = LoginDialog(notice=notice)
         if login.exec() != QDialog.Accepted:
             return 0
         client, user, autostarted = login.client, login.user, False
     window = MainWindow(client, user, LoginDialog)
+    instances.set_handler(window.restore_window)
     if autostarted and window.tray:
         window.hide_to_tray_silently()  # started with Windows: stay in the tray
     else:

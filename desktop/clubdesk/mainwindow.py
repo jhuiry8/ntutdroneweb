@@ -120,7 +120,8 @@ class MainWindow(QMainWindow):
         self.poll.timeout.connect(self.check_messages)
         self.poll.start()
         QTimer.singleShot(500, self.check_messages)
-        QTimer.singleShot(300, lambda: WelcomeDialog.maybe_show(self))
+        # Not while hidden in the tray (start with Windows): wait until the window is opened.
+        QTimer.singleShot(300, lambda: WelcomeDialog.maybe_show(self) if self.isVisible() else None)
 
     # ------------------------------------------------------------- chrome
     def build_actions(self) -> None:
