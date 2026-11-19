@@ -57,6 +57,12 @@
 4. **MMC 風格漸層標題列**：各功能頁面頂部配備微軟管理主控台（MMC）經典深藍漸層標題橫幅（`#000080` 至 `#1084d0`）。
 5. **經典控制項與狀態列**：具備下凹面板分區的 QStatusBar、傳統立體捲軸與分頁標籤。
 
+## 系統需求
+
+* **Windows 7 SP1、8、8.1、10、11（64 位元）**。Windows 2000 / XP / Vista 以及 32 位元系統不支援。
+* Windows 7 需先安裝 SP1 與 Windows Update 的「通用 C 執行階段」更新（KB2999226）；並啟用 TLS 1.2（KB3140245，或直接用 Windows Update 更新到最新），否則連不上社團網站的 HTTPS。
+* 程式自帶 Python 與 Qt，不需另外安裝。
+
 ## 安裝
 
 1. 到 GitHub 儲存庫的 **Releases**，下載最新的 `ClubDesk-Setup-1.2.0.exe`（約 15–20 MB）。
@@ -118,7 +124,7 @@ PR 只會測試與打包，不會發布；Actions 紀錄中會顯示「Merging t
 
 ## 開發者：從原始碼執行與測試
 
-需要 Python 3.10 以上（建議 3.12）。
+Python 3.8 以上皆可。**發行版用 Python 3.8 + PySide2（Qt 5.15）打包**，這是仍能在 Windows 7 SP1 執行的最新組合；Python 3.9 以上（只能在 Windows 10 以上）則自動改用 PySide6（Qt 6）。程式碼以 PySide6 的名稱撰寫，`clubdesk/qtcompat.py` 在找不到 PySide6 時改載入 PySide2，兩者共用同一份程式。
 
 ```bash
 cd desktop
@@ -190,5 +196,5 @@ desktop/
     └── test_updater.py     版本比對與 GitHub Release 解析單元測試
 ```
 
-使用 Python + PySide6（Qt）撰寫原生視窗介面，不使用肥大的網頁打包技術。
+使用 Python + PySide2／PySide6（Qt）撰寫原生視窗介面，不使用肥大的網頁打包技術。
 `installer/ChineseTraditional.isl` 取自 Inno Setup 專案的非官方繁體中文翻譯。

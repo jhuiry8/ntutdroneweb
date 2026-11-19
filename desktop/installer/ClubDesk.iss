@@ -33,7 +33,8 @@ VersionInfoVersion={#AppVersion}
 VersionInfoDescription={#AppName} 安裝程式
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-MinVersion=10.0
+; Windows 7 SP1 or newer (the program is built with Python 3.8 + Qt 5.15 for this reason).
+MinVersion=6.1sp1
 
 [Languages]
 Name: "cht"; MessagesFile: "ChineseTraditional.isl"

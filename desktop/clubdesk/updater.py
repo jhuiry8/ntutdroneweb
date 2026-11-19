@@ -155,7 +155,9 @@ def github_latest_release() -> dict:
         asset = next((a for a in release.get("assets", []) if a.get("name", "").lower().endswith(".exe")), None)
         if not asset:
             continue
-        sha = (asset.get("digest") or "").removeprefix("sha256:")
+        sha = (asset.get("digest") or "")
+        if sha.startswith("sha256:"):
+            sha = sha[len("sha256:"):]
         if not re.fullmatch(r"[0-9a-f]{64}", sha):
             found = re.search(r"SHA-?256[^0-9a-fA-F]*([0-9a-fA-F]{64})", release.get("body") or "")
             sha = found.group(1).lower() if found else ""
