@@ -54,3 +54,27 @@ test('only the president publishes a desktop release, and it is validated', asyn
     assert.equal(check.url, release.url);
     assert.equal(check.publishedBy, 'admin');
 });
+
+test('GitHub Actions can announce a release with the release token, never downgrading', async () => {
+    const TOKEN = 'x'.repeat(40);
+    const env = withSiteStore({ DRONE_DB: kv(), DESKTOP_RELEASE_TOKEN: TOKEN });
+    const bearer = (body, token) => worker.fetch(new Request('https://example.com/api/desktop/version', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body)
+    }), env);
+    assert.equal((await bearer(release, 'wrong-token')).status, 401);
+    const saved = await bearer({ ...release, version: '1.2.3' }, TOKEN);
+    assert.equal(saved.status, 200);
+    assert.equal((await saved.json()).publishedBy, 'github-actions');
+    const older = await bearer({ ...release, version: '1.2.1' }, TOKEN);
+    assert.equal(older.status, 409);
+    const check = await (await worker.fetch(new Request('https://example.com/api/desktop/version'), env)).json();
+    assert.equal(check.version, '1.2.3');
+});
+
+test('the release token is ignored when it is missing or too short', async () => {
+    const env = withSiteStore({ DRONE_DB: kv(), DESKTOP_RELEASE_TOKEN: 'short' });
+    const response = await worker.fetch(new Request('https://example.com/api/desktop/version', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer short' }, body: JSON.stringify(release)
+    }), env);
+    assert.equal(response.status, 401);
+});

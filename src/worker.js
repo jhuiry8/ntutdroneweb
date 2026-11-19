@@ -219,6 +219,12 @@ function normalizeDesktopRelease(body, username) {
     return { version, url: parsed.href, sha256, notes, mandatory: body.mandatory === true, publishedBy: username, publishedAt: new Date().toISOString() };
 }
 
+function compareVersions(a, b) {
+    const left = String(a).split('.').map(Number), right = String(b).split('.').map(Number);
+    for (let i = 0; i < 3; i++) if ((left[i] || 0) !== (right[i] || 0)) return (left[i] || 0) - (right[i] || 0);
+    return 0;
+}
+
 function parseDesktopRelease(json) {
     if (!json) return null;
     try {
@@ -1580,10 +1586,27 @@ async function handleRequest(request, env, ctx) {
                     const release = parseDesktopRelease(await env.DRONE_DB.get(DESKTOP_RELEASE_KEY));
                     return Response.json(release || { version: null }, { headers: { 'Cache-Control': 'no-store' } });
                 }
-                const user = await sessionUser(request, env);
-                if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-                if (!canManageUsers(user)) return Response.json({ error: '只有社長可以發布桌面程式更新' }, { status: 403 });
-                const release = normalizeDesktopRelease(await readJsonObject(request, 16 * 1024), user.username);
+                // GitHub Actions announces each automatic release with DESKTOP_RELEASE_TOKEN
+                // (a Worker secret, at least 32 characters); people still need a president session.
+                const bearer = /^Bearer (.+)$/.exec(request.headers.get('Authorization') || '')?.[1] || '';
+                const token = String(env.DESKTOP_RELEASE_TOKEN || '');
+                const automated = bearer !== '' && token.length >= 32 && constantTimeEqual(bearer, token);
+                let publisher = 'github-actions';
+                if (!automated) {
+                    if (bearer) return Response.json({ error: '發布權杖無效' }, { status: 401 });
+                    const user = await sessionUser(request, env);
+                    if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+                    if (!canManageUsers(user)) return Response.json({ error: '只有社長可以發布桌面程式更新' }, { status: 403 });
+                    publisher = user.username;
+                }
+                const release = normalizeDesktopRelease(await readJsonObject(request, 16 * 1024), publisher);
+                const current = parseDesktopRelease(await env.DRONE_DB.get(DESKTOP_RELEASE_KEY));
+                // An automatic release never replaces a newer one (the president can still roll back by hand).
+                if (automated && current && compareVersions(release.version, current.version) < 0) {
+                    return Response.json({ error: `網站上已是較新的 ${current.version}`, current }, { status: 409 });
+                }
+                // Keep "required update" when the president had set it for the same version.
+                if (automated && current?.version === release.version && current.mandatory) release.mandatory = true;
                 await env.DRONE_DB.put(DESKTOP_RELEASE_KEY, JSON.stringify(release));
                 return Response.json(release);
             }
