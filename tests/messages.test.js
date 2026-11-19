@@ -26,8 +26,9 @@ function fixture() {
         async get(key) { return store.get(key) ?? null; },
         async put(key, value) { store.set(key, typeof value === 'string' ? value : JSON.stringify(value)); },
         async delete(key) { store.delete(key); },
-        async list({ prefix }) { return { keys: [...store.keys()].filter(name => name.startsWith(prefix)).map(name => ({ name })) }; }
+        async list({ prefix }) { listCalls.push(prefix); return { keys: [...store.keys()].filter(name => name.startsWith(prefix)).map(name => ({ name })) }; }
     };
+    const listCalls = [];
     const accounts = { president: 'president', cadre1: 'cadre', alice: 'member', bob: 'member', gone: 'member' };
     for (const [username, role] of Object.entries(accounts)) {
         store.set(`user:${username}`, JSON.stringify({ username, role, active: username !== 'gone', version: 'v1', memberId: username === 'alice' ? 'm1' : '' }));
@@ -43,7 +44,7 @@ function fixture() {
         }), env);
         return { status: response.status, body: await response.json() };
     };
-    return { request, store, env };
+    return { request, store, env, listCalls };
 }
 
 test('message centre needs a signed-in account', async () => {
@@ -107,6 +108,9 @@ test('private messages stay between the two people', async () => {
     assert.equal(bob.with, 'alice');
     assert.equal(bob.unread, 1);
     assert.equal((await request('/api/messages/c/dm~alice~gone', 'alice', 'POST', { text: 'x' })).status, 404);
+    // The same pair in the other order is not a second thread.
+    assert.equal((await request('/api/messages/c/dm~bob~alice', 'alice', 'POST', { text: '另一串' })).status, 404);
+    assert.equal((await request('/api/messages/conversations', 'bob')).body.filter(item => item.kind === 'dm').length, 1);
 });
 
 test('officers create rooms; members cannot, and custom rooms list their members', async () => {
@@ -122,7 +126,13 @@ test('officers create rooms; members cannot, and custom rooms list their members
     assert.equal((await request(`/api/messages/c/ch~${created.body.id}`, 'bob', 'POST', { text: 'hi' })).status, 403);
     const archived = await request(`/api/messages/channels/${created.body.id}`, 'president', 'PATCH', { archived: true });
     assert.equal(archived.body.archived, true);
-    assert.equal((await request(`/api/messages/c/ch~${created.body.id}`, 'cadre1', 'POST', { text: 'hi' })).status, 404);
+    // Members no longer see it; its creator still does (to reopen it) but cannot post.
+    assert.ok(!(await request('/api/messages/conversations', 'alice')).body.some(item => item.id === created.body.id));
+    assert.ok((await request('/api/messages/conversations', 'cadre1')).body.some(item => item.id === created.body.id && item.archived));
+    assert.equal((await request(`/api/messages/c/ch~${created.body.id}`, 'cadre1', 'POST', { text: 'hi' })).status, 409);
+    const reopened = await request(`/api/messages/channels/${created.body.id}`, 'cadre1', 'PATCH', { archived: false });
+    assert.equal(reopened.body.archived, false);
+    assert.equal((await request(`/api/messages/c/ch~${created.body.id}`, 'cadre1', 'POST', { text: 'hi' })).status, 201);
 });
 
 test('announcements: officers publish, everyone gets an unread notice, officers see who read it', async () => {
@@ -182,4 +192,40 @@ test('push settings validation and message formats', async () => {
     assert.equal(calls[1].url, 'https://api.line.me/v2/bot/message/broadcast');
     assert.equal(calls[1].init.headers.Authorization, `Bearer ${'a'.repeat(40)}`);
     assert.deepEqual(await pushNotice({ ...settings, enabled: false }, { title: 'T', body: 'B' }), []);
+});
+
+test('mark all as read also records announcement read receipts', async () => {
+    const { request } = fixture();
+    const created = await request('/api/announcements', 'cadre1', 'POST', { title: '社課暫停', content: '下週停課' });
+    await request('/api/messages/c/ch~general', 'bob', 'POST', { text: '收到' });
+    assert.equal((await request('/api/messages/read-all', 'alice', 'POST', {})).status, 200);
+    const summary = (await request('/api/messages/summary', 'alice')).body;
+    assert.equal(summary.unreadAnnouncements, 0);
+    assert.equal(summary.unreadMessages, 0);
+    const officerView = (await request('/api/announcements', 'president')).body.find(item => item.id === created.body.id);
+    assert.deepEqual(officerView.readBy, ['alice']);
+});
+
+test('deleted announcements do not keep a place in the read list', async () => {
+    const { request, env } = fixture();
+    const first = await request('/api/announcements', 'cadre1', 'POST', { title: '舊公告', content: 'x' });
+    await request(`/api/announcements/${first.body.id}/read`, 'alice', 'POST');
+    await request(`/api/announcements/${first.body.id}`, 'cadre1', 'DELETE');
+    const second = await request('/api/announcements', 'cadre1', 'POST', { title: '新公告', content: 'y' });
+    await request(`/api/announcements/${second.body.id}/read`, 'alice', 'POST');
+    const stored = await env.MESSAGE_STORE.values.get('read:alice');
+    assert.deepEqual(stored.announcements, [second.body.id]);
+});
+
+test('unread checks do not read the whole account list', async () => {
+    const { request, listCalls } = fixture();
+    listCalls.length = 0;
+    await request('/api/messages/summary', 'alice');
+    await request('/api/messages/conversations', 'alice');
+    await request('/api/messages/c/ch~general', 'alice', 'POST', { text: '頻道訊息不需要帳號清單' });
+    assert.ok(!listCalls.includes('user:'), `unexpected account listing: ${listCalls}`);
+    const sent = await request('/api/messages/c/ch~general', 'alice', 'GET');
+    assert.equal(sent.body.messages.at(-1).authorName, '王小明');
+    await request('/api/messages/people', 'alice');
+    assert.ok(listCalls.includes('user:'));
 });

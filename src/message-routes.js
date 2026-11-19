@@ -48,9 +48,19 @@ export async function handleMessageRequest(request, env, deps) {
 
     const user = await deps.sessionUser(request, env);
     if (!user) return json({ error: '未授權' }, 401);
-    const directory = await people(env, deps);
-    const me = directory.find(entry => entry.username === user.username);
-    const actor = { username: user.username, name: me?.name || user.username, officer: canViewCms(user), president: canManageUsers(user) };
+    // Unread checks run every 20–30 s from every open app, so the account list (one KV read per
+    // account) is only loaded by the routes that need it, and the display name only when one is shown.
+    let directoryPromise = null;
+    const directory = () => (directoryPromise ||= people(env, deps));
+    const usernames = async () => (await directory()).map(entry => entry.username);
+    const actor = { username: user.username, name: user.username, officer: canViewCms(user), president: canManageUsers(user) };
+    const withName = async () => {
+        if (user.memberId) {
+            const member = (await deps.readMembers(env)).find(entry => entry.id === user.memberId);
+            if (member?.name) actor.name = member.name;
+        }
+        return actor;
+    };
     const run = async (op, payload = {}, status = 200) => {
         const result = await store(env, op, { actor, ...payload });
         return json(result.body, result.status === 200 ? status : result.status);
@@ -59,9 +69,9 @@ export async function handleMessageRequest(request, env, deps) {
 
     if (path === '/api/messages/summary' && method === 'GET') return run('summary');
     if (path === '/api/messages/conversations' && method === 'GET') return run('conversations');
-    if (path === '/api/messages/people' && method === 'GET') return json({ me: actor, people: directory });
+    if (path === '/api/messages/people' && method === 'GET') return json({ me: await withName(), people: await directory() });
     if (path === '/api/messages/read-all' && method === 'POST') return run('read-all');
-    if (path === '/api/messages/dm' && method === 'POST') return run('open-dm', { username: (await body())?.username, people: directory.map(entry => entry.username) });
+    if (path === '/api/messages/dm' && method === 'POST') return run('open-dm', { username: (await body())?.username, people: await usernames() });
     if (path === '/api/messages/channels' && method === 'POST') return run('create-channel', { fields: await body() }, 201);
     const channelMatch = /^\/api\/messages\/channels\/([\w-]{1,40})$/.exec(path);
     if (channelMatch && method === 'PATCH') return run('update-channel', { id: channelMatch[1], fields: await body() });
@@ -70,7 +80,12 @@ export async function handleMessageRequest(request, env, deps) {
     if (convMatch) {
         const [, conv, extra] = convMatch;
         if (!extra && method === 'GET') return run('messages', { conv, after: url.searchParams.get('after'), before: url.searchParams.get('before'), limit: url.searchParams.get('limit') });
-        if (!extra && method === 'POST') return run('send', { conv, text: (await body())?.text, people: directory.map(entry => entry.username) }, 201);
+        if (!extra && method === 'POST') {
+            const text = (await body())?.text;
+            await withName();
+            // Only private messages need to know whether the other account is still active.
+            return run('send', { conv, text, ...(conv.startsWith('dm~') ? { people: await usernames() } : {}) }, 201);
+        }
         if (extra === 'read' && method === 'POST') return run('read', { conv, seq: (await body())?.seq });
         if (extra && extra !== 'read' && method === 'PATCH') return run('edit', { conv, seq: Number(extra), text: (await body())?.text });
         if (extra && extra !== 'read' && method === 'DELETE') return run('delete', { conv, seq: Number(extra) });
@@ -95,7 +110,7 @@ export async function handleMessageRequest(request, env, deps) {
     if (path === '/api/announcements' && method === 'GET') return run('announcements');
     if (path === '/api/announcements' && method === 'POST') {
         const fields = await body();
-        const result = await store(env, 'create-announcement', { actor, fields });
+        const result = await store(env, 'create-announcement', { actor: await withName(), fields });
         if (result.status !== 200) return json(result.body, result.status);
         // Optional external push; only announcements for everyone leave the system.
         let push = [];

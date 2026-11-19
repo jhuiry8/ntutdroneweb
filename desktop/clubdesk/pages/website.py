@@ -711,7 +711,8 @@ class ContentPage(Page):
                         handle.write(front_matter({**item, **full}))
                     count += 1
         except (ApiError, OSError) as error:
-            show_error(self, error if isinstance(error, ApiError) else ApiError(str(error)))
+            QMessageBox.warning(self, "備份未完成", f"備份中斷：{error}\n\n只備份了 {count} / {len(self.items)} 篇{self.noun}到\n{folder}\n請確認連線後重新備份。")
+            return
         QMessageBox.information(self, "備份完成", f"已備份 {count} 篇{self.noun}到\n{folder}")
 
 

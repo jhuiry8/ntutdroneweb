@@ -258,7 +258,7 @@ class MeetingWindow(QDialog):
         self.ai_notice = icon_button("AI 產生開會通知", "ai")
         self.ai_notice.clicked.connect(self.draft_notice)
         save = icon_button("儲存通知", "save")
-        save.clicked.connect(lambda: self.update({"notice": self.notice.toPlainText()}, "通知已儲存"))
+        save.clicked.connect(lambda: self.update_meeting({"notice": self.notice.toPlainText()}, "通知已儲存"))
         as_post = icon_button("發布成網站文章", "posts")
         as_post.clicked.connect(self.publish_post)
         as_announcement = icon_button("發布成社團公告", "notes", "所有社員登入時會收到通知；若社長啟用外部推播也會同步發送")
@@ -510,13 +510,13 @@ class MeetingWindow(QDialog):
         self.apply(meeting, message)
         return True
 
-    def update(self, fields: dict, message: str) -> None:
+    def update_meeting(self, fields: dict, message: str) -> None:
         self.call(lambda: self.api.update_meeting(self.meeting_id, fields), message)
 
     def edit(self) -> None:
         dialog = MeetingDialog(self, self.page.options, self.meeting)
         if dialog.exec() == QDialog.Accepted:
-            self.update(dialog.values(), "會議已更新")
+            self.update_meeting(dialog.values(), "會議已更新")
 
     def change_status(self, status: str) -> None:
         data = {"status": status}

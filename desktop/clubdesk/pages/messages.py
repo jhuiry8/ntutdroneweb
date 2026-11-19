@@ -272,9 +272,16 @@ class MessagesPage(Page):
         self.fetching = True
         conv, after = self.conv, self.last_seq
 
+        def stale() -> bool:
+            # The user switched (or reopened) a conversation while this request ran: load that one now.
+            if conv != self.conv or after != self.last_seq:
+                self.fetch_new()
+                return True
+            return False
+
         def done(data):
             self.fetching = False
-            if data.get("conv") != self.conv or after != self.last_seq:
+            if stale():
                 return
             new = data.get("messages", [])
             if new:
@@ -287,6 +294,8 @@ class MessagesPage(Page):
 
         def failed(error):
             self.fetching = False
+            if stale():
+                return
             self.stream.setHtml(f"<p style='color:#A11D1D'>{html.escape(str(error))}</p>")
 
         background(lambda: self.api.messages(conv, after), done, failed)

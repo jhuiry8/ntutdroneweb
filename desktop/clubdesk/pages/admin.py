@@ -257,7 +257,7 @@ class UsersPage(Page):
             show_error(self, error)
         self.status("網站設定已儲存")
 
-    def update(self, username: str, changes: dict) -> None:
+    def update_user(self, username: str, changes: dict) -> None:
         try:
             with busy():
                 self.api.update_user({"username": username, **changes})
@@ -302,7 +302,7 @@ class UsersPage(Page):
         if dialog.password.text():
             changes["password"] = dialog.password.text()
         if changes:
-            self.update(user["username"], changes)
+            self.update_user(user["username"], changes)
 
     def toggle(self) -> None:
         user = self.selected()
@@ -310,7 +310,7 @@ class UsersPage(Page):
             return
         if user.get("active") and not confirm(self, f"確定停用帳號 {user['username']}？停用後對方會立即被登出。"):
             return
-        self.update(user["username"], {"active": not user.get("active")})
+        self.update_user(user["username"], {"active": not user.get("active")})
 
     def reset_password(self) -> None:
         user = self.selected()
@@ -322,7 +322,7 @@ class UsersPage(Page):
         if len(password) < 8:
             QMessageBox.warning(self, "重設密碼", "密碼至少需要 8 個字元。")
             return
-        self.update(user["username"], {"password": password})
+        self.update_user(user["username"], {"password": password})
 
 
 # ───────────────────────────── AI 社務助理 ─────────────────────────────

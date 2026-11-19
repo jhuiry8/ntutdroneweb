@@ -164,19 +164,30 @@
         chatTimer = setInterval(fetchNew, 4000);
     }
 
+    var fetching = false;
     async function fetchNew() {
         if (!state.conv || !document.getElementById('msg-stream')) return stopChat();
+        // The timer and the refresh after sending must not both append the same new messages.
+        if (fetching) return;
+        fetching = true;
+        var requested = state.conv, after = state.lastSeq;
         try {
             var data = await api('/api/messages/c/' + encodeURIComponent(state.conv) + (state.lastSeq ? '?after=' + state.lastSeq : '?limit=80'));
-            if (data.conv !== state.conv) return;
-            if (data.messages.length) {
-                data.messages.forEach(function (m) { state.messages.push(m); });
-                state.lastSeq = data.messages[data.messages.length - 1].seq;
+            if (data.conv !== state.conv || after !== state.lastSeq) return;
+            var fresh = data.messages.filter(function (m) { return m.seq > state.lastSeq; });
+            if (fresh.length) {
+                fresh.forEach(function (m) { state.messages.push(m); });
+                state.lastSeq = fresh[fresh.length - 1].seq;
                 renderMessages();
                 await api('/api/messages/c/' + encodeURIComponent(state.conv) + '/read', 'POST', { seq: state.lastSeq });
                 poll();
             } else if (!state.messages.length) renderMessages();
         } catch (error) { stopChat(); toast(error.message, true); }
+        finally {
+            fetching = false;
+            // The user switched (or reopened) a conversation while this request was running: load it now.
+            if ((state.conv !== requested || after !== state.lastSeq) && state.conv && document.getElementById('msg-stream')) fetchNew();
+        }
     }
 
     function renderMessages() {
