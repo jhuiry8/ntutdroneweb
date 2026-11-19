@@ -4,8 +4,8 @@ name: Android App (APK build & auto release)
 # - Pull requests: build a debug APK to check the change compiles.
 # - Every push to main that touches android/: build, sign with the club key,
 #   bump the version (1.0.<run number>), tag it and publish a GitHub Release.
-# The only one-time manual step is adding the signing key secrets
-# (see android/README.md). Without them main still builds a debug APK artifact,
+# The only one-time manual step is adding the ANDROID_SIGNING_PASSWORD secret
+# (see android/README.md). Without it main still builds a debug APK artifact,
 # but nothing is published, because an APK signed with a throwaway key cannot
 # update an installed copy.
 on:
@@ -58,25 +58,53 @@ jobs:
         cd android
         ./gradlew assembleDebug --stacktrace
 
+    # Signing needs only ONE secret: ANDROID_SIGNING_PASSWORD (set it in the GitHub web UI).
+    # The first run on main generates the keystore here, encrypts it with that password
+    # and commits android/release-keystore.p12.enc, so nothing has to be installed locally
+    # and the (encrypted) key is backed up in the repository. Later runs decrypt it.
     - name: Build signed release APK
       id: release
       if: github.event_name != 'pull_request'
       env:
-        ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-        ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        SIGNING_PASSWORD: ${{ secrets.ANDROID_SIGNING_PASSWORD }}
+        ENCRYPTED_KEYSTORE: android/release-keystore.p12.enc
       run: |
-        if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-          echo "::warning::Signing secrets are not set; skipping the release. See android/README.md."
+        if [ -z "$SIGNING_PASSWORD" ]; then
+          echo "::warning::ANDROID_SIGNING_PASSWORD secret is not set; skipping the release. See android/README.md."
           echo "signed=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/release.jks"
-        echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$ANDROID_KEYSTORE_PATH"
+        if [ ${#SIGNING_PASSWORD} -lt 16 ]; then
+          echo "::error::ANDROID_SIGNING_PASSWORD must be at least 16 characters (the encrypted key is public)."
+          exit 1
+        fi
+        KEYSTORE="$RUNNER_TEMP/release.p12"
+        if [ ! -f "$ENCRYPTED_KEYSTORE" ]; then
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::No signing key yet; it is created automatically on the first run on main."
+            exit 1
+          fi
+          echo "Generating the club signing key (first run only)..."
+          keytool -genkeypair -noprompt -storetype PKCS12 -keystore "$KEYSTORE" -alias ntutdrone \
+            -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=NTUT Drone Club, O=NTUT Drone Club, C=TW" \
+            -storepass:env SIGNING_PASSWORD -keypass:env SIGNING_PASSWORD
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 -in "$KEYSTORE" -out "$ENCRYPTED_KEYSTORE" -pass env:SIGNING_PASSWORD
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$ENCRYPTED_KEYSTORE"
+          git commit -m "chore(android): add encrypted release signing key [skip ci]"
+          git push origin HEAD:main
+        else
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in "$ENCRYPTED_KEYSTORE" -out "$KEYSTORE" -pass env:SIGNING_PASSWORD \
+            || { echo "::error::Wrong ANDROID_SIGNING_PASSWORD: it must be the password used when the key was created."; exit 1; }
+        fi
+        export ANDROID_KEYSTORE_PATH="$KEYSTORE"
+        export ANDROID_KEYSTORE_PASSWORD="$SIGNING_PASSWORD"
+        export ANDROID_KEY_PASSWORD="$SIGNING_PASSWORD"
+        export ANDROID_KEY_ALIAS=ntutdrone
         cd android
         ./gradlew assembleRelease --stacktrace
-        rm -f "$ANDROID_KEYSTORE_PATH"
+        rm -f "$KEYSTORE"
         echo "signed=true" >> "$GITHUB_OUTPUT"
 
     - name: Prepare APK outputs

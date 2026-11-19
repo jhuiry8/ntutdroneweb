@@ -77,20 +77,14 @@ chmod +x gradlew
 - **合併到 `main`（且有改到 `android/`）**：自動編譯、用社團金鑰簽署、版本號自動遞增（`1.0.<建置編號>`）、自動打標籤 `android-v1.0.x` 並發佈 GitHub Release。社員到 Releases 下載最新版即可覆蓋更新。
 - 也可以在 Actions 頁面手動按 **Run workflow** 重新建置發佈。
 
-### 🔑 唯一需要手動的一次性設定：簽署金鑰
+### 🔑 唯一需要手動的一次性設定：簽署密碼（不用安裝任何軟體）
 
-儲存庫是公開的，簽署金鑰不能放在程式碼裡（否則任何人都能簽出冒充的更新版），必須存在 GitHub Secrets。**沒設定時只會產生測試用 Debug APK，不會發佈 Release。**
+只要在 GitHub 網頁設定**一個密碼**，其餘全部自動：
 
-1. 在自己的電腦產生金鑰（請妥善備份，遺失後就無法再發佈可覆蓋更新的版本）：
-   ```bash
-   keytool -genkeypair -v -keystore ntut-drone-release.jks -alias ntutdrone -keyalg RSA -keysize 4096 -validity 10000
-   ```
-2. 轉成 Base64：
-   ```bash
-   base64 -w0 ntut-drone-release.jks > keystore.b64
-   ```
-3. 到 GitHub 儲存庫 **Settings → Secrets and variables → Actions** 新增：
-   - `ANDROID_KEYSTORE_BASE64`：`keystore.b64` 的內容
-   - `ANDROID_KEYSTORE_PASSWORD`：金鑰庫密碼
-   - `ANDROID_KEY_ALIAS`：`ntutdrone`
-   - `ANDROID_KEY_PASSWORD`：金鑰密碼
+1. 準備一組**至少 16 個字元**的隨機密碼（可用瀏覽器或密碼管理器的「產生密碼」功能），並**妥善保存**。
+2. 到 GitHub 儲存庫 **Settings → Secrets and variables → Actions → New repository secret**：
+   - Name：`ANDROID_SIGNING_PASSWORD`
+   - Secret：剛才的密碼
+3. 完成。下次合併到 `main` 時，GitHub Actions 會在雲端自動產生簽署金鑰，用這個密碼以 AES-256 加密後存成 `android/release-keystore.p12.enc` 並提交回儲存庫（等於自動備份），之後每次建置都用它簽署。
+
+⚠️ **密碼遺失 = 無法再發佈可覆蓋更新的版本**（社員必須移除舊版重裝）。儲存庫是公開的，加密金鑰檔任何人都看得到，安全性完全取決於密碼強度，請勿使用短密碼或常用密碼，也不要更換這個 Secret 的值。
