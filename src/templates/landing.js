@@ -349,8 +349,8 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                             </div>
                         </div>
                         <div class="feature-info">
-                            <h3 class="feature-name">${t.feat4Title}</h3>
-                            <p class="feature-desc">${t.feat4Desc}</p>
+                            <h3 class="feature-name">${feat4Title}</h3>
+                            <p class="feature-desc">${feat4Desc}</p>
                         </div>
                     </div>
                 </div>
@@ -557,8 +557,8 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
         <section class="cta-section">
             <div class="cta-glow-bg"></div>
             <div class="cta-container">
-                <h2 class="cta-title">${t.ctaTitle}</h2>
-                <p class="cta-text">${t.ctaDesc}</p>
+                <h2 class="cta-title">${ctaTitle}</h2>
+                <p class="cta-text">${ctaDesc}</p>
                 <div class="cta-buttons">
                     <a href="https://lin.ee/s5YJgGI" target="_blank" class="btn btn-line btn-large glow-pulse">
                         <i data-lucide="message-square"></i> ${t.ctaBtnLine}

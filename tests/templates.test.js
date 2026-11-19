@@ -55,6 +55,12 @@ test('Templates test suite - HTML Rendering & Component Generator', async (t) =>
         assert.ok(html.includes('test-post-1'), 'Mock post slug must be rendered');
     });
 
+    await t.test('renderLandingPage shows every homepage override, sanitized', () => {
+        const html = renderLandingPage([], 'zh', { feat4Title: 'F4T', feat4Desc: 'F4D', ctaTitle: 'CTA<script>x</script>', ctaDesc: 'CTAD' });
+        for (const text of ['F4T', 'F4D', 'CTA', 'CTAD']) assert.ok(html.includes(text), `${text} must be rendered`);
+        assert.ok(!html.includes('<script>x</script>'), 'overrides must be sanitized');
+    });
+
     await t.test('renderLandingPage should support language switching', () => {
         const htmlEn = renderLandingPage(mockPosts, 'en', {});
         assert.ok(htmlEn.includes('lang="en"'), 'HTML lang attribute should be en');
