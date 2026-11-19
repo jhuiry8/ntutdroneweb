@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout, QGrou
 
 from ..api import ROLE_LABELS, ApiError, can_edit_cms, can_manage_finance, can_manage_users
 from ..docx import Document
+from ..i18n import raw
 from ..widgets import (DataTable, Page, background, busy, button_row, confirm, docx_path, export_info, icon_button,
                        open_url, save_docx, show_error)
 from .members import combo, date_edit, date_text, dialog_buttons
@@ -103,9 +104,9 @@ class NotesPage(Page):
         if not note:
             self.detail.clear()
             return
-        links = "".join(f'<li><a href="{html.escape(link["url"])}">{html.escape(link.get("label") or link["url"])}</a></li>' for link in note.get("links", []))
-        self.detail.setHtml(f"<h3>{html.escape(note.get('title', ''))}</h3><p>{html.escape(note.get('date', ''))}・{html.escape(note.get('createdBy', ''))}</p>"
-                            f"<p>{rich_text(note.get('content', ''))}</p>" + (f"<ul>{links}</ul>" if links else ""))
+        links = "".join(f'<li><a href="{html.escape(link["url"])}">{raw(html.escape(link.get("label") or link["url"]))}</a></li>' for link in note.get("links", []))
+        self.detail.setHtml(f"<h3>{raw(html.escape(note.get('title', '')))}</h3><p>{html.escape(note.get('date', ''))}・{raw(html.escape(note.get('createdBy', '')))}</p>"
+                            f"<p>{raw(rich_text(note.get('content', '')))}</p>" + (f"<ul>{links}</ul>" if links else ""))
 
     def export_docx(self) -> None:
         """All class notes with their content and links (as shown, newest first)."""
@@ -119,13 +120,13 @@ class NotesPage(Page):
         document = Document("社課備忘錄")
         document.title_block("社課備忘錄", export_info(self.user, self.api.base_url))
         for note in notes:
-            document.heading(f"{note.get('date', '')}　{note.get('title', '')}", 2)
+            document.heading(f"{note.get('date', '')}　{raw(note.get('title', ''))}", 2)
             for line in (note.get("content") or "").splitlines():
-                document.paragraph(line)
+                document.paragraph(raw(line))
             links = [f"[{link.get('label') or link['url']}]({link['url']})" for link in note.get("links", [])]
             if links:
                 document.bullets(links)
-            document.paragraph(f"建立者：{note.get('createdBy', '')}", size=18)
+            document.paragraph(f"建立者：{raw(note.get('createdBy', ''))}", size=18)
         save_docx(self, document, path)
 
     def add(self) -> None:
@@ -404,16 +405,16 @@ class AssistantPage(Page):
         parts = []
         for index, message in enumerate(self.history):
             if message["role"] == "user":
-                parts.append(f"<p style='background:#E8EEF8; padding:4px;'><b>您：</b>{rich_text(message['content'])}</p>")
+                parts.append(f"<p style='background:#E8EEF8; padding:4px;'><b>您：</b>{raw(rich_text(message['content']))}</p>")
                 continue
-            body = f"<p><b>助理：</b>{rich_text(message['content'])}</p>"
+            body = f"<p><b>助理：</b>{raw(rich_text(message['content']))}</p>"
             for number, action in enumerate(message.get("actions", [])):
                 link = f"action:{index}:{number}"
                 if action["type"] == "post_draft":
-                    body += f"<p>📝 文章草稿「{html.escape(action.get('title') or '未命名')}」　<a href='{link}'>在文章編輯器開啟</a></p>"
+                    body += f"<p>📝 文章草稿「{raw(html.escape(action.get('title') or '未命名'))}」　<a href='{link}'>在文章編輯器開啟</a></p>"
                 elif action["type"] == "finance_transaction":
                     kind = {"income": "收入", "expense": "支出", "transfer": "轉帳"}.get(action["kind"], "")
-                    body += (f"<p>💰 建議帳目：{html.escape(action['date'])}「{html.escape(action['item'])}」{kind} {action['amount']:,} 元"
+                    body += (f"<p>💰 建議帳目：{html.escape(action['date'])}「{raw(html.escape(action['item']))}」{kind} {action['amount']:,} 元"
                              f"　<a href='{link}'>送出給社長審核</a></p>")
             if message.get("tools"):
                 body += f"<p style='color:#606060; font-size:9pt'>查詢了：{'、'.join(TOOL_LABELS.get(t, t) for t in message['tools'])}</p>"
@@ -504,8 +505,8 @@ class ReportsPage(Page):
         if not report:
             self.text.clear()
             return
-        note = f"<p style='color:#A11D1D'>AI 摘要失敗：{html.escape(report['aiError'])}</p>" if report.get("aiError") else ""
-        self.text.setHtml(f"<p>{rich_text(report.get('text', ''))}</p>" + note)
+        note = f"<p style='color:#A11D1D'>AI 摘要失敗：{raw(html.escape(report['aiError']))}</p>" if report.get("aiError") else ""
+        self.text.setHtml(f"<p>{raw(rich_text(report.get('text', '')))}</p>" + note)
 
     def export_docx(self) -> None:
         report = self.table.current_row_data()

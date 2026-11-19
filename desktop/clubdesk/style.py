@@ -22,6 +22,8 @@ TITLE_BAR_END = "#A6CAF0"
 FONT_CANDIDATES = ["PMingLiU", "新細明體", "MingLiU", "細明體",
                    "LiSong Pro", "Apple LiSung", "AR PL UMing TW", "AR PL New Sung"]
 
+LATIN_CANDIDATES = ["Tahoma", "MS Sans Serif", "Segoe UI", "Arial", "Liberation Sans", "DejaVu Sans"]
+
 STYLESHEET = f"""
 /* Windows 98 / 2000 Authentic 3D Bevels & System Colors */
 QWidget {{
@@ -389,6 +391,15 @@ def pick_font() -> QFont:
                 QFontDatabase.addApplicationFont(path)
                 break
     families = set(QFontDatabase.families())
+    from . import i18n
+    if i18n.is_english():
+        # English text reads better in a Latin face; Chinese data still falls back to the Ming font.
+        for name in LATIN_CANDIDATES:
+            if name in families:
+                font = QFont(name)
+                font.setPointSize(9)
+                font.setStyleStrategy(QFont.PreferDefault)
+                return font
     for name in FONT_CANDIDATES:
         if name in families:
             font = QFont(name)

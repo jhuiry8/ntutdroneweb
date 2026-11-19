@@ -6,7 +6,7 @@ from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
                                QPushButton, QSplitter, QTextBrowser, QVBoxLayout)
 
-from . import __version__
+from . import __version__, i18n
 from .icons import app_pixmap, icon
 
 CSS = """<style>
@@ -198,7 +198,7 @@ class HelpWindow(QDialog):
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(self.topics)
         splitter.addWidget(self.text)
-        splitter.setSizes([210, 690])
+        splitter.setSizes([270 if i18n.is_english() else 210, 690])
         previous = QPushButton("上一篇")
         previous.clicked.connect(lambda: self.topics.setCurrentRow(max(0, self.topics.currentRow() - 1)))
         following = QPushButton("下一篇")

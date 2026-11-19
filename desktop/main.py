@@ -3,14 +3,14 @@
 import sys
 
 from clubdesk import qtcompat  # noqa: F401  (PySide2 fallback for Windows 7; must come first)
-from PySide6.QtCore import QLibraryInfo, QLocale, QTimer, QTranslator
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QApplication, QDialog, QMenu, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-from clubdesk import __version__
+from clubdesk import __version__, i18n
 from clubdesk.autologin import auto_login
 from clubdesk.icons import app_icon
-from clubdesk.login import LoginDialog
+from clubdesk.login import LoginDialog, run_login
 from clubdesk.mainwindow import MainWindow
 from clubdesk.single_instance import InstanceServer, ask_running_instance
 from clubdesk.style import apply_classic_style
@@ -35,8 +35,8 @@ def wait_in_tray(app, instances, notice: str):
             return
         asking.append(True)
         sign_in.setEnabled(False)
-        dialog = LoginDialog(notice=notice)
-        if dialog.exec() == QDialog.Accepted:
+        dialog = run_login(lambda: LoginDialog(notice=notice))
+        if dialog is not None:
             result["login"] = (dialog.client, dialog.user)
             app.quit()
         sign_in.setEnabled(True)
@@ -67,12 +67,11 @@ def main() -> int:
     app.setOrganizationName("NTUT Drone Club")
     app.setApplicationName("ClubDesk")
     app.setApplicationVersion(__version__)
+    # Interface language: Traditional Chinese (default) or English (Help -> Language).
+    i18n.set_language(i18n.saved_language())
+    i18n.install()
     apply_classic_style(app)
-    # Chinese text on Qt's own buttons (Yes/No, OK/Cancel in message boxes).
-    QLocale.setDefault(QLocale(QLocale.Chinese, QLocale.Taiwan))
-    translator = QTranslator(app)
-    if translator.load("qtbase_zh_TW", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
-        app.installTranslator(translator)
+    i18n.apply_qt_locale(app)  # Qt's own buttons (Yes/No, OK/Cancel) in the interface language
 
     if ask_running_instance():
         return 0  # already running (maybe hidden in the tray); it was asked to show itself
@@ -88,8 +87,8 @@ def main() -> int:
             return 0
         skipped_login_dialog = False
     elif not client:
-        login = LoginDialog(notice=notice)
-        if login.exec() != QDialog.Accepted:
+        login = run_login(lambda: LoginDialog(notice=notice))
+        if login is None:
             return 0
         client, user, autostarted = login.client, login.user, False
     window = MainWindow(client, user, LoginDialog)

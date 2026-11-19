@@ -12,15 +12,17 @@ the tray menu's 結束 really quits.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QSettings, Qt, QTimer
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import (QApplication, QDialog, QLabel, QMainWindow, QMenu, QMessageBox, QSplitter,
                                QStackedWidget, QSystemTrayIcon, QTreeWidget, QTreeWidgetItem)
 
 from . import __version__, autostart, saved_session
 from .api import (ROLE_LABELS, ApiClient, ApiError, can_manage_equipment, can_manage_finance, can_manage_members,
                   can_manage_users, can_view_cms)
+from . import i18n
 from .help import HelpWindow, WelcomeDialog
 from .icons import app_icon, icon
+from .login import run_login, switch_language
 from .notifications import NotificationCenter, NotificationSettingsDialog, NotificationsPage, set_setting, setting
 from .pages.admin import AssistantPage, NotesPage, ReportsPage, UsersPage
 from .pages.equipment import EquipmentPage
@@ -77,7 +79,7 @@ class MainWindow(QMainWindow):
         self.tree = QTreeWidget()
         self.tree.setHeaderLabel("功能選單")
         self.tree.setRootIsDecorated(True)
-        self.tree.setMinimumWidth(180)
+        self.tree.setMinimumWidth(240 if i18n.is_english() else 180)
         self.stack = QStackedWidget()
         for group, group_icon, entries in navigation(user.get("role", "")):
             allowed = [cls for cls, ok in entries if ok]
@@ -104,7 +106,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.tree)
         splitter.addWidget(self.stack)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([200, 980])
+        splitter.setSizes([260 if i18n.is_english() else 200, 980])
         self.setCentralWidget(splitter)
 
         self.build_actions()
@@ -132,7 +134,7 @@ class MainWindow(QMainWindow):
                 act.setShortcut(QKeySequence(shortcut))
             if icon_name:
                 act.setIcon(icon(icon_name))
-            act.setStatusTip(tip or text.replace("&", "").rstrip("."))
+            act.setStatusTip(tip or act.text().replace("&", "").rstrip("."))
             return act
 
         president = can_manage_users(self.user.get("role", ""))
@@ -195,6 +197,18 @@ class MainWindow(QMainWindow):
             tools_menu.addActions([self.act_push, self.act_publish])
         help_menu = menu.addMenu("說明(&H)")
         help_menu.addActions([self.act_tutorial, self.act_quick, self.act_welcome])
+        help_menu.addSeparator()
+        language_menu = help_menu.addMenu("\u200bLanguage / 語言")
+        self.language_actions = {}
+        language_group = QActionGroup(self)  # exactly one is checked
+        for code, name in i18n.LANGUAGES.items():
+            act = QAction("\u200b" + name, self)
+            act.setCheckable(True)
+            act.setChecked(code == i18n.language())
+            act.triggered.connect(lambda _=False, c=code: self.change_language(c))
+            language_group.addAction(act)
+            language_menu.addAction(act)
+            self.language_actions[code] = act
         help_menu.addSeparator()
         help_menu.addAction(self.act_update)
         help_menu.addSeparator()
@@ -451,6 +465,19 @@ class MainWindow(QMainWindow):
                           "資料與社團網站後台共用，所有變更會即時寫入網站伺服器。<br><br>"
                           "圖示為仿 Windows 98／2000 風格的自繪向量圖示。")
 
+    def change_language(self, code: str) -> None:
+        """The windows are built in one language, so a switch signs out and rebuilds them."""
+        if code == i18n.language():
+            return
+        self.language_actions[i18n.language()].setChecked(True)  # keep the current one checked unless it is switched
+        # The language is switched only after the question, so it is asked in the current one.
+        if QMessageBox.question(self, "\u200bLanguage / 語言", "切換語言會登出並重新開啟登入視窗。\n要繼續嗎？",
+                                QMessageBox.Yes | QMessageBox.No,
+                                QMessageBox.No) != QMessageBox.Yes:
+            return
+        switch_language(code)
+        self.relogin()
+
     def relogin(self) -> None:
         """Sign out and show the login dialog again; quit if it is cancelled."""
         self.quitting = True
@@ -463,8 +490,8 @@ class MainWindow(QMainWindow):
             self.close()
             return
         self.hide()
-        dialog = self.login_factory()
-        if dialog.exec() == QDialog.Accepted:
+        dialog = run_login(self.login_factory)
+        if dialog is not None:
             window = MainWindow(dialog.client, dialog.user, self.login_factory)
             window.show()
             instances = getattr(QApplication.instance(), "instances", None)
