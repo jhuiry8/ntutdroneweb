@@ -74,6 +74,8 @@ jobs:
     secrets: inherit
 
   release:
+    # Only ever from main: a manual run on any other branch just builds and tests.
+    if: github.ref == 'refs/heads/main'
     needs: [ version, desktop, desktop-win7, android ]
     runs-on: ubuntu-latest
     env:
