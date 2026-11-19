@@ -6,6 +6,20 @@ source strings, then maintained by hand.
 """
 
 TRANSLATIONS = {
+    '開機自動啟動(&B)': 'Start with &Windows',
+    'Windows 開機登入後自動啟動並縮小到系統匣（使用 30 天保持登入）': 'Start automatically after Windows sign-in and minimize to the tray (uses the 30-day stay-signed-in)',
+    '開機自動啟動需要「保持登入 30 天」才能自動登入。請從「檔案 → 登出並切換使用者」重新登入並勾選保持登入。': 'Starting with Windows needs "Stay signed in for 30 days" to sign in automatically. Use "File → Sign out and switch user", sign in again and tick stay signed in.',
+    '已設定開機自動啟動': 'Start with Windows turned on',
+    '已取消開機自動啟動': 'Start with Windows turned off',
+    '無法設定開機自動啟動：': 'Could not set up start with Windows: ',
+    '保持登入 30 天（下次開啟程式自動登入）(&K)': '&Stay signed in for 30 days (sign in automatically next time)',
+    '開機時自動啟動並縮小到系統匣(&A)': '&Start with Windows and minimize to the system tray',
+    '30 天登入期限已到或登入已失效，請重新登入。': 'The 30-day sign-in has expired or is no longer valid. Please sign in again.',
+    '目前無法連線到伺服器，無法自動登入。': 'Cannot reach the server right now, so automatic sign-in is not possible.',
+    '登入(&L)...': 'Sign &in...',
+    '北科無人機社 社務管理系統 - 尚未登入': 'NTUT Drone Club Management System - not signed in',
+    '請登入': 'Please sign in',
+    '請點此圖示登入。': 'Click this icon to sign in.',
     '切換語言會登出並重新開啟登入視窗。\n要繼續嗎？': 'Switching the language signs you out and reopens the sign-in window.\nContinue?',
     '社長': 'President',
     '財務': 'Treasurer',

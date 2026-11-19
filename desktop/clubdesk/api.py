@@ -137,6 +137,7 @@ class ApiClient:
         self.base_url = normalize_base_url(base_url)
         self.transport = transport or UrllibTransport()
         self.token = ""
+        self.session_seconds = 0  # how long the website keeps the session (from the cookie's Max-Age)
 
     # ------------------------------------------------------------ transport
     def _url(self, path: str, params: dict | None = None) -> str:
@@ -210,14 +211,18 @@ class ApiClient:
                                "請在網站設定中移除 TURNSTILE_SECRET_KEY，改用內建圖片驗證碼。", 404) from error
             raise
 
-    def login(self, username: str, password: str, captcha_id: str, captcha_answer: str) -> dict:
-        form = urlencode({"username": username, "password": password,
-                          "captcha_id": captcha_id, "captcha": captcha_answer}).encode("utf-8")
+    def login(self, username: str, password: str, captcha_id: str, captcha_answer: str, remember: bool = False) -> dict:
+        fields = {"username": username, "password": password, "captcha_id": captcha_id, "captcha": captcha_answer}
+        if remember:
+            fields["remember"] = "1"  # the website keeps this session for 30 days
+        form = urlencode(fields).encode("utf-8")
         response = self._send("POST", self._url("/api/login"), body=form,
                               content_type="application/x-www-form-urlencoded")
         token = session_cookie(response.headers.get("set-cookie", ""))
         if response.status == 302 and token:
             self.token = token
+            match = re.search(r"Max-Age=(\d+)", response.headers.get("set-cookie", ""), re.I)
+            self.session_seconds = int(match.group(1)) if match else 0
             return self.me()
         match = _LOGIN_ERROR.search(response.text or "")
         message = unescape(re.sub(r"<[^>]+>", "", match.group(1))).strip() if match else ""
