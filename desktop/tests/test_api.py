@@ -473,3 +473,23 @@ class AiAndAdminTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RememberLoginTests(unittest.TestCase):
+    def test_remember_sends_flag_and_reads_session_lifetime(self):
+        api, sent = client(
+            reply(302, headers={"set-cookie": "session=tok; Path=/; HttpOnly; Max-Age=2592000; Secure; SameSite=Lax"}),
+            reply(200, {"username": "admin", "role": "president"}),
+        )
+        api.login("admin", "pw123456", "id-1", "ABCDE", remember=True)
+        self.assertEqual(parse_qs(sent.calls[0]["body"].decode())["remember"], ["1"])
+        self.assertEqual(api.session_seconds, 30 * 86400)
+
+    def test_without_remember_no_flag_is_sent(self):
+        api, sent = client(
+            reply(302, headers={"set-cookie": "session=tok; Max-Age=86400"}),
+            reply(200, {"username": "admin", "role": "president"}),
+        )
+        api.login("admin", "pw123456", "id-1", "ABCDE")
+        self.assertNotIn("remember", parse_qs(sent.calls[0]["body"].decode()))
+        self.assertEqual(api.session_seconds, 86400)

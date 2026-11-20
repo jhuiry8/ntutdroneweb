@@ -24,6 +24,18 @@
 
 ---
 
+## 🌿 分支與發布流程（develop → main）
+
+```
+功能分支 (claude/*、feature/*)  ──PR──▶  develop  ──發布 PR──▶  main（正式發布）
+```
+
+* **develop**：整合分支。PR 在此只跑測試與建置檢查（網站測試、桌面版與 Android 建置），**不會部署也不會發布**。
+* **main**：正式發布分支。合併後自動部署網站到 Cloudflare，並在 `desktop/`、`android/` 有變動時發布桌面版安裝檔與 Android APK。
+* 日常功能一律先對 **develop** 開 PR。要上線時，開一個 **develop → main** 的發布 PR，確認後合併。
+* 對 `main` 開的 PR 只接受來自 `develop` 或 `hotfix/*`（緊急修正）的分支，其他來源 `branch-flow` 檢查會失敗。
+* 建議在 GitHub **Settings → Branches** 為 `main` 與 `develop` 設分支保護：要求 PR、要求 `test` 檢查通過；`main` 再加上 `only-from-develop` 檢查，並限制直接 push。
+
 ## 🚀 完整部署教學 (完全免本地指令流程)
 
 本網站已經為您設定好自動化部署管線（CI/CD），您只需要完成以下簡單的雲端設定，即可啟用一鍵發佈功能！

@@ -5,9 +5,10 @@ from __future__ import annotations
 from PySide6.QtCore import QByteArray, QSettings, Qt, QTimer
 from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFrame, QGridLayout, QGroupBox,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFrame, QGridLayout, QGroupBox,
                                QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout)
 
+from . import autostart, i18n, saved_session
 from .api import DEFAULT_SERVER, ApiClient, ApiError, normalize_base_url
 from .icons import app_icon, app_pixmap, icon
 from .updater import check_and_offer
@@ -25,8 +26,36 @@ def svg_pixmap(svg: str) -> QPixmap:
     return pixmap
 
 
+LANGUAGE_CHANGED = 2  # result code: the language was switched, show the dialog again in the new language
+
+
+def switch_language(code: str) -> None:
+    """Saves and activates an interface language for the windows built from now on."""
+    i18n.save_language(code)
+    i18n.set_language(code)
+    i18n.install()
+    from PySide6.QtWidgets import QApplication
+    from .style import apply_classic_style
+    apply_classic_style(QApplication.instance())
+    i18n.apply_qt_locale(QApplication.instance())
+
+
+def run_login(factory):
+    """Shows the login dialog (again after a language switch); returns it once accepted, else None."""
+    state = None
+    while True:
+        dialog = factory()
+        if state:
+            dialog.restore(state)
+        result = dialog.exec()
+        if result == LANGUAGE_CHANGED:
+            state = dialog.state()  # what was typed survives the language switch
+            continue
+        return dialog if result == QDialog.Accepted else None
+
+
 class LoginDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, notice: str = ""):
         super().__init__(parent)
         self.setWindowTitle("登入 - 北科無人機社 社務管理系統")
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
@@ -83,6 +112,21 @@ class LoginDialog(QDialog):
             label = grid.itemAtPosition((0, 1, 2, 4)[i], 0).widget()
             label.setBuddy(widget)
 
+        self.language = QComboBox()
+        for code, name in i18n.LANGUAGES.items():
+            self.language.addItem(name, code)
+        self.language.setCurrentIndex(max(0, self.language.findData(i18n.language())))
+        self.language.currentIndexChanged.connect(self.language_changed)
+
+        self.remember = QCheckBox("保持登入 30 天（下次開啟程式自動登入）(&K)")
+        self.remember.setChecked(self.settings.value("login/remember", True, bool))
+        self.autostart = QCheckBox("開機時自動啟動並縮小到系統匣(&A)")
+        # On by default; afterwards the last choice is remembered.
+        self.autostart.setChecked(self.settings.value("login/autostart", True, bool))
+        self.autostart.setVisible(autostart.supported())
+        grid.addWidget(self.remember, 5, 0, 1, 3)
+        grid.addWidget(self.autostart, 6, 0, 1, 3)
+
         buttons = QDialogButtonBox()
         self.ok = buttons.addButton("登入", QDialogButtonBox.AcceptRole)
         buttons.addButton("取消", QDialogButtonBox.RejectRole)
@@ -95,10 +139,12 @@ class LoginDialog(QDialog):
         inner = QVBoxLayout()
         inner.setContentsMargins(10, 4, 10, 0)
         inner.addWidget(box)
-        hint = QLabel("驗證碼不分大小寫，五分鐘內有效，每張只能使用一次。")
+        hint = QLabel((notice + "\n" if notice else "") + "驗證碼不分大小寫，五分鐘內有效，每張只能使用一次。")
         hint.setStyleSheet("color: #404040;")
         inner.addWidget(hint)
         row = QHBoxLayout()
+        row.addWidget(QLabel("\u200bLanguage / 語言："))
+        row.addWidget(self.language)
         row.addStretch(1)
         row.addWidget(buttons)
         inner.addLayout(row)
@@ -146,6 +192,23 @@ class LoginDialog(QDialog):
         if self.client and check_and_offer(self, self.client):
             self.reject()
 
+    def state(self) -> dict:
+        return {"server": self.server.text(), "username": self.username.text(), "password": self.password.text(),
+                "remember": self.remember.isChecked(), "autostart": self.autostart.isChecked()}
+
+    def restore(self, state: dict) -> None:
+        self.server.setText(state["server"])
+        self.username.setText(state["username"])
+        self.password.setText(state["password"])
+        self.remember.setChecked(state["remember"])
+        self.autostart.setChecked(state["autostart"])
+
+    def language_changed(self) -> None:
+        code = self.language.currentData()
+        if code and code != i18n.language():
+            switch_language(code)
+            self.done(LANGUAGE_CHANGED)
+
     def try_login(self) -> None:
         url = normalize_base_url(self.server.text())
         if not url:
@@ -166,7 +229,8 @@ class LoginDialog(QDialog):
         try:
             with busy():
                 self.user = self.client.login(self.username.text().strip().lower(), self.password.text(),
-                                              self.captcha_id, self.captcha_answer.text().strip())
+                                              self.captcha_id, self.captcha_answer.text().strip(),
+                                              self.remember.isChecked())
         except ApiError as error:
             show_error(self, error, "登入失敗")
             if "密碼" in str(error):
@@ -176,4 +240,15 @@ class LoginDialog(QDialog):
             return
         self.settings.setValue("server", url)
         self.settings.setValue("username", self.username.text().strip().lower())
+        self.settings.setValue("login/remember", self.remember.isChecked())
+        if self.remember.isChecked() and self.client.token:
+            saved_session.save(url, self.user.get("username", ""), self.client.token, self.client.session_seconds or None)
+        else:
+            saved_session.clear()
+        self.settings.setValue("login/autostart", self.autostart.isChecked())
+        if autostart.supported():
+            try:
+                autostart.set_enabled(self.autostart.isChecked() and self.remember.isChecked())
+            except OSError as error:
+                show_error(self, ApiError(f"無法設定開機自動啟動：{error}"))
         self.accept()

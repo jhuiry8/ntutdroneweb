@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (QDialog, QFormLayout, QGroupBox, QLabel, QLineEdi
 
 from ..api import ROLE_LABELS, ApiError
 from ..docx import Document
+from ..i18n import raw
 from ..widgets import DataTable, Page, busy, button_row, docx_path, export_info, money, save_docx, show_error
 from .members import FEE_TYPE_LABELS, dialog_buttons
 
@@ -56,10 +57,10 @@ class RegulationsPage(Page):
         for index, regulation in enumerate(r for r in regulations if not r.get("repealed")):
             if index:
                 document.page_break()
-            document.heading(regulation.get("title", ""), 1)
-            document.paragraph(f"〔{regulation.get('category', '')}　{regulation.get('version', '')}〕", size=18)
+            document.heading(raw(regulation.get("title", "")), 1)
+            document.paragraph(f"〔{raw(regulation.get('category', ''))}　{raw(regulation.get('version', ''))}〕", size=18)
             for line in (regulation.get("content") or "").splitlines():
-                document.paragraph(line)
+                document.paragraph(raw(line))
         save_docx(self, document, path)
 
     def show_regulation(self, item) -> None:

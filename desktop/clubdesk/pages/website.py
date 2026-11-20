@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDia
 from ..api import ApiError, can_edit_cms
 from ..icons import icon
 from ..docx import Document
+from ..i18n import raw
 from ..widgets import (DataTable, Page, background, busy, button_row, confirm, docx_path, export_info, icon_button,
                        open_url, save_docx, show_error)
 
@@ -297,7 +298,7 @@ class ContentEditor(QDialog):
         self.noun = "文章" if kind == "post" else "頁面"
         self.original_slug = (item or {}).get("slug", "")
         self.saved = None
-        self.setWindowTitle(f"修改{self.noun} - {item.get('title', '')}" if item else f"新增{self.noun}")
+        self.setWindowTitle(f"修改{self.noun} - {raw(item.get('title', ''))}" if item else f"新增{self.noun}")
         self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.resize(1100, 720)
@@ -538,7 +539,7 @@ def content_document(data: dict, kind: str, base_url: str) -> Document:
     document = Document(data.get("title", ""))
     url = f"{base_url}/{'blog' if kind == 'post' else 'page'}/{data.get('slug', '')}"
     details = "・".join(x for x in ((data.get("date") or "")[:10], "English" if data.get("lang") == "en" else "中文", url) if x)
-    document.title_block(data.get("title", ""), details)
+    document.title_block(raw(data.get("title", "")), details)
     if data.get("summary"):
         document.quote(data["summary"])
     document.markdown(data.get("content", ""))
@@ -719,7 +720,7 @@ class ContentPage(Page):
 class ContentViewer(QDialog):
     def __init__(self, parent, item: dict):
         super().__init__(parent)
-        self.setWindowTitle(item.get("title", ""))
+        self.setWindowTitle(raw(item.get("title", "")))
         self.resize(700, 560)
         text = QPlainTextEdit(item.get("content", ""))
         text.setReadOnly(True)

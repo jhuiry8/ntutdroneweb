@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDateEdit, QD
 
 from ..api import ApiError
 from ..docx import Document
+from ..i18n import raw, tr
 from ..widgets import (DataTable, Page, background, busy, button_row, confirm, docx_path, export_info, icon_button,
                        open_html, open_url, save_docx, show_error)
 from .admin import rich_text
@@ -62,7 +63,7 @@ class MeetingDialog(QDialog):
         self.options = options
         meeting = meeting or {}
         self.locked = meeting.get("status") in ("open", "closed")
-        self.setWindowTitle(f"修改會議 - {meeting.get('title', '')}" if meeting else "召開新會議")
+        self.setWindowTitle(f"修改會議 - {raw(meeting.get('title', ''))}" if meeting else "召開新會議")
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.type = QComboBox()
         for key, label in options.get("types", {}).items():
@@ -408,13 +409,13 @@ class MeetingWindow(QDialog):
 
     def render(self, full: bool) -> None:
         m = self.meeting
-        self.setWindowTitle(f"{m.get('title', '')} - 會議")
-        self.header.setText(f"{m.get('title', '')}　〔{m.get('typeLabel', '')}・{m.get('statusLabel', '')}〕")
-        where = m.get("location") or "（地點待補）"
+        self.setWindowTitle(f"{raw(m.get('title', ''))} - 會議")
+        self.header.setText(f"{raw(m.get('title', ''))}　〔{raw(m.get('typeLabel', ''))}・{raw(m.get('statusLabel', ''))}〕")
+        where = raw(m.get("location")) or "（地點待補）"
         if m.get("onlineUrl"):
             where += f'・<a href="{html.escape(m["onlineUrl"])}">線上會議</a>'
         code = f"・簽到碼 <b>{html.escape(m['checkInCode'])}</b>" if self.officer and m.get("checkInCode") else ""
-        self.summary.setText(f"{m.get('date', '')} {m.get('time', '')}・{where}・召集人 {html.escape(m.get('convener') or '—')}{code}")
+        self.summary.setText(f"{m.get('date', '')} {m.get('time', '')}・{where}・召集人 {raw(html.escape(m.get('convener') or '—'))}{code}")
         while self.status_buttons.count():
             self.status_buttons.takeAt(0).widget().deleteLater()
         if self.officer:
@@ -456,8 +457,8 @@ class MeetingWindow(QDialog):
             self.minutes.setPlainText(minutes.get("content", ""))
             self.minutes.document().setModified(False)
         final = bool(minutes.get("finalizedAt"))
-        self.minutes_state.setText(f"已定稿（{minutes.get('finalizedAt', '')[:10]}，{minutes.get('finalizedBy', '')}）" if final
-                                   else "草稿" + (f"（最後修改：{minutes.get('updatedBy')}）" if minutes.get("updatedBy") else ""))
+        self.minutes_state.setText(f"已定稿（{minutes.get('finalizedAt', '')[:10]}，{raw(minutes.get('finalizedBy', ''))}）" if final
+                                   else "草稿" + (f"（最後修改：{raw(minutes.get('updatedBy'))}）" if minutes.get("updatedBy") else ""))
         self.minutes.setReadOnly(final or not self.officer)
         for button in (self.ai_minutes, self.save_minutes, self.finalize):
             button.setEnabled(self.officer and not final)
@@ -475,13 +476,13 @@ class MeetingWindow(QDialog):
         item = agenda[row]
         vote = item.get("vote", {})
         result = vote.get("result")
-        lines = [f"<b>{html.escape(item.get('title', ''))}</b>（{html.escape(self.page.options.get('kinds', {}).get(item.get('kind'), ''))}）",
-                 rich_text(item.get("description", "")), f"表決門檻：{html.escape(item.get('thresholdLabel', ''))}"]
+        lines = [f"<b>{raw(html.escape(item.get('title', '')))}</b>（{raw(html.escape(self.page.options.get('kinds', {}).get(item.get('kind'), '')))}）",
+                 raw(rich_text(item.get("description", ""))), f"表決門檻：{raw(html.escape(item.get('thresholdLabel', '')))}"]
         if result:
             lines.append(f"表決結果：同意 {vote.get('agree', 0)}、反對 {vote.get('oppose', 0)}、棄權 {vote.get('abstain', 0)}"
-                         f"（{'線上' if vote.get('source') == 'online' else '現場'}）— <b>{html.escape(result.get('reason', ''))}</b>")
+                         f"（{'線上' if vote.get('source') == 'online' else '現場'}）— <b>{raw(html.escape(result.get('reason', '')))}</b>")
         if item.get("resolution"):
-            lines.append(f"決議：{html.escape(item['resolution'])}")
+            lines.append(f"決議：{raw(html.escape(item['resolution']))}")
         self.item_info.setHtml("<br>".join(line for line in lines if line))
         live = vote.get("state") == "open"
         self.vote_state.setText(f"投票中，已投 {vote.get('ballots', 0)} 票" + ("・您已投票" if item.get("voted") else "") if live
@@ -668,13 +669,13 @@ class MeetingWindow(QDialog):
 def meeting_document(m: dict, options: dict, user: dict, server: str, minutes: str = "") -> Document:
     """The whole meeting on paper: details, notice, attendance, agenda with vote results, minutes and signatures."""
     document = Document(m.get("title", ""))
-    document.title_block(m.get("title", ""), f"{m.get('typeLabel', '')}・{m.get('statusLabel', '')}・{export_info(user, server)}")
+    document.title_block(raw(m.get("title", "")), f"{raw(m.get('typeLabel', ''))}・{raw(m.get('statusLabel', ''))}・{export_info(user, server)}")
     total = m.get("totalMembers")
     document.table(["項目", "內容"], [
         ["日期時間", f"{m.get('date', '')} {m.get('time', '')}".strip()],
         ["地點", m.get("location") or "—"], ["線上會議", m.get("onlineUrl") or "—"],
         ["召集人／主席／紀錄", "／".join(x or "—" for x in (m.get("convener"), m.get("chair"), m.get("recorder")))],
-        ["出席", f"簽到 {m.get('attendanceCount', 0)} 人，計入法定人數 {m.get('counted', 0)} 人" + (f"，應出席 {total} 人" if total is not None else "")],
+        ["出席", tr(f"簽到 {m.get('attendanceCount', 0)} 人，計入法定人數 {m.get('counted', 0)} 人" + (f"，應出席 {total} 人" if total is not None else ""))],
     ], widths=[2400, 7200])
     if m.get("notice"):
         document.heading("開會通知", 1)
@@ -682,18 +683,18 @@ def meeting_document(m: dict, options: dict, user: dict, server: str, minutes: s
     document.heading("議程與表決結果", 1)
     kinds = options.get("kinds", {})
     for index, item in enumerate(m.get("agenda", []), 1):
-        document.heading(f"第 {index} 案　{item.get('title', '')}（{kinds.get(item.get('kind'), '')}）", 2)
+        document.heading(f"第 {index} 案　{raw(item.get('title', ''))}（{raw(kinds.get(item.get('kind'), ''))}）", 2)
         if item.get("description"):
-            document.paragraph(item["description"])
-        document.paragraph(f"表決門檻：{item.get('thresholdLabel', '')}", size=18)
+            document.paragraph(raw(item["description"]))
+        document.paragraph(f"表決門檻：{raw(item.get('thresholdLabel', ''))}", size=18)
         vote, result = item.get("vote", {}), item.get("vote", {}).get("result")
         if result:
             document.paragraph(f"表決結果：同意 {vote.get('agree', 0)}、反對 {vote.get('oppose', 0)}、棄權 {vote.get('abstain', 0)}"
-                               f"（{'線上投票' if vote.get('source') == 'online' else '現場表決'}）——**{result.get('reason', '')}**")
+                               f"（{'線上投票' if vote.get('source') == 'online' else '現場表決'}）——**{raw(result.get('reason', ''))}**")
         if item.get("notes"):
-            document.paragraph(f"討論紀錄：{item['notes']}")
+            document.paragraph(f"討論紀錄：{raw(item['notes'])}")
         if item.get("resolution"):
-            document.paragraph(f"**決議：**{item['resolution']}")
+            document.paragraph(f"**決議：**{raw(item['resolution'])}")
     attendance = m.get("attendance", [])
     if attendance:
         document.heading("出席名單", 1)

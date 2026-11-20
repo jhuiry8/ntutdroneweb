@@ -1,29 +1,32 @@
 name: Desktop App (Windows installer)
 
-# Every merge to main that changes desktop/ releases a new version automatically:
-#   1. build and test ClubDesk-Setup-x.y.z.exe, with the next version number
-#      (major.minor from clubdesk/__init__.py; patch = one more than the newest
-#      desktop-v<major>.<minor>.* tag, or the version in __init__.py if it is new),
-#   2. create the desktop-vx.y.z tag and a GitHub Release with the SHA-256,
-#   3. announce it to the website (PUT /api/desktop/version) when the
-#      DESKTOP_RELEASE_TOKEN secret is set, so every copy offers the update.
-# Pull requests only build and test. Pushing a desktop-v* tag by hand still works.
+# Builds and tests ClubDesk-Setup-x.y.z.exe.
+#   * Pull requests and manual runs only build and test (the installer is a workflow artifact).
+#   * Merges to main are released by release.yml, which calls this workflow with the version
+#     number to use and publishes ONE GitHub Release with every package.
 on:
-  push:
-    branches: [ main ]
-    paths: [ 'desktop/**', '.github/workflows/desktop.yml' ]
-    tags: [ 'desktop-v*' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
     paths: [ 'desktop/**', '.github/workflows/desktop.yml' ]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: Version to build (x.y.z), chosen by release.yml
+        type: string
+        required: true
+    outputs:
+      version:
+        value: ${{ jobs.build.outputs.version }}
+      sha256:
+        value: ${{ jobs.build.outputs.sha256 }}
 
 permissions:
   contents: read
 
-# Releases run one after another, so two quick merges never pick the same version.
+# A newer pull request push replaces the older run.
 concurrency:
-  group: desktop-${{ github.ref }}
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -36,8 +39,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0   # tags, to find the newest released version
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -54,27 +55,11 @@ jobs:
 
     - name: Choose version
       id: version
+      env:
+        RELEASE_VERSION: ${{ inputs.version }}
       run: |
         $base = python -c "from clubdesk import __version__; print(__version__)"
-        # The version the next merge to main would release.
-        $parts = $base.Split('.')
-        $prefix = "desktop-v$($parts[0]).$($parts[1])."
-        $patches = @(git tag --list "$prefix*" | ForEach-Object { $_.Substring($prefix.Length) } | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
-        if (-not (git tag --list "desktop-v$base")) {
-          $next = $base                          # a version bumped by hand is used as is
-        } elseif ($patches.Count) {
-          $next = "$($parts[0]).$($parts[1]).$(($patches | Measure-Object -Maximum).Maximum + 1)"
-        } else {
-          $next = "$($parts[0]).$($parts[1]).$([int]$parts[2] + 1)"
-        }
-        if ($env:GITHUB_REF_TYPE -eq 'tag') {
-          $version = $env:GITHUB_REF_NAME -replace '^desktop-v', ''
-        } elseif ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
-          $version = $base
-          "Merging this pull request would release $next"
-        } else {
-          $version = $next
-        }
+        $version = if ($env:RELEASE_VERSION) { $env:RELEASE_VERSION } else { $base }
         if ($version -notmatch '^\d{1,4}\.\d{1,4}\.\d{1,4}$') { throw "Invalid version '$version'" }
         # The program reports this number to the update check, so it must match the release.
         (Get-Content clubdesk/__init__.py -Raw) -replace '__version__ = "[^"]*"', "__version__ = `"$version`"" | Set-Content clubdesk/__init__.py -NoNewline -Encoding utf8
@@ -113,68 +98,3 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       sha256: ${{ steps.setup.outputs.sha256 }}
 
-  release:
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/desktop-v'))
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      VERSION: ${{ needs.build.outputs.version }}
-      SHA256: ${{ needs.build.outputs.sha256 }}
-    steps:
-    - uses: actions/download-artifact@v4
-      with:
-        name: ClubDesk-Setup-${{ needs.build.outputs.version }}
-
-    - name: Release notes
-      id: notes
-      env:
-        COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-      run: |
-        # First line of the merge (usually the pull request title) becomes the update note members see.
-        summary=$(printf '%s\n' "$COMMIT_MESSAGE" | sed -n '1p')
-        title=$(printf '%s\n' "$COMMIT_MESSAGE" | sed -n '3p')
-        case "$summary" in "Merge pull request"*) [ -n "$title" ] && summary="$title" ;; esac
-        [ -z "$summary" ] && summary="桌面版更新 $VERSION"
-        printf 'summary<<NOTES_END\n%s\nNOTES_END\n' "${summary:0:300}" >> "$GITHUB_OUTPUT"
-
-    - name: Publish GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: desktop-v${{ needs.build.outputs.version }}
-        target_commitish: ${{ github.sha }}
-        name: 社務管理系統 ${{ needs.build.outputs.version }}
-        make_latest: true
-        files: ClubDesk-Setup-*.exe
-        body: |
-          北科無人機社 社務管理系統（桌面版）${{ needs.build.outputs.version }}
-
-          ${{ steps.notes.outputs.summary }}
-
-          下載 ClubDesk-Setup-${{ needs.build.outputs.version }}.exe 並執行即可安裝；已安裝的電腦開啟程式時會自動提示更新。
-
-          SHA-256: ${{ needs.build.outputs.sha256 }}
-
-    - name: Announce to the website
-      env:
-        TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
-        SITE_URL: ${{ vars.SITE_URL || 'https://ntut.tpe.pp.ua' }}
-        NOTES: ${{ steps.notes.outputs.summary }}
-      run: |
-        if [ -z "$TOKEN" ]; then
-          echo "::notice::DESKTOP_RELEASE_TOKEN is not set: the president announces $VERSION from 工具 → 發布桌面版更新."
-          exit 0
-        fi
-        url="https://github.com/${GITHUB_REPOSITORY}/releases/download/desktop-v${VERSION}/ClubDesk-Setup-${VERSION}.exe"
-        body=$(jq -n --arg v "$VERSION" --arg u "$url" --arg s "$SHA256" --arg n "$NOTES" '{version:$v, url:$u, sha256:$s, notes:$n}')
-        # The website may still be deploying the token; retry for about two minutes.
-        for attempt in 1 2 3 4 5 6; do
-          status=$(curl -sS -o response.json -w '%{http_code}' -X PUT "${SITE_URL%/}/api/desktop/version" \
-            -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data "$body" || echo 000)
-          if [ "$status" = 200 ]; then echo "Announced $VERSION to $SITE_URL"; exit 0; fi
-          if [ "$status" = 409 ]; then echo "::notice::The website already offers a newer version: $(cat response.json)"; exit 0; fi
-          echo "Attempt $attempt: HTTP $status $(cat response.json 2>/dev/null)"
-          sleep 20
-        done
-        echo "::warning::Could not announce $VERSION to the website; the president can do it from 工具 → 發布桌面版更新."
