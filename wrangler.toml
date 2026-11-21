@@ -38,6 +38,10 @@ class_name = "FileStore"
 name = "CLASS_STORE"
 class_name = "ClassStore"
 
+[[durable_objects.bindings]]
+name = "EVENT_STORE"
+class_name = "EventStore"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["EquipmentStore"]
@@ -66,6 +70,10 @@ new_sqlite_classes = ["FileStore"]
 tag = "v7"
 new_sqlite_classes = ["ClassStore"]
 
+[[migrations]]
+tag = "v8"
+new_sqlite_classes = ["EventStore"]
+
 # File library (檔案庫): photos and documents are stored in this R2 bucket. See README「檔案庫」.
 [[r2_buckets]]
 binding = "FILES"
@@ -80,4 +88,5 @@ bucket_name = "ntut-drone-backups"
 [triggers]
 # Daily 19:00 UTC (03:00 Taipei): R2 backup (BACKUP_CRON in src/backup.js).
 # Daily 18:00 UTC (02:00 Taipei): overdue equipment loan reminder (LOAN_REMINDER_CRON in src/worker.js).
-crons = ["0 1 * * 1", "0 19 * * *", "0 18 * * *"]
+# Daily 12:00 UTC (20:00 Taipei): day-before event reminders (EVENT_REMINDER_CRON in src/event-routes.js).
+crons = ["0 1 * * 1", "0 19 * * *", "0 18 * * *", "0 12 * * *"]

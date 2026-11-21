@@ -52,6 +52,7 @@ export function getHeader(title, lang = 'zh') {
                     <a href="/?lang=${lang}#about" class="nav-link">${t.navAbout}</a>
                     <a href="/?lang=${lang}#features" class="nav-link">${t.navFeatures}</a>
                     <a href="/blog?lang=${lang}" class="nav-link">${t.navBlog}</a>
+                    <a href="/calendar?lang=${lang}" class="nav-link">${t.navCalendar}</a>
                     <a href="/?lang=${lang}#faq" class="nav-link">${t.navFaq}</a>
                 </nav>
                 <div class="nav-socials">
@@ -80,6 +81,7 @@ export function getHeader(title, lang = 'zh') {
                 <a href="/?lang=${lang}#about" class="drawer-link">${t.navAbout}</a>
                 <a href="/?lang=${lang}#features" class="drawer-link">${t.navFeatures}</a>
                 <a href="/blog?lang=${lang}" class="drawer-link">${t.navBlog}</a>
+                <a href="/calendar?lang=${lang}" class="drawer-link">${t.navCalendar}</a>
                 <a href="/?lang=${lang}#faq" class="drawer-link">${t.navFaq}</a>
                 <a href="/admin" class="drawer-link">🔐 社務後台 / 會員專區</a>
                 <a href="/forms/equipment-loan" class="drawer-link">📋 設備借用申請</a>
@@ -130,6 +132,7 @@ export function getFooter(lang = 'zh', active = '') {
                         <h4>快速導覽</h4>
                         <a href="/?lang=${lang}">回到首頁</a>
                         <a href="/blog?lang=${lang}">${t.navBlog}</a>
+                        <a href="/calendar?lang=${lang}">${t.navCalendar}</a>
                         <a href="/forms/equipment-loan">設備借用申請</a>
                         <a href="/admin">社務管理後台</a>
                         <a href="https://lin.ee/s5YJgGI" target="_blank">LINE 社群</a>
