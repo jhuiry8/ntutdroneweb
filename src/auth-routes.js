@@ -1,6 +1,8 @@
 // HTTP routes for signing in and out, accounts (帳號管理), the caller's own account
 // and the site-wide switches only the president changes.
 import { membershipStatus } from './membership.js';
+import { trialSummary } from './classes.js';
+import { classAttendanceCounts } from './class-routes.js';
 import { passwordHash, verifyPassword, validRole, canManageUsers, publicUser } from './auth.js';
 import { renderLogin } from './templates.js';
 import { createCaptcha, verifyCaptcha } from './captcha.js';
@@ -248,7 +250,7 @@ export async function handleAuthRequest(request, env) {
             .sort((a, b) => b.date.localeCompare(a.date)).map(({ date, amount, feeType, semester, receiptNumber }) => ({ date, amount, feeType, semester, receiptNumber })) : [];
         return Response.json({
             ...publicUser(user),
-            member: member ? { name: member.name, studentId: member.studentId, email: member.email, phone: member.phone, position: member.position, joinedAt: member.joinedAt, feeSemester: member.feeSemester || '', status: membershipStatus(member) } : null,
+            member: member ? { name: member.name, studentId: member.studentId, email: member.email, phone: member.phone, position: member.position, joinedAt: member.joinedAt, feeSemester: member.feeSemester || '', status: { ...membershipStatus(member), ...trialSummary(member) }, attendance: (await classAttendanceCounts(env))[member.id] || { total: 0, year: 0 } } : null,
             feeReceipts: receipts
         });
     }
