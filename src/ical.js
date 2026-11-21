@@ -3,7 +3,7 @@
 const CRLF = '\r\n';
 
 export function icsEscape(value) {
-    return String(value ?? '').replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r\n|\r|\n/g, '\\n');
+    return String(value ?? '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r\n|\r|\n/g, '\\n');
 }
 
 // Content lines are limited to 75 octets; continuation lines start with one space. Never split a UTF-8 character.

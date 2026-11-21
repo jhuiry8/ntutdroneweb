@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker, { EventStore, MeetingStore, MessageStore } from '../src/worker.js';
-import { buildIcs, foldLine } from '../src/ical.js';
+import { buildIcs, foldLine, icsEscape } from '../src/ical.js';
 import { csvCell, runEventReminders } from '../src/event-routes.js';
 import { withSiteStore } from './helpers/site-store.js';
 
@@ -236,7 +236,8 @@ test('iCal output is well formed: CRLF, folding, escaping, UTC times', () => {
     assert.ok(ics.endsWith('END:VCALENDAR\r\n'));
     assert.ok(!/[^\r]\n/.test(ics), 'every line break is CRLF');
     assert.match(ics, /DTSTART:20300504T013000Z\r\nDTEND:20300504T033000Z/);
-    assert.match(ics, /SUMMARY:Fly\\, fun\; day\\\\\r\n/);
+    assert.ok(ics.includes('SUMMARY:Fly\\, fun\\; day\\\\\r\n'), 'comma, semicolon and backslash are each escaped with a backslash');
+    assert.equal(icsEscape('a;b'), 'a\\;b');
     assert.match(ics, /DESCRIPTION:line1\\nline2/);
     assert.match(ics, /DTSTART;VALUE=DATE:20301231\r\nDTEND;VALUE=DATE:20310101/);
     for (const line of ics.split('\r\n')) assert.ok(new TextEncoder().encode(line).length <= 75, `line too long: ${line}`);
