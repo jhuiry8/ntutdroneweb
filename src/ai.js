@@ -130,7 +130,9 @@ export async function reviewFinance(env, transactions, budgets, fetchImpl = fetc
 export const AI_MEMBER_IMPORT_MAX_ROWS = 150;
 const MEMBER_FIELDS = ['name', 'studentId', 'email', 'phone', 'position', 'note', 'joinedAt', 'level', 'feeStatus', 'feeSemester'];
 const LEVEL_LABELS = ['非正式社員', '正式社員', '籌備幹部', '正式幹部'];
-const FEE_LABELS = ['未繳費', '學期會籍', '在學會籍'];
+const FEE_LABELS = ['未繳費', '一年會籍', '在學會籍'];
+// 「學期會籍」是舊名稱，AI 或使用者仍可能輸出，統一轉成「一年會籍」。
+const LEGACY_FEE_LABELS = { 學期會籍: '一年會籍' };
 
 const MEMBER_SYSTEM_PROMPT = [
     '你是無人機社的社員名冊整理助理。使用者會貼上格式混亂的名單（Google 表單匯出、試算表、聊天紀錄等），請整理成一列一位社員。',
@@ -150,8 +152,9 @@ export function sanitizeMemberRows(raw) {
         clean.position = clean.position.slice(0, 60);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(clean.joinedAt)) clean.joinedAt = '';
         if (!LEVEL_LABELS.includes(clean.level)) clean.level = '正式社員';
+        clean.feeStatus = LEGACY_FEE_LABELS[clean.feeStatus] || clean.feeStatus;
         if (!FEE_LABELS.includes(clean.feeStatus)) clean.feeStatus = '未繳費';
-        if (!/^\d{2,3}-[12]$/.test(clean.feeSemester) || clean.feeStatus !== '學期會籍') clean.feeSemester = '';
+        if (!/^\d{2,3}-[12]$/.test(clean.feeSemester) || clean.feeStatus !== '一年會籍') clean.feeSemester = '';
         return clean;
     }).filter(row => row.name || row.studentId);
     return { rows, notes: clip(raw?.notes, 600) };

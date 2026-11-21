@@ -200,7 +200,7 @@ test('AI member import cleans rows and is limited to roster managers', async (t)
     mockAi(t, [{ rows: [{ name: '王小明', studentId: ' b11 234567 ', level: '幹部', feeStatus: '學期會籍', feeSemester: '115-1', joinedAt: '昨天' }, { name: '', studentId: '' }], notes: '請確認學號' }]);
     const result = await (await request('/api/ai/member-import', 'finance', 'POST', { text: '王小明 b11234567' })).json();
     assert.equal(result.rows.length, 1);
-    assert.deepEqual(result.rows[0], { name: '王小明', studentId: 'B11234567', email: '', phone: '', position: '', note: '', joinedAt: '', level: '正式社員', feeStatus: '學期會籍', feeSemester: '115-1' });
+    assert.deepEqual(result.rows[0], { name: '王小明', studentId: 'B11234567', email: '', phone: '', position: '', note: '', joinedAt: '', level: '正式社員', feeStatus: '一年會籍', feeSemester: '115-1' });
     assert.equal(sanitizeMemberRows({ rows: [{ name: 'a', feeStatus: '未繳費', feeSemester: '115-1' }] }).rows[0].feeSemester, '');
 });
 

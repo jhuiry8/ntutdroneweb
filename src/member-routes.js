@@ -21,7 +21,7 @@ export function normalizeMemberInput(body, index = null, defaultJoinedAt = true)
     const level = body?.level ? parseMemberLevel(body.level) : 'member';
     if (!level) throw new ValidationError(`${prefix}社員身分無效（可填 非正式社員、正式社員、籌備幹部、正式幹部）`);
     const feeStatus = body?.feeStatus ? parseFeeStatus(body.feeStatus) : 'unpaid';
-    if (!feeStatus) throw new ValidationError(`${prefix}社費狀態無效（可填 未繳費、學期會籍、在學會籍）`);
+    if (!feeStatus) throw new ValidationError(`${prefix}社費狀態無效（可填 未繳費、一年會籍、在學會籍）`);
     let feeSemester = String(body?.feeSemester ?? '').trim();
     if (feeStatus === 'semester' && !feeSemester) feeSemester = semesterOf();
     if (feeStatus !== 'semester') feeSemester = '';

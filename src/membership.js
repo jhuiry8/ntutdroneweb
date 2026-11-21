@@ -12,7 +12,7 @@ export const MEMBER_LEVELS = {
 };
 export const FEE_STATUSES = {
     unpaid: '未繳費',
-    semester: '學期會籍（500 元）',
+    semester: '一年會籍（500 元）',
     lifetime: '在學會籍（1,000 元）'
 };
 export const SEMESTER_FEE = 500;
@@ -31,8 +31,26 @@ export function semesterOf(date = new Date()) {
 
 export function validSemester(value) { return /^\d{2,3}-[12]$/.test(value); }
 
+// Previous academic term: 115-1 → 114-2, 115-2 → 115-1. Returns '' for invalid input.
+export function previousSemester(value) {
+    const match = /^(\d{2,3})-([12])$/.exec(value ?? '');
+    if (!match) return '';
+    const year = Number(match[1]);
+    return match[2] === '2' ? `${year}-1` : `${year - 1}-2`;
+}
+
+// Next academic term: 115-1 → 115-2, 115-2 → 116-1. Returns '' for invalid input.
+export function nextSemester(value) {
+    const match = /^(\d{2,3})-([12])$/.exec(value ?? '');
+    if (!match) return '';
+    const year = Number(match[1]);
+    return match[2] === '1' ? `${year}-2` : `${year + 1}-1`;
+}
+
 // Derived status shown in the roster and on the member's own page.
-// 學期會籍 is valid only for the term it was paid in (社費細則第二條第一款);
+// 一年會籍 (key `semester`) is valid for two consecutive terms: the term it was
+// paid in plus the next one (社費細則第二條第一款). feeSemester stores the paid term,
+// so it is valid when feeSemester is the current term or the previous term.
 // 在學會籍 stays valid while the person is a student. Officers may be exempt
 // from fees (第一條第四款) but exemption is not payment, so prep officers who
 // have not paid have no vote (四級分級細則第四條第四款), while formal officers
@@ -41,13 +59,15 @@ export function membershipStatus(member, today = new Date()) {
     const level = MEMBER_LEVELS[member?.level] ? member.level : 'member';
     const feeStatus = FEE_STATUSES[member?.feeStatus] ? member.feeStatus : 'unpaid';
     const current = semesterOf(today);
-    const paid = feeStatus === 'lifetime' || (feeStatus === 'semester' && member?.feeSemester === current);
+    const feeSemester = member?.feeSemester;
+    const termPaid = feeStatus === 'semester' && (feeSemester === current || feeSemester === previousSemester(current));
+    const paid = feeStatus === 'lifetime' || termPaid;
     const exempt = !paid && (level === 'prep' || level === 'officer');
     let feeLabel;
     if (feeStatus === 'lifetime') feeLabel = '在學會籍';
-    else if (paid) feeLabel = `學期會籍（${current}）`;
+    else if (paid) feeLabel = `一年會籍（有效至 ${nextSemester(feeSemester)}）`;
     else if (exempt) feeLabel = '幹部免繳';
-    else if (feeStatus === 'semester' && member?.feeSemester) feeLabel = `未繳費（學期會籍 ${member.feeSemester} 已到期）`;
+    else if (feeStatus === 'semester' && member?.feeSemester) feeLabel = `未繳費（一年會籍 ${member.feeSemester} 已到期）`;
     else feeLabel = '未繳費';
     const voting = level === 'officer' || ((level === 'member' || level === 'prep') && paid);
     const trialUses = Math.max(0, Number(member?.trialUses) || 0);
@@ -89,7 +109,7 @@ const LEVEL_ALIASES = {
 };
 const FEE_ALIASES = {
     unpaid: ['unpaid', 'UNPAID', '未繳費', '未繳', '否', ''],
-    semester: ['semester', 'SEMESTER_PAID', '學期會籍', '學期制', '已繳單學期', '500'],
+    semester: ['semester', 'SEMESTER_PAID', '一年會籍', '學期會籍', '學期制', '已繳單學期', '500'],
     lifetime: ['lifetime', 'LIFETIME_PAID', '在學會籍', '終身制', '已繳終身制', '1000', '1,000']
 };
 function lookup(aliases, value) {

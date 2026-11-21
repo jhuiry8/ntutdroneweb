@@ -564,8 +564,8 @@ function previewMemberImport() {
                 const feeDate=dateMatch?dateMatch[1]+'-'+dateMatch[2].padStart(2,'0')+'-'+dateMatch[3].padStart(2,'0'):'';
                 const paidAmount=Number(String(row[incomeColumn]||'').replace(/[,$\s]/g,''));
                 const semester=dateMatch?(Number(dateMatch[2])>=8?(Number(dateMatch[1])-1911)+'-1':(Number(dateMatch[1])-1912)+'-'+(Number(dateMatch[2])===1?1:2)):'';
-                const feeStatus=paidAmount>=1000?'在學會籍':paidAmount>=500?'學期會籍':'未繳費';
-                return {name:studentId?'':raw,studentId,level:'正式社員',feeStatus,feeSemester:feeStatus==='學期會籍'?semester:'',email:'',phone:'',position:'',joinedAt:'',note:feeDate?'社費紀錄日期：'+feeDate:''};
+                const feeStatus=paidAmount>=1000?'在學會籍':paidAmount>=500?'一年會籍':'未繳費';
+                return {name:studentId?'':raw,studentId,level:'正式社員',feeStatus,feeSemester:feeStatus==='一年會籍'?semester:'',email:'',phone:'',position:'',joinedAt:'',note:feeDate?'社費紀錄日期：'+feeDate:''};
             }).filter(item=>item.name||item.studentId);
         } else {
             if (columns.name < 0 && columns.studentId < 0) { memberImportRows=[]; return showToast('找不到可辨識的社員欄位；請提供姓名／學號欄，或社費帳本的日期、事宜、收入欄', true); }
@@ -583,7 +583,7 @@ async function submitMemberImport() {
     catch { showToast('匯入失敗，請稍後重試',true); } finally { button.disabled=!memberImportRows.length; }
 }
 const memberLevelLabels={trial:'非正式社員',member:'正式社員',prep:'籌備幹部',officer:'正式幹部'};
-const feeTypeLabels={semester:'學期會籍',lifetime:'在學會籍',other:'其他'};
+const feeTypeLabels={semester:'一年會籍',lifetime:'在學會籍',other:'其他'};
 function memberBadge(text,color) { return '<span style="display:inline-block; padding:2px 8px; border-radius:999px; font-size:.8rem; border:1px solid '+color+'; color:'+color+'; white-space:nowrap;">'+escapeText(text)+'</span>'; }
 function memberFeeCell(status) { return status.paid?memberBadge(status.feeLabel,'#34d399'):status.exempt?memberBadge(status.feeLabel,'#60a5fa'):memberBadge(status.feeLabel,'#fbbf24'); }
 function syncMemberForm() { const fee=document.getElementById('member-fee-status').value, level=document.getElementById('member-level').value; document.getElementById('member-fee-semester-wrap').style.display=fee==='semester'?'grid':'none'; document.getElementById('member-trial-wrap').style.display=level==='trial'?'grid':'none'; }
@@ -628,7 +628,7 @@ async function applyBulkMembers() {
     if (!selectedMembers.size) return showToast('請先勾選社員，或按「全選」', true);
     const level = document.getElementById('bulk-level').value, feeStatus = document.getElementById('bulk-fee-status').value, feeSemester = document.getElementById('bulk-fee-semester').value.trim();
     if (!level && !feeStatus) return showToast('請選擇要改成的身分或社費狀態', true);
-    const parts = [level && '身分改為「' + memberLevelLabels[level] + '」', feeStatus && '社費改為「' + {unpaid:'未繳費',semester:'學期會籍' + (feeSemester ? ' ' + feeSemester : '（本學期）'),lifetime:'在學會籍'}[feeStatus] + '」'].filter(Boolean).join('，');
+    const parts = [level && '身分改為「' + memberLevelLabels[level] + '」', feeStatus && '社費改為「' + {unpaid:'未繳費',semester:'一年會籍' + (feeSemester ? ' ' + feeSemester : '（本學期）'),lifetime:'在學會籍'}[feeStatus] + '」'].filter(Boolean).join('，');
     if (!confirm('將 ' + selectedMembers.size + ' 位社員的' + parts + '？')) return;
     const res = await fetch('/api/members/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [...selectedMembers], level, feeStatus, feeSemester }) });
     const data = await res.json(); showToast(res.ok ? '已更新 ' + data.updated + ' 位社員' : data.error, !res.ok);
@@ -680,7 +680,7 @@ async function loadMyMember() {
         const m = data.member, status = m.status;
         const rows = [['姓名', m.name || '—'], ['學號', m.studentId || '—'], ['身分', status.levelLabel + (status.level === 'trial' ? '（免費體驗社課剩 ' + status.trialRemaining + ' 次）' : '')], ['社費', status.feeLabel], ['表決權', status.voting ? '有（列入社員總額）' : '無'], ['幹部職務', m.position || '—'], ['加入日期', m.joinedAt || '—']];
         let html = '<dl style="display:grid; grid-template-columns:max-content 1fr; gap:6px 16px; margin:0; color:var(--text-main);">' + rows.map(([k, v]) => '<dt style="color:var(--text-muted);">' + k + '</dt><dd style="margin:0;">' + escapeText(v) + '</dd>').join('') + '</dl>';
-        if (status.unpaid) html += '<p style="margin-top:12px; color:#fbbf24;">目前為未繳費狀態。依《社費細則》，學期會籍每學期 500 元、在學會籍一次 1,000 元；繳費後請向總務簽收。</p>';
+        if (status.unpaid) html += '<p style="margin-top:12px; color:#fbbf24;">目前為未繳費狀態。依《社費細則》，一年會籍 500 元（繳費學期加下一學期，連續兩學期有效）、在學會籍一次 1,000 元；繳費後請向總務簽收。</p>';
         if (data.feeReceipts.length) html += '<p style="margin-top:12px;">繳費紀錄：' + data.feeReceipts.map(item => escapeText(item.date + ' NT$ ' + item.amount + (feeTypeLabels[item.feeType] ? '（' + feeTypeLabels[item.feeType] + '）' : ''))).join('、') + '</p>';
         box.innerHTML = html;
     } catch { box.textContent = '無法載入社員資料'; }

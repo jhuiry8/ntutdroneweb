@@ -15,12 +15,12 @@ from ..icons import icon
 from ..widgets import DataTable, Page, busy, button_row, confirm, money, show_error
 
 LEVELS = [("trial", "非正式社員"), ("member", "正式社員"), ("prep", "籌備幹部"), ("officer", "正式幹部")]
-FEES = [("unpaid", "未繳費"), ("semester", "學期會籍（500 元）"), ("lifetime", "在學會籍（1,000 元）")]
+FEES = [("unpaid", "未繳費"), ("semester", "一年會籍（500 元）"), ("lifetime", "在學會籍（1,000 元）")]
 FILTERS = [("", "（全部）"), ("unpaid", "未繳社費"), ("paid", "已繳社費"), ("voting", "具表決權"),
            ("unbound", "未綁定帳號"), ("trial", "非正式社員"), ("member", "正式社員"),
            ("prep", "籌備幹部"), ("officer", "正式幹部")]
-FEE_TYPES = [("", "依金額自動判斷"), ("semester", "學期會籍"), ("lifetime", "在學會籍"), ("other", "其他")]
-FEE_TYPE_LABELS = {"semester": "學期會籍", "lifetime": "在學會籍", "other": "其他"}
+FEE_TYPES = [("", "依金額自動判斷"), ("semester", "一年會籍"), ("lifetime", "在學會籍"), ("other", "其他")]
+FEE_TYPE_LABELS = {"semester": "一年會籍", "lifetime": "在學會籍", "other": "其他"}
 # CSV column names accepted by 匯入 CSV (the server also accepts its own field names).
 IMPORT_HEADERS = {"姓名": "name", "學號": "studentId", "email": "email", "電話": "phone", "職務": "position",
                   "加入日期": "joinedAt", "身分": "level", "社員身分": "level", "社費": "feeStatus",
