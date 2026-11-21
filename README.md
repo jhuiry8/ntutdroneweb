@@ -235,6 +235,14 @@
 5. **社員資料**：社員管理列表與「系統設定 → 我的社員資料」顯示社課出席次數（累計／本學年）與本學年剩餘免費體驗次數。名冊的 `trialUses` 現在搭配 `trialYear`（學年）使用；沒有 `trialYear` 的舊資料視為建立當年的次數，幹部在名冊手動修改次數時會標記為本學年。
 * 部署：新增 `CLASS_STORE` Durable Object（`wrangler.toml` 的 migration `v7`）。出席紀錄存在 DO，名冊的 `trialUses` 仍在 KV `members:list`（讀改寫範圍只限該欄位）。
 
+### 3-3c. 社課事先報名與社務統計報表
+
+- **社課報名**：後台「社課報名與簽到」建立場次時可勾選「開放事先報名」，設定名額（0 = 不限）、報名截止（留空 = 開課前）與對象（全部／社員含非正式／正式社員）。額滿自動候補，有人取消時依序遞補（邏輯沿用活動報名）。資料存在 `ClassStore`（`creg:` 前綴），不需要新的 migration。
+- **前台**：`/classes` 列出即將開課的場次與剩餘名額。社員登入後一鍵報名／取消；沒有帳號的人以學號＋姓名報名（含速率限制與 captcha／Turnstile），報名後這台裝置會記住取消憑證。非正式社員報名時顯示本學年剩餘免費體驗次數，用完仍可報名，由幹部決定。
+- **出席對照**：後台場次頁顯示「已報名已到／已報名未到／未報名現場來」，可匯出 CSV（`/api/classes/<id>/roster.csv`）。
+- **提醒**：開課前一天由既有每日 20:00（台北）cron（`EVENT_REMINDER_CRON`）發布公告，不新增 cron。
+- **統計報表**：`/admin/stats`（幹部可進入）可選學期，以圖表顯示社員組成、社課、活動、財務、設備、飛行；每個區塊可匯出 CSV，整頁可列印（淺色樣式）。財務區塊只有社長與財務看得到，API 也不會回傳給其他角色。圖表為自繪 inline SVG（`public/charts.js`：`Charts.pie / bar / line`），不使用外部函式庫。
+
 ### 3-4. 社團通訊與外部推播（Durable Object MessageStore）
 後台與桌面版提供專屬「社團通訊 / 訊息中心」（`/api/messages/*`、`/api/announcements/*`），所有訊息資料由 Cloudflare Workers **`MESSAGE_STORE` Durable Object**（原生 SQLite 儲存架構，`wrangler.toml` migration `v5`）集中管理，支援多端同步、未讀狀態追蹤與安全防護：
 

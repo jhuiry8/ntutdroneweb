@@ -8,6 +8,7 @@
 // `trialUses` counter in the roster is kept in step by class-routes.js.
 import { FREE_TRIAL_CLASSES, MEMBER_LEVELS, membershipStatus, semesterOf } from './membership.js';
 import { MeetingError } from './meetings.js';
+import { parseEventTime, taipeiInput, promoteWaitlist, confirmedOf, waitlistOf, regSort } from './events.js';
 
 // Same status mapping as meetings (worker.js turns a MeetingError into its HTTP status).
 export class ClassError extends MeetingError {}
@@ -17,6 +18,10 @@ export const MAX_CLASSES = 500;
 export const MAX_ATTENDEES = 500;
 export const DEFAULT_TOKEN_MINUTES = 30;
 export const MAX_TOKEN_MINUTES = 12 * 60;
+// Pre-registration (事先報名), optional per session. Audience: everyone (visitors with 學號＋姓名 too),
+// roster members including trial members, or formal members only.
+export const CLASS_AUDIENCES = { all: '全部（含訪客）', with_trial: '社員（含非正式社員）', members: '正式社員' };
+export const MAX_CLASS_REGISTRATIONS = 500;
 
 function text(value, field, max, required = false) {
     const result = String(value ?? '').replace(/\r\n?/g, '\n').trim();
@@ -87,7 +92,33 @@ export function applyClassFields(session, input) {
     const time = String(input?.time ?? session.time ?? '');
     if (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new ClassError('上課時間格式錯誤');
     session.time = time;
+    applyRegistrationFields(session, input);
     return session;
+}
+
+// When the class starts (a class without a time counts until the end of its day), Taipei time.
+export function classStartsAt(session) {
+    return new Date(Date.parse(`${session.date}T${session.time || '23:59'}:00+08:00`)).toISOString();
+}
+export function classRegistrationDeadline(session) { return session.registrationDeadline || classStartsAt(session); }
+export function classRegistrationOpen(session, now) {
+    return session.registrationEnabled === true && session.status === 'open'
+        && Date.parse(now) <= Date.parse(classRegistrationDeadline(session)) && Date.parse(now) < Date.parse(classStartsAt(session));
+}
+
+function applyRegistrationFields(session, input) {
+    const has = name => input && input[name] !== undefined;
+    session.registrationEnabled = has('registrationEnabled') ? input.registrationEnabled === true : session.registrationEnabled === true;
+    const capacityRaw = has('capacity') ? input.capacity : session.capacity;
+    const capacity = capacityRaw === '' || capacityRaw === null || capacityRaw === undefined ? 0 : Number(capacityRaw);
+    if (!Number.isInteger(capacity) || capacity < 0 || capacity > MAX_CLASS_REGISTRATIONS) throw new ClassError(`名額必須是 0 至 ${MAX_CLASS_REGISTRATIONS} 的整數（0 = 不限）`);
+    const audience = (has('audience') ? input.audience : session.audience) ?? 'all';
+    if (!CLASS_AUDIENCES[audience]) throw new ClassError('報名對象無效');
+    let deadline = has('registrationDeadline') ? parseEventTime(input.registrationDeadline, '報名截止時間') : (session.registrationDeadline || null);
+    if (deadline && Date.parse(deadline) > Date.parse(classStartsAt(session))) throw new ClassError('報名截止時間不可晚於開課時間');
+    Object.assign(session, { capacity, audience, registrationDeadline: deadline });
+    session.nextRegSeq ??= 1;
+    session.reminderSentAt ??= '';
 }
 
 function tokenState(session, nowMs) {
@@ -256,9 +287,10 @@ function entryView(entry) {
 
 // Officers see the attendance list and the live token; nobody else gets either.
 export function classView(session, nowMs = Date.now()) {
-    const { attendance, token, tokenExpiresAt, ...rest } = session;
+    const { attendance, token, tokenExpiresAt, nextRegSeq, ...rest } = session;
     return {
         ...rest,
+        registration: registrationConfig(session),
         statusLabel: CLASS_STATUSES[session.status],
         year: academicYearOf(session.date),
         token, tokenExpiresAt, tokenState: tokenState(session, nowMs),
@@ -270,6 +302,29 @@ export function classView(session, nowMs = Date.now()) {
 export function classListView(session, nowMs) {
     const { attendance, token, ...view } = classView(session, nowMs);
     return view;
+}
+
+export function registrationConfig(session) {
+    const audience = CLASS_AUDIENCES[session.audience] ? session.audience : 'all';
+    return {
+        enabled: session.registrationEnabled === true, capacity: session.capacity || 0, audience, audienceLabel: CLASS_AUDIENCES[audience],
+        deadline: classRegistrationDeadline(session), deadlineLocal: taipeiInput(session.registrationDeadline), startsAt: classStartsAt(session)
+    };
+}
+
+// Public /classes listing: schedule, seats left, nothing about who signed up or the check-in token.
+export function publicListView(session, counts, now) {
+    const confirmed = counts?.confirmed || 0, waitlist = counts?.waitlist || 0;
+    const config = registrationConfig(session);
+    const full = config.capacity > 0 && confirmed >= config.capacity;
+    return {
+        id: session.id, topic: session.topic, date: session.date, time: session.time, instructor: session.instructor, location: session.location,
+        registration: {
+            enabled: config.enabled, capacity: config.capacity, audience: config.audience, audienceLabel: config.audienceLabel, deadline: config.deadline,
+            confirmed, waitlist, full, seatsLeft: config.capacity ? Math.max(0, config.capacity - confirmed) : null,
+            open: classRegistrationOpen(session, now)
+        }
+    };
 }
 
 // What the public page may see once it holds a valid token.
@@ -291,10 +346,141 @@ export function attendanceCounts(sessions, year) {
     return counts;
 }
 
+
+// ---- Registration (事先報名) -----------------------------------------------------
+// Each registration is its own record, `creg:<classId>:<seq>`, in the same Durable Object, so the
+// seat count, the waitlist and the promotion on a cancellation all happen in one transaction.
+// The waitlist logic is the one used for event registration (events.js).
+
+const regKey = (classId, seq) => `creg:${classId}:${String(seq).padStart(8, '0')}`;
+export async function loadRegs(storage, classId) {
+    return [...(await storage.list({ prefix: `creg:${classId}:` })).values()].sort(regSort);
+}
+async function saveRegs(storage, session, regs) { for (const reg of regs) await storage.put(regKey(session.id, reg.seq), reg); }
+
+// Who may register: who = { kind: 'member' | 'trial' | 'guest', ... }.
+export function canRegisterClass(session, who) {
+    const audience = session.audience || 'all';
+    if (audience === 'all') return true;
+    if (audience === 'with_trial') return who.kind === 'member' || who.kind === 'trial';
+    return who.kind === 'member';
+}
+
+function sameRegistrant(reg, who) {
+    return reg.key === who.key || Boolean(who.memberId && reg.memberId === who.memberId) || Boolean(who.username && reg.username === who.username);
+}
+
+async function loadSession(storage, id) {
+    const session = /^[\w-]{1,80}$/.test(String(id || '')) ? await storage.get(`class:${id}`) : null;
+    if (!session) throw new ClassError('找不到社課場次', 404);
+    return session;
+}
+
+// Every registration operation of ClassStore (path /reg/<op>). Returns plain data.
+export async function classRegOp(storage, op, payload, now = new Date().toISOString()) {
+    if (op === 'counts') {
+        const counts = {};
+        for (const reg of (await storage.list({ prefix: 'creg:' })).values()) {
+            const bucket = counts[reg.classId] ||= { confirmed: 0, waitlist: 0 };
+            bucket[reg.status === 'confirmed' ? 'confirmed' : 'waitlist']++;
+        }
+        return counts;
+    }
+    if (op === 'all') {
+        // Every registration, for the statistics report.
+        return [...(await storage.list({ prefix: 'creg:' })).values()].map(({ classId, status, key, memberId, seq }) => ({ classId, status, key, memberId, seq }));
+    }
+    if (op === 'mine') {
+        // This signed-in account's registration in every class: { [classId]: { id, status, position } }.
+        const byClass = {};
+        for (const reg of (await storage.list({ prefix: 'creg:' })).values()) (byClass[reg.classId] ||= []).push(reg);
+        const mine = {};
+        for (const [classId, list] of Object.entries(byClass)) {
+            const reg = list.find(item => payload.username && item.username === payload.username);
+            if (reg) mine[classId] = { id: reg.id, status: reg.status, position: reg.status === 'waitlist' ? waitlistOf(list).findIndex(item => item.id === reg.id) + 1 : 0 };
+        }
+        return mine;
+    }
+    const session = await loadSession(storage, payload.id);
+    const regs = await loadRegs(storage, session.id);
+    if (op === 'list') return { session, regs };
+    const actor = payload.actor || {};
+
+    if (op === 'mark-reminded') { session.reminderSentAt = now; await storage.put(`class:${session.id}`, session); return { session, regs }; }
+
+    if (op === 'register' || op === 'add') {
+        if (op === 'add' && !actor.officer) throw new ClassError('只有幹部可以管理報名', 403);
+        const who = { ...payload.who };
+        who.key = attendeeKey(who);
+        if (!who.key || who.key === 'n:') throw new ClassError('請填寫學號與姓名');
+        if (op === 'register') {
+            if (session.registrationEnabled !== true) throw new ClassError('這場社課不開放事先報名', 409);
+            if (session.status !== 'open') throw new ClassError('這場社課已結束', 409);
+            if (!classRegistrationOpen(session, now)) throw new ClassError('報名已截止', 409);
+            if (!canRegisterClass(session, who)) throw new ClassError(`這場社課報名對象為「${CLASS_AUDIENCES[session.audience || 'all']}」，您不符合資格`, 403);
+        }
+        if (regs.length >= MAX_CLASS_REGISTRATIONS) throw new ClassError('此場次報名人數已達系統上限', 409);
+        if (regs.some(reg => sameRegistrant(reg, who))) throw new ClassError('已經報名過了', 409);
+        const free = session.capacity ? session.capacity - confirmedOf(regs).length : Infinity;
+        // Anyone already waiting goes first; a late arrival cannot jump the queue into a freed seat.
+        const status = (op === 'add' && payload.force === true) || (free > 0 && waitlistOf(regs).length === 0) ? 'confirmed' : 'waitlist';
+        const seq = session.nextRegSeq || 1;
+        session.nextRegSeq = seq + 1;
+        const reg = {
+            id: crypto.randomUUID(), classId: session.id, seq, status, key: who.key, kind: who.kind, memberId: who.memberId || '', username: who.username || '',
+            studentId: String(who.studentId || '').toUpperCase().slice(0, 30), name: String(who.name || '').trim().slice(0, 50), level: who.level || '',
+            cancelHash: who.cancelHash || '', by: op === 'add' ? actor.username : 'self', createdAt: now
+        };
+        await storage.put(`class:${session.id}`, session);
+        await storage.put(regKey(session.id, seq), reg);
+        regs.push(reg);
+        return { session, regs, reg };
+    }
+
+    if (op === 'cancel') {
+        const reg = regs.find(item => item.id === String(payload.regId || '')
+            || (!payload.regId && actor.username && item.username === actor.username));
+        if (!reg) throw new ClassError('找不到報名紀錄', 404);
+        if (!actor.officer) {
+            const mine = reg.username && reg.username === actor.username;
+            const guestOk = !reg.username && reg.cancelHash && payload.cancelHash && reg.cancelHash === payload.cancelHash;
+            if (!mine && !guestOk) throw new ClassError('找不到報名紀錄', 404);
+            if (Date.parse(now) >= Date.parse(classStartsAt(session))) throw new ClassError('社課已開始，無法自行取消，請洽幹部', 409);
+        }
+        await storage.delete(regKey(session.id, reg.seq));
+        regs.splice(regs.indexOf(reg), 1);
+        const promoted = reg.status === 'confirmed' ? promoteWaitlist(session, regs, now) : [];
+        await saveRegs(storage, session, promoted);
+        return { session, regs, removed: reg, promoted };
+    }
+    throw new ClassError('報名操作不存在', 404);
+}
+
+// Registrations against the attendance list: 已報名已到 / 已報名未到 / 未報名現場來.
+// Waitlisted people who never came are not listed here (they were never in the class).
+export const ATTENDANCE_STATES = { attended: '已報名已到', absent: '已報名未到', walkin: '未報名現場來' };
+export function compareAttendance(session, regs) {
+    const entryOf = reg => session.attendance.find(entry => entry.key === reg.key || Boolean(reg.memberId && entry.memberId === reg.memberId));
+    const matched = new Set();
+    const rows = [];
+    for (const reg of [...confirmedOf(regs)].sort(regSort)) {
+        const entry = entryOf(reg);
+        if (entry) matched.add(entry.id);
+        rows.push({ state: entry ? 'attended' : 'absent', stateLabel: ATTENDANCE_STATES[entry ? 'attended' : 'absent'], name: reg.name, studentId: reg.studentId, kind: reg.kind, kindLabel: KIND_LABELS[reg.kind] || reg.kind, regStatus: 'confirmed', at: entry?.at || '' });
+    }
+    for (const entry of session.attendance) {
+        if (matched.has(entry.id)) continue;
+        const waiting = waitlistOf(regs).some(reg => reg.key === entry.key || Boolean(reg.memberId && entry.memberId === reg.memberId));
+        rows.push({ state: 'walkin', stateLabel: ATTENDANCE_STATES.walkin, name: entry.name, studentId: entry.studentId, kind: entry.kind, kindLabel: KIND_LABELS[entry.kind] || entry.kind, regStatus: waiting ? 'waitlist' : '', at: entry.at });
+    }
+    const count = state => rows.filter(row => row.state === state).length;
+    return { rows, counts: { attended: count('attended'), absent: count('absent'), walkin: count('walkin') } };
+}
+
 // ---- CSV -----------------------------------------------------------------
 
 // Spreadsheet programs run cells that start with = + - @ as formulas, and visitors type their own names.
-function csvCell(value) {
+export function csvCell(value) {
     let cell = String(value ?? '');
     if (/^[=+\-@\t\r]/.test(cell)) cell = `'${cell}`;
     return /[",\n\r]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell;
@@ -309,6 +495,17 @@ export function classCsv(session) {
     return `﻿${[header, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n')}\r\n`;
 }
 
+// Registration list with the three attendance states (rows from compareAttendance), plus the waitlist.
+export function rosterCsv(session, regs) {
+    const { rows } = compareAttendance(session, regs);
+    const header = ['日期', '主題', '出席對照', '姓名', '學號', '類別', '報名狀態', '簽到時間'];
+    const lines = rows.map(row => [session.date, session.topic, row.stateLabel, row.name, row.studentId, row.kindLabel, row.regStatus === 'confirmed' ? '已報名' : row.regStatus === 'waitlist' ? '候補' : '未報名', row.at]);
+    for (const reg of waitlistOf(regs)) {
+        if (!rows.some(row => row.state === 'walkin' && row.regStatus === 'waitlist' && row.name === reg.name && row.studentId === reg.studentId)) lines.push([session.date, session.topic, '候補（未到）', reg.name, reg.studentId, KIND_LABELS[reg.kind] || reg.kind, '候補', '']);
+    }
+    return `﻿${[header, ...lines].map(row => row.map(csvCell).join(',')).join('\r\n')}\r\n`;
+}
+
 // ---- Durable Object ---------------------------------------------------------
 
 export class ClassStore {
@@ -320,6 +517,7 @@ export class ClassStore {
             const payload = await request.json();
             const now = new Date().toISOString();
             const result = await this.storage.transaction(async storage => {
+                if (url.pathname.startsWith('/reg/')) return { status: 200, body: await classRegOp(storage, url.pathname.slice(5), payload, now) };
                 if (url.pathname === '/list') return { status: 200, body: [...(await storage.list({ prefix: 'class:' })).values()] };
                 if (url.pathname === '/summary') return { status: 200, body: attendanceCounts((await storage.list({ prefix: 'class:' })).values(), payload.year) };
                 if (url.pathname === '/create') {
@@ -334,12 +532,15 @@ export class ClassStore {
                 if (url.pathname === '/get') return { status: 200, body: session };
                 if (url.pathname === '/delete') {
                     await storage.delete(`class:${id}`);
+                    for (const reg of await loadRegs(storage, id)) await storage.delete(regKey(id, reg.seq));
                     return { status: 200, body: { success: true, session } };
                 }
                 if (url.pathname === '/op') {
                     const outcome = applyClassOp(session, payload.op, payload, payload.actor || {}, now);
                     session.updatedAt = now;
                     await storage.put(`class:${id}`, session);
+                    // A bigger capacity frees seats for the waitlist; a smaller one never bumps anyone.
+                    if (payload.op === 'update') await saveRegs(storage, session, promoteWaitlist(session, await loadRegs(storage, id), now));
                     return { status: 200, body: { session, ...outcome } };
                 }
                 return { status: 404, body: { error: '社課操作不存在' } };

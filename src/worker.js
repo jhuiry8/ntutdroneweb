@@ -25,7 +25,8 @@ import { handleFormRequest, formStore, withAiQuota, aiDailyLimit } from './form-
 import { handleDesktopRequest } from './desktop-routes.js';
 import { handleAiRequest, generateClubReport } from './ai-routes.js';
 import { handleMeetingRequest } from './meeting-routes.js';
-import { handleClassRequest } from './class-routes.js';
+import { handleClassRequest, runClassReminders } from './class-routes.js';
+import { handleStatsRequest } from './stats-routes.js';
 import { handleMessageRequest } from './message-routes.js';
 import { handleFileRequest } from './file-routes.js';
 import { handleDriveRequest } from './drive-routes.js';
@@ -91,6 +92,7 @@ const ROUTES = [
     (request, env) => handleAiRequest(request, env, aiDeps),
     (request, env) => handleMeetingRequest(request, env, aiDeps),
     (request, env) => handleClassRequest(request, env, aiDeps),
+    (request, env) => handleStatsRequest(request, env, aiDeps),
     (request, env) => handleMessageRequest(request, env, aiDeps),
     (request, env) => handleEventRequest(request, env, aiDeps),
     (request, env) => handleFlightRequest(request, env, aiDeps),
@@ -126,6 +128,7 @@ export default {
         else if (cron === LOAN_REMINDER_CRON) ctx.waitUntil(remindOverdueLoans(env).catch(log('Overdue loan reminder failed')));
         else if (cron === EVENT_REMINDER_CRON) {
             ctx.waitUntil(runEventReminders(env).catch(log('Event reminders failed')));
+            ctx.waitUntil(runClassReminders(env).catch(log('Class reminders failed')));
             ctx.waitUntil(runCertReminders(env, aiDeps).catch(log('Certificate reminders failed')));
         } else console.error('Unknown cron trigger', cron);
     }

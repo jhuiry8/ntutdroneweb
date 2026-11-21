@@ -6,7 +6,8 @@
     var main = document.querySelector('.main-content');
     if (!nav || !main) return;
 
-    var state = { classes: [], roster: [], currentId: '', detail: null };
+    var state = { classes: [], roster: [], currentId: '', detail: null, regs: null };
+    var AUDIENCES = { all: '全部（含訪客）', with_trial: '社員（含非正式社員）', members: '正式社員' };
     var countdown = null;
 
     function esc(value) { return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -34,13 +35,13 @@
     var navButton = document.createElement('button');
     navButton.className = 'nav-item'; navButton.type = 'button';
     navButton.setAttribute('onclick', "showPanel('classes')");
-    navButton.innerHTML = '<i data-lucide="qr-code"></i> 社課簽到';
+    navButton.innerHTML = '<i data-lucide="qr-code"></i> 社課報名與簽到';
     navButton.addEventListener('click', function () { guard(load()); });
     if (meetingsButton) meetingsButton.insertAdjacentElement('afterend', navButton); else nav.firstElementChild.appendChild(navButton);
 
     var panel = document.createElement('div');
     panel.id = 'panel-classes'; panel.className = 'panel';
-    panel.innerHTML = '<div class="content-header"><div><h1>社課簽到</h1><p class="cl-muted" style="margin-top:6px;">建立社課場次，產生短時間有效的簽到 QR code。社員用學號＋姓名簽到；非正式社員自動扣除本學年免費體驗次數（2 次），超過會提示繳費，由幹部決定是否放行。</p></div></div><div id="cl-body"></div>';
+    panel.innerHTML = '<div class="content-header"><div><h1>社課報名與簽到</h1><p class="cl-muted" style="margin-top:6px;">建立社課場次，可選擇開放事先報名（名額、截止時間、對象；額滿自動候補）。現場產生短時間有效的簽到 QR code。社員用學號＋姓名簽到；非正式社員自動扣除本學年免費體驗次數（2 次），超過會提示繳費，由幹部決定是否放行。</p></div></div><div id="cl-body"></div>';
     main.appendChild(panel);
     if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
     var body = document.getElementById('cl-body');
@@ -51,23 +52,37 @@
         if (state.currentId) await openClass(state.currentId, true); else render();
     }
     async function openClass(id, quiet) {
-        try { state.detail = await api('/api/classes/' + encodeURIComponent(id)); state.currentId = id; }
-        catch (error) { state.currentId = ''; state.detail = null; if (!quiet) throw error; }
+        try {
+            state.detail = await api('/api/classes/' + encodeURIComponent(id)); state.currentId = id;
+            state.regs = await api('/api/classes/' + encodeURIComponent(id) + '/registrations');
+        }
+        catch (error) { state.currentId = ''; state.detail = null; state.regs = null; if (!quiet) throw error; }
         render();
+    }
+
+    function regFields(c) {
+        var r = c ? c.registration : { enabled: false, capacity: 0, audience: 'all', deadlineLocal: '' };
+        return '<div class="cl-grid" style="margin-top:10px;"><label class="cl-muted"><input type="checkbox" name="registrationEnabled"' + (r.enabled ? ' checked' : '') + '> 開放事先報名</label>'
+            + '<label class="cl-muted">名額（0 = 不限）<input class="form-control" name="capacity" type="number" min="0" max="500" step="1" value="' + esc(r.capacity) + '"></label>'
+            + '<label class="cl-muted">報名截止（留空 = 開課前）<input class="form-control" name="registrationDeadline" type="datetime-local" value="' + esc(r.deadlineLocal) + '"></label>'
+            + '<label class="cl-muted">報名對象<select class="form-control" name="audience">' + Object.keys(AUDIENCES).map(function (k) { return '<option value="' + k + '"' + (r.audience === k ? ' selected' : '') + '>' + AUDIENCES[k] + '</option>'; }).join('') + '</select></label></div>';
+    }
+    function regValues(form) {
+        return { registrationEnabled: form.elements.registrationEnabled.checked, capacity: form.elements.capacity.value, registrationDeadline: form.elements.registrationDeadline.value, audience: form.elements.audience.value };
     }
 
     function listHtml() {
         var rows = state.classes.map(function (c) {
-            return '<tr><td>' + esc(c.date) + '</td><td>' + esc(c.topic) + '<br><small class="cl-muted">' + esc([c.instructor, c.location].filter(Boolean).join('・')) + '</small></td><td>' + esc(c.statusLabel) + '</td><td>' + c.attendanceCount + (c.pendingCount ? ' <span class="cl-warn">（' + c.pendingCount + ' 筆待處理）</span>' : '') + '</td><td><button class="btn btn-secondary" data-open="' + esc(c.id) + '">開啟</button></td></tr>';
-        }).join('') || '<tr><td colspan="5" style="text-align:center;" class="cl-muted">還沒有社課場次。</td></tr>';
+            return '<tr><td>' + esc(c.date) + '</td><td>' + esc(c.topic) + '<br><small class="cl-muted">' + esc([c.instructor, c.location].filter(Boolean).join('・')) + '</small></td><td>' + esc(c.statusLabel) + '</td><td>' + (c.registration && c.registration.enabled ? c.registeredCount + (c.registration.capacity ? ' / ' + c.registration.capacity : '') + (c.waitlistCount ? '（候補 ' + c.waitlistCount + '）' : '') : '—') + '</td><td>' + c.attendanceCount + (c.pendingCount ? ' <span class="cl-warn">（' + c.pendingCount + ' 筆待處理）</span>' : '') + '</td><td><button class="btn btn-secondary" data-open="' + esc(c.id) + '">開啟</button></td></tr>';
+        }).join('') || '<tr><td colspan="6" style="text-align:center;" class="cl-muted">還沒有社課場次。</td></tr>';
         return '<div class="cl-card"><h2>新增社課場次</h2><form id="cl-create"><div class="cl-grid">'
             + '<input class="form-control" name="date" type="date" required aria-label="日期">'
             + '<input class="form-control" name="time" type="time" aria-label="時間">'
             + '<input class="form-control" name="topic" placeholder="主題" maxlength="120" required>'
             + '<input class="form-control" name="instructor" placeholder="講師" maxlength="60">'
-            + '<input class="form-control" name="location" placeholder="地點" maxlength="200"></div>'
+            + '<input class="form-control" name="location" placeholder="地點" maxlength="200"></div>' + regFields(null)
             + '<div class="cl-row"><button class="btn btn-primary" type="submit">建立並開始簽到</button></div></form></div>'
-            + '<div class="table-container"><table><thead><tr><th>日期</th><th>主題</th><th>狀態</th><th>簽到人數</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+            + '<div class="table-container"><table><thead><tr><th>日期</th><th>主題</th><th>狀態</th><th>報名</th><th>簽到人數</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
     }
 
     function tokenHtml(c) {
@@ -101,10 +116,30 @@
             + '<form id="cl-add-guest" class="cl-row"><input class="form-control" name="name" placeholder="訪客姓名" maxlength="50" required style="max-width:180px;"><input class="form-control" name="studentId" placeholder="學號（選填）" maxlength="30" style="max-width:180px;"><button class="btn btn-secondary" type="submit">補簽訪客</button></form></div>';
     }
 
+    function regHtml(c) {
+        var d = state.regs, html = '<div class="cl-card"><h2>報名設定</h2><form id="cl-reg-settings">' + regFields(c) + '<div class="cl-row"><button class="btn btn-secondary" type="submit">儲存報名設定</button></div></form></div>';
+        if (!c.registration.enabled && !(d && d.registrations.length)) return html;
+        var rows = d.registrations.map(function (r) {
+            return '<tr><td>' + r.order + '</td><td>' + esc(r.name) + '<br><small class="cl-muted">' + esc(r.studentId || '無學號') + '</small></td><td>' + esc(r.kindLabel)
+                + (r.trialRemaining !== null ? '<br><small class="' + (r.needsFee ? 'cl-warn' : 'cl-muted') + '">' + (r.needsFee ? '免費體驗已用完，需繳費（由幹部決定）' : '免費體驗剩 ' + r.trialRemaining + ' 次') + '</small>' : '')
+                + '</td><td class="' + (r.status === 'waitlist' ? 'cl-warn' : '') + '">' + (r.status === 'confirmed' ? '已報名' : '候補') + '</td><td style="white-space:nowrap;"><button class="btn btn-danger" data-reg-remove="' + esc(r.id) + '">移除</button></td></tr>';
+        }).join('') || '<tr><td colspan="5" style="text-align:center;" class="cl-muted">還沒有人報名。</td></tr>';
+        var taken = {};
+        d.registrations.forEach(function (r) { if (r.memberId) taken[r.memberId] = true; });
+        var options = state.roster.filter(function (m) { return !taken[m.id]; }).map(function (m) { return '<option value="' + esc(m.id) + '">' + esc((m.name || '（無姓名）') + '・' + (m.studentId || '無學號') + '・' + m.levelLabel) + '</option>'; }).join('');
+        var cmp = d.comparison, cmpRows = cmp.rows.map(function (r) {
+            var cls = r.state === 'attended' ? 'cl-ok' : r.state === 'absent' ? 'cl-warn' : '';
+            return '<tr><td class="' + cls + '">' + esc(r.stateLabel) + (r.regStatus === 'waitlist' ? '<br><small class="cl-muted">（候補中）</small>' : '') + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.studentId || '—') + '</td><td>' + esc(r.kindLabel) + '</td></tr>';
+        }).join('') || '<tr><td colspan="4" style="text-align:center;" class="cl-muted">沒有資料。</td></tr>';
+        return html + '<div class="cl-card"><h2>報名名單（已報名 ' + d.confirmed + ' 人' + (d.waitlist ? '、候補 ' + d.waitlist + ' 人' : '') + (c.registration.capacity ? '，名額 ' + c.registration.capacity : '') + '）</h2><div class="table-container"><table><thead><tr><th>順位</th><th>姓名／學號</th><th>類別</th><th>狀態</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+            + '<h3 style="margin-top:16px; font-size:.98rem;">幹部代報名</h3><form id="cl-reg-member" class="cl-row"><select class="form-control" name="memberId" style="max-width:420px;" required><option value="">選擇社員…</option>' + options + '</select><label class="cl-muted"><input type="checkbox" name="force"> 名額已滿也直接加入</label><button class="btn btn-secondary" type="submit">加入報名</button></form></div>'
+            + '<div class="cl-card"><h2>出席對照（已報名已到 ' + cmp.counts.attended + '・已報名未到 ' + cmp.counts.absent + '・未報名現場來 ' + cmp.counts.walkin + '）</h2><div class="cl-row"><a class="btn btn-secondary" href="/api/classes/' + esc(c.id) + '/roster.csv">匯出對照 CSV</a></div><div class="table-container"><table><thead><tr><th>狀態</th><th>姓名</th><th>學號</th><th>類別</th></tr></thead><tbody>' + cmpRows + '</tbody></table></div></div>';
+    }
+
     function detailHtml(c) {
         return '<p><button class="btn btn-secondary" id="cl-back">← 返回場次列表</button></p><div class="cl-card"><h2>' + esc(c.topic) + ' <span class="cl-pill ' + (c.status === 'open' ? 'cl-ok' : 'cl-muted') + '">' + esc(c.statusLabel) + '</span></h2><p class="cl-muted">' + esc(c.date + (c.time ? ' ' + c.time : '') + '・' + (c.instructor ? '講師 ' + c.instructor + '・' : '') + (c.location || '地點未填') + '・' + c.year + ' 學年') + '</p>'
             + '<div class="cl-row"><button class="btn btn-secondary" id="cl-toggle">' + (c.status === 'open' ? '結束簽到' : '重新開放簽到') + '</button><a class="btn btn-secondary" href="/api/classes/' + esc(c.id) + '/export.csv">匯出 CSV</a><button class="btn btn-danger" id="cl-delete">刪除場次</button></div></div>'
-            + tokenHtml(c) + attendanceHtml(c);
+            + regHtml(c) + tokenHtml(c) + attendanceHtml(c);
     }
 
     function render() {
@@ -129,6 +164,7 @@
                 event.preventDefault();
                 var form = event.target, fields = {};
                 ['date', 'time', 'topic', 'instructor', 'location'].forEach(function (name) { fields[name] = form.elements[name].value; });
+                Object.assign(fields, regValues(form));
                 guard(api('/api/classes', 'POST', fields).then(function (created) { toast('已建立社課場次'); state.currentId = created.id; return load(); }));
             });
             body.querySelectorAll('[data-open]').forEach(function (button) { button.addEventListener('click', function () { guard(openClass(button.dataset.open)); }); });
@@ -137,6 +173,14 @@
         var base = '/api/classes/' + encodeURIComponent(c.id);
         function update(promise, message) { return guard(promise.then(function (updated) { state.detail = updated; if (message) toast(message); return load(); })); }
         on('cl-back', 'click', function () { state.currentId = ''; state.detail = null; guard(load()); });
+        on('cl-reg-settings', 'submit', function (event) { event.preventDefault(); update(api(base, 'PATCH', regValues(event.target)), '已儲存報名設定'); });
+        on('cl-reg-member', 'submit', function (event) {
+            event.preventDefault();
+            guard(api(base + '/registrations', 'POST', { memberId: event.target.elements.memberId.value, force: event.target.elements.force.checked }).then(function () { toast('已加入報名'); return load(); }));
+        });
+        body.querySelectorAll('[data-reg-remove]').forEach(function (button) {
+            button.addEventListener('click', function () { if (confirm('移除這筆報名？若有候補會自動遞補。')) guard(api(base + '/registrations/' + encodeURIComponent(button.dataset.regRemove), 'DELETE').then(function () { toast('已移除報名'); return load(); })); });
+        });
         on('cl-toggle', 'click', function () { update(api(base + '/status', 'POST', { status: c.status === 'open' ? 'closed' : 'open' })); });
         on('cl-delete', 'click', function () {
             if (!confirm('刪除「' + c.topic + '」與其 ' + c.attendanceCount + ' 筆簽到紀錄？已扣除的免費體驗次數會退回，無法復原。')) return;
