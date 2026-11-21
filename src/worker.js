@@ -7,6 +7,7 @@ import { RegulationRuleError } from './regulation-rules.js';
 import { FormValidationError, FormServiceError } from './forms.js';
 import { MeetingError } from './meetings.js';
 import { MessageError } from './messages.js';
+import { FileError } from './files.js';
 import { PayloadTooLargeError, readJsonLimited } from './request.js';
 import { ValidationError, parseStoredList } from './validation.js';
 import { takeAttempt, giveBackAttempt, sessionUser, listUsers } from './session.js';
@@ -23,12 +24,14 @@ import { handleDesktopRequest } from './desktop-routes.js';
 import { handleAiRequest, generateClubReport } from './ai-routes.js';
 import { handleMeetingRequest } from './meeting-routes.js';
 import { handleMessageRequest } from './message-routes.js';
+import { handleFileRequest } from './file-routes.js';
 import { equipmentStoreRequest } from './equipment-store.js';
 export { EquipmentStore } from './equipment-store.js';
 export { FormStore } from './form-store.js';
 export { MeetingStore } from './meetings.js';
 export { MessageStore } from './messages.js';
 export { SiteStore } from './site-store.js';
+export { FileStore } from './file-store.js';
 
 // The pages still use inline scripts and onclick handlers, so 'unsafe-inline'
 // is needed for scripts. The policy still blocks plugins, <base> hijacking,
@@ -75,6 +78,7 @@ const ROUTES = [
     (request, env) => handleMessageRequest(request, env, aiDeps),
     handleCmsRequest,
     handleFinanceRequest,
+    handleFileRequest,
     handleEquipmentRequest,
     handleMemberRequest,
     handleRegulationRequest,
@@ -123,6 +127,7 @@ async function handleRequest(request, env, ctx) {
         if (e instanceof ValidationError || e instanceof FormValidationError || e instanceof RegulationRuleError) return Response.json({ error: e.message }, { status: 400 });
         if (e instanceof FormServiceError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof MeetingError) return Response.json({ error: e.message }, { status: e.status });
+        if (e instanceof FileError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof MessageError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof PasswordResetRequiredError) {
             if (path === '/api/login') {

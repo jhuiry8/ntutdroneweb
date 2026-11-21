@@ -31,6 +31,16 @@ jobs:
           sed -i "s/YOUR_KV_NAMESPACE_ID/$KV_ID/g" wrangler.toml
           echo "KV Namespace ID successfully injected."
 
+      - name: Inject R2 bucket name
+        run: |
+          R2_BUCKET=$(echo "${{ secrets.CLOUDFLARE_R2_BUCKET }}" | tr -d '[:space:]')
+          if [ -z "$R2_BUCKET" ]; then
+            echo "::error::CLOUDFLARE_R2_BUCKET secret is not set! Create an R2 bucket and add its name in Settings -> Secrets and variables -> Actions (see README 檔案庫)."
+            exit 1
+          fi
+          sed -i "s/your-r2-bucket-name/$R2_BUCKET/g" wrangler.toml
+          echo "R2 bucket name successfully injected."
+
       - name: Deploy to Cloudflare Workers
         run: npx wrangler deploy
         env:

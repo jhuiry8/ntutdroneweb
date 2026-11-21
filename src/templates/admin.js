@@ -1,6 +1,6 @@
 // The dashboard shell. Its styles and behaviour are static files in public/
 // (admin.css, admin-nav.js, admin.js and the admin-*.js modules).
-import { canViewCms, canEditCms, canManageFinance, canManageMembers, canManageEquipment } from '../auth.js';
+import { canViewCms, canEditCms, canManageFinance, canManageMembers, canManageEquipment, canUploadFiles } from '../auth.js';
 import { escapeHtml } from '../html.js';
 import { PWA_HEAD_TAGS } from './layout.js';
 
@@ -55,6 +55,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                         ${manageFinance ? `<button class="nav-item" onclick="showPanel('finance'); loadFinance()"><i data-lucide="wallet-cards"></i> 財務管理</button>` : ''}
                         ${manageEquipment ? `<button class="nav-item" onclick="showPanel('equipment'); loadEquipment()"><i data-lucide="package-check"></i> 設備管理</button>` : ''}
                         ${viewCms ? `<button class="nav-item" onclick="showPanel('notes'); loadNotes()"><i data-lucide="sticky-note"></i> 社課備忘錄</button>` : ''}
+                        <button class="nav-item" onclick="showPanel('files'); loadFiles()"><i data-lucide="folder-open"></i> 檔案庫</button>
                         <button class="nav-item" onclick="showPanel('regulations'); loadRegulations()"><i data-lucide="scale"></i> 法規查詢</button>
                     </div>
                     <div class="nav-group"><p class="nav-group-label">系統管理</p>
@@ -601,6 +602,26 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 </form>` : ''}
                 <div id="notes-list" style="display:grid; gap:14px;"><p style="color:var(--text-muted);">載入社課紀錄中…</p></div>
             </div>` : ''}
+            <div id="panel-files" class="panel" data-can-upload="${canUploadFiles(user) ? '1' : ''}">
+                <div class="content-header"><div><h1>檔案庫</h1><p style="color:var(--text-muted); margin-top:6px;">上傳照片與檔案，複製連結後可貼進文章（Markdown）或其他欄位。只收 JPG／PNG／WebP／GIF／PDF／DOCX／XLSX／PPTX／ZIP，圖片上限 10 MB、其他 25 MB。</p></div><button type="button" class="btn btn-secondary" onclick="loadFiles()">重新載入</button></div>
+                ${canUploadFiles(user) ? `<div id="files-drop" class="files-drop" tabindex="0" role="button" aria-label="選擇或拖放檔案上傳">
+                    <strong>把檔案拖放到這裡，或點此選擇檔案</strong><span style="color:var(--text-muted);">可一次選多個檔案</span>
+                    <input id="files-input" type="file" multiple hidden accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.docx,.xlsx,.pptx,.zip">
+                </div>
+                <div class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:12px 0;">
+                    <select id="files-up-category" class="form-control" aria-label="上傳分類"></select>
+                    <select id="files-up-visibility" class="form-control" aria-label="可見範圍"></select>
+                    <input id="files-up-description" class="form-control" maxlength="300" placeholder="說明（選填，套用到這次上傳的所有檔案）">
+                </div>
+                <div id="files-queue" style="display:grid; gap:6px; margin-bottom:14px;"></div>` : ''}
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+                    <select id="files-filter-category" class="form-control" style="max-width:200px;" aria-label="分類篩選"></select>
+                    <select id="files-filter-kind" class="form-control" style="max-width:160px;" aria-label="類型篩選"><option value="">全部類型</option><option value="image">圖片</option><option value="document">文件</option></select>
+                    <input id="files-search" class="form-control" style="max-width:320px;" placeholder="搜尋檔名或說明">
+                </div>
+                <div id="files-grid" class="files-grid"><p style="color:var(--text-muted);">尚未載入。</p></div>
+                <div style="margin-top:14px; text-align:center;"><button id="files-more" type="button" class="btn btn-secondary" style="display:none;">載入更多</button></div>
+            </div>
             <div id="panel-forms" class="panel" data-username="${escapeHtml(user?.username || '')}" data-role="${escapeHtml(user?.role || 'member')}">
                 <div class="content-header"><div><h1>表單申請</h1><p style="color:var(--text-muted); margin-top:6px;">線上填寫並自動帶入資料，列印成紙本後交由財務長、社長及學校單位簽核；審核以紙本為準。</p><p id="forms-ai-status" class="forms-muted"></p><p class="forms-muted">非社團帳號也能用公開頁面填寫設備借據（不需登入、不提供 AI）：<a href="/forms/equipment-loan" target="_blank" rel="noopener" style="color:var(--color-cyan);">/forms/equipment-loan</a>；送出的借據會出現在下方紀錄並標示「外部填寫」。</p></div></div>
                 <div class="forms-tabs" role="tablist" aria-label="表單類型">
@@ -710,6 +731,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
         <script src="/admin-meetings.js" defer></script>
         <script src="/admin-ai.js" defer></script>
         <script src="/admin-messages.js" defer></script>
+        <script src="/admin-files.js" defer></script>
         <script src="/admin-notifications.js" defer></script>
         <script src="/admin-mobile.js" defer></script>
     </body>
