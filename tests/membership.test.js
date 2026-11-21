@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../src/worker.js';
-import { semesterOf, membershipStatus, receiptFeeType, parseMemberLevel, parseFeeStatus } from '../src/membership.js';
+import { semesterOf, previousSemester, nextSemester, membershipStatus, receiptFeeType, feePrices, parseMemberLevel, parseFeeStatus } from '../src/membership.js';
 import { DEFAULT_REGULATIONS } from '../src/regulations.js';
 import { assemblyThresholds, checkAssembly, checkProposalSource } from '../src/regulation-rules.js';
 
@@ -34,6 +34,57 @@ test('academic terms follow the August and February start dates', () => {
     assert.equal(semesterOf('2027-07-31'), '115-2');
 });
 
+test('fee prices follow the promo schedule and amounts map to plans', () => {
+    assert.deepEqual(feePrices('115-1'), { semester: 300, lifetime: 800, promo: true });
+    assert.deepEqual(feePrices('115-2'), { semester: 500, lifetime: 1000, promo: false });
+    assert.deepEqual(feePrices('116-1'), { semester: 300, lifetime: 800, promo: true });
+    const plan = (amount, date) => receiptFeeType('', amount, new Date(`${date}T00:00:00Z`));
+    // 115-1 (promo): 300 / 800
+    assert.equal(plan(300, '2026-11-15'), 'semester');
+    assert.equal(plan(800, '2026-11-15'), 'lifetime');
+    assert.equal(plan(200, '2026-11-15'), 'other');
+    // 115-2 (regular): 500 / 1,000 — 900 is not lifetime, 300 is not a membership
+    assert.equal(plan(500, '2027-03-01'), 'semester');
+    assert.equal(plan(900, '2027-03-01'), 'semester');
+    assert.equal(plan(1000, '2027-03-01'), 'lifetime');
+    assert.equal(plan(300, '2027-03-01'), 'other');
+    // 116-1 (promo again)
+    assert.equal(plan(800, '2027-09-01'), 'lifetime');
+    assert.equal(receiptFeeType('semester', 800), 'semester', 'an explicit plan choice wins');
+    assert.equal(parseFeeStatus('300'), 'semester');
+    assert.equal(parseFeeStatus('800'), 'lifetime');
+});
+
+test('previous and next semester helpers cross academic years', () => {
+    assert.equal(previousSemester('115-1'), '114-2');
+    assert.equal(previousSemester('115-2'), '115-1');
+    assert.equal(nextSemester('115-1'), '115-2');
+    assert.equal(nextSemester('115-2'), '116-1');
+    assert.equal(previousSemester('bad'), '');
+});
+
+test('one-year membership stays valid for the paid term and the next term', () => {
+    const at = date => new Date(`${date}T00:00:00Z`);
+    const paidIn = (feeSemester, date) => membershipStatus({ level: 'member', feeStatus: 'semester', feeSemester }, at(date));
+    // paid 115-1: valid in 115-1 and 115-2, expired in 116-1
+    assert.equal(paidIn('115-1', '2026-11-15').paid, true);
+    const second = paidIn('115-1', '2027-03-01');
+    assert.equal(second.paid, true);
+    assert.equal(second.voting, true);
+    assert.match(second.feeLabel, /一年會籍（有效至 115-2）/);
+    const over = paidIn('115-1', '2027-09-01');
+    assert.equal(over.paid, false);
+    assert.match(over.feeLabel, /115-1 已到期/);
+    // paid 115-2: valid in 115-2 and 116-1, expired in 116-2
+    assert.equal(paidIn('115-2', '2027-03-01').paid, true);
+    const crossYear = paidIn('115-2', '2027-09-01');
+    assert.equal(crossYear.paid, true);
+    assert.match(crossYear.feeLabel, /有效至 116-1/);
+    assert.equal(paidIn('115-2', '2028-03-01').paid, false);
+    // a future-dated feeSemester is not valid yet
+    assert.equal(paidIn('116-1', '2026-11-15').paid, false);
+});
+
 test('membership status follows the four-level and fee rules', () => {
     const today = new Date('2026-11-15T00:00:00Z');
     const unpaid = membershipStatus({ level: 'member', feeStatus: 'unpaid' }, today);
@@ -42,9 +93,9 @@ test('membership status follows the four-level and fee rules', () => {
     const current = membershipStatus({ level: 'member', feeStatus: 'semester', feeSemester: '115-1' }, today);
     assert.equal(current.paid, true);
     assert.equal(current.voting, true);
-    const expired = membershipStatus({ level: 'member', feeStatus: 'semester', feeSemester: '114-2' }, today);
+    const expired = membershipStatus({ level: 'member', feeStatus: 'semester', feeSemester: '114-1' }, today);
     assert.equal(expired.paid, false);
-    assert.match(expired.feeLabel, /114-2 已到期/);
+    assert.match(expired.feeLabel, /114-1 已到期/);
     assert.equal(membershipStatus({ level: 'member', feeStatus: 'lifetime' }, today).voting, true);
     const prep = membershipStatus({ level: 'prep', feeStatus: 'unpaid' }, today);
     assert.equal(prep.exempt, true);
@@ -57,12 +108,14 @@ test('membership status follows the four-level and fee rules', () => {
     assert.equal(membershipStatus({}, today).level, 'member', 'legacy roster entries default to formal members');
     assert.equal(receiptFeeType('', 500), 'semester');
     assert.equal(receiptFeeType('', 1000), 'lifetime');
-    assert.equal(receiptFeeType('', 300), 'other');
+    assert.equal(receiptFeeType('', 200), 'other');
     assert.equal(receiptFeeType('semester', 1000), 'semester');
     assert.equal(parseMemberLevel('PREP_OFFICER'), 'prep');
     assert.equal(parseMemberLevel('非正式社員/體驗學員'), 'trial');
     assert.equal(parseFeeStatus('LIFETIME_PAID'), 'lifetime');
     assert.equal(parseFeeStatus('學期會籍（500 元）'), 'semester');
+    assert.equal(parseFeeStatus('一年會籍（500 元）'), 'semester');
+    assert.equal(parseFeeStatus('一年會籍'), 'semester');
     assert.equal(parseFeeStatus('不知道'), null);
 });
 
@@ -88,6 +141,10 @@ test('officers add unpaid members, filter them, and receipts mark them paid', as
     const record = await receipt.json();
     assert.equal(record.memberId, member.id, 'receipt is matched to the roster by student ID');
     assert.equal(record.feeType, 'semester');
+    const regular = await (await request('/api/member-fee-receipts', 'finance', 'POST', { payerName: '外部', amount: 900, date: '2027-03-01', receiver: '總務' })).json();
+    assert.equal(regular.feeType, 'semester', '900 in a regular-price term is not a lifetime membership');
+    const promo = await (await request('/api/member-fee-receipts', 'finance', 'POST', { payerName: '外部', amount: 800, date: '2026-11-15', receiver: '總務' })).json();
+    assert.equal(promo.feeType, 'lifetime');
     assert.equal(record.memberStatus.paid, true);
     await request('/api/member-fee-receipts', 'finance', 'POST', { memberId: trial.id, amount: 1000, date: today, receiver: '總務' });
     unpaid = await (await request('/api/members?filter=unpaid', 'finance')).json();
@@ -156,7 +213,7 @@ test('regulations change only through amendments that meet the required procedur
     const { request } = fixture();
     const list = await (await request('/api/regulations', 'member')).json();
     assert.equal(list.length, DEFAULT_REGULATIONS.length);
-    assert.ok(list.some(item => item.title === '無人機社社費細則' && item.content.includes('學期會籍制：每學期繳納新臺幣500元')));
+    assert.ok(list.some(item => item.title === '無人機社社費細則' && item.content.includes('一年會籍制：一次繳納新臺幣500元，自繳費學期起連續兩學期')));
     assert.equal((await request('/api/regulations', null)).status, 401);
     assert.equal((await request('/api/regulations/charter', 'president', 'PATCH', { content: 'x' })).status, 404, 'no direct edits');
     assert.equal((await request('/api/regulations/charter', 'president', 'DELETE')).status, 404, 'no direct deletes');

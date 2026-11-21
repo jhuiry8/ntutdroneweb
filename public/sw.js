@@ -4,7 +4,7 @@
 const CACHE_NAME = 'ntut-drone-pwa-v4';
 
 // Pages that depend on the logged-in user are never written to Cache Storage.
-const PRIVATE_PATHS = [/^\/admin(\/|$)/, /^\/meeting\//, /^\/forms\/[^/]+\/(responses|records)/, /^\/login(\/|$)/];
+const PRIVATE_PATHS = [/^\/admin(\/|$)/, /^\/meeting\//, /^\/class\//, /^\/forms\/[^/]+\/(responses|records)/, /^\/login(\/|$)/];
 
 function isPrivatePath(pathname) {
     return PRIVATE_PATHS.some((pattern) => pattern.test(pathname));

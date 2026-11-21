@@ -237,8 +237,8 @@ class ApiClient:
             pass
         self.token = ""
 
-    def me(self) -> dict:
-        return self.get("/api/me")
+    def me(self, timeout: float = TIMEOUT) -> dict:
+        return self.request("GET", "/api/me", timeout=timeout)
 
     def change_password(self, old: str, new: str) -> dict:
         return self.post("/api/change-password", {"oldPassword": old, "newPassword": new})

@@ -476,11 +476,45 @@ async function loadEquipment() {
     if(!response.ok)return showToast(data.error||'無法載入設備資料',true);
     equipmentCache=data;
     const body=document.getElementById('equipment-list');
-    body.innerHTML=data.map(item=>'<tr><td><input class="equipment-select" type="checkbox" aria-label="選取 '+escapeText(item.assetNo)+'" data-id="'+escapeText(item.id)+'" onchange="updateEquipmentSelectedCount()"></td><td><strong>'+escapeText(item.assetNo)+'</strong></td><td>'+escapeText(item.assetName)+'<br><small>'+escapeText(item.category||'其他')+(item.serialNo?' · 序號 '+escapeText(item.serialNo):'')+'</small></td><td>'+escapeText(equipmentStatusLabel[item.status]||item.status)+'<br><small>'+escapeText(equipmentConditionLabel[item.condition]||item.condition)+'</small></td><td>'+escapeText(item.location||'—')+'<br><small>'+escapeText(item.custodian||'未指定保管人')+'</small></td><td>'+escapeText(item.purchaseDate||'—')+'<br><small>'+(item.purchasePrice?'NT$ '+new Intl.NumberFormat('zh-TW').format(item.purchasePrice):'未記錄金額')+'</small></td><td><button type="button" class="btn btn-secondary" data-id="'+escapeText(item.id)+'" onclick="editEquipment(this.dataset.id)">編輯</button></td></tr>').join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">查無設備資料。</td></tr>';
+    body.innerHTML=data.map(item=>'<tr><td><input class="equipment-select" type="checkbox" aria-label="選取 '+escapeText(item.assetNo)+'" data-id="'+escapeText(item.id)+'" onchange="updateEquipmentSelectedCount()"></td><td><strong>'+escapeText(item.assetNo)+'</strong></td><td>'+escapeText(item.assetName)+'<br><small>'+escapeText(item.category||'其他')+(item.serialNo?' · 序號 '+escapeText(item.serialNo):'')+'</small></td><td>'+escapeText(equipmentStatusLabel[item.status]||item.status)+'<br><small>'+escapeText(equipmentConditionLabel[item.condition]||item.condition)+'</small>'+equipmentLoanNote(item)+'</td><td>'+escapeText(item.location||'—')+'<br><small>'+escapeText(item.custodian||'未指定保管人')+'</small></td><td>'+escapeText(item.purchaseDate||'—')+'<br><small>'+(item.purchasePrice?'NT$ '+new Intl.NumberFormat('zh-TW').format(item.purchasePrice):'未記錄金額')+'</small></td><td><button type="button" class="btn btn-secondary" data-id="'+escapeText(item.id)+'" onclick="editEquipment(this.dataset.id)">編輯</button> <button type="button" class="btn btn-secondary" data-id="'+escapeText(item.id)+'" onclick="showEquipmentHistory(this.dataset.id)">借用紀錄</button></td></tr>').join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">查無設備資料。</td></tr>';
     const totalValue=equipmentCache.reduce((sum,item)=>sum+(Number(item.purchasePrice)||0),0);
     const summary=document.getElementById('equipment-summary');
     summary.innerHTML='<div class="finance-card"><span>列管設備</span><strong>'+equipmentCache.length+' 件</strong></div><div class="finance-card"><span>使用中</span><strong>'+equipmentCache.filter(item=>item.status==='in_use').length+' 件</strong></div><div class="finance-card"><span>維修中</span><strong>'+equipmentCache.filter(item=>item.status==='repair'||item.condition==='poor').length+' 件</strong></div><div class="finance-card"><span>購入金額合計（目前結果）</span><strong>NT$ '+new Intl.NumberFormat('zh-TW').format(totalValue)+'</strong></div>';
     updateEquipmentSelectedCount();
+    renderLoanPanels();
+}
+// Who has an asset right now (set when its loan slip is approved, cleared when it is returned).
+function equipmentLoanNote(item) {
+    const loan=item.currentLoan;
+    if(!loan)return '';
+    const late=loan.endDate&&loan.endDate<new Date().toISOString().slice(0,10);
+    return '<br><small'+(late?' style="color:#f87171"':'')+'>借用人 '+escapeText(loan.borrower)+' · 借據 '+escapeText(loan.formNumber||'—')+' · 應還 '+escapeText(loan.endDate||'—')+(late?'（逾期）':'')+'</small>';
+}
+// The overdue list and the borrowing history are drawn into containers created here, above and below the register table.
+function loanPanel(id,before) {
+    let box=document.getElementById(id);
+    if(!box){box=document.createElement('div');box.id=id;box.style.margin='0 0 22px';const table=document.getElementById('equipment-list').closest('.table-container');before?table.before(box):table.after(box);}
+    return box;
+}
+async function renderLoanPanels() {
+    const box=loanPanel('equipment-loans',true);
+    try{
+        const response=await fetch('/api/loans');
+        const loans=await response.json();
+        if(!response.ok)throw new Error(loans.error||'無法載入借用中清單');
+        const overdue=loans.filter(loan=>loan.overdue);
+        if(!loans.length){box.innerHTML='';return;}
+        const row=loan=>'<tr><td>'+escapeText(loan.number)+'</td><td>'+escapeText(loan.borrower)+(loan.phone?'<br><small>'+escapeText(loan.phone)+'</small>':'')+'</td><td>'+loan.items.map(escapeText).join('、')+'</td><td>'+escapeText(loan.endDate)+(loan.overdue?'<br><small style="color:#f87171">逾期 '+loan.daysOverdue+' 天</small>':'')+'</td></tr>';
+        box.innerHTML='<h3 style="font-size:1.05rem;margin:0 0 8px;">'+(overdue.length?'⚠️ 逾期未還 '+overdue.length+' 張　':'')+'借用中 '+loans.length+' 張</h3><div class="table-container"><table><thead><tr><th>借據</th><th>借用人</th><th>設備</th><th>應還日</th></tr></thead><tbody>'+loans.slice().sort((a,b)=>Number(b.overdue)-Number(a.overdue)).map(row).join('')+'</tbody></table></div><p style="color:var(--text-muted);font-size:.85rem;margin:6px 0 0;">在「表單申請」的借據紀錄按「辦理歸還」即可歸還並把設備改回庫存。</p>';
+    }catch(error){box.innerHTML='';}
+}
+async function showEquipmentHistory(id) {
+    const box=loanPanel('equipment-history',false);
+    const response=await fetch('/api/equipment/'+encodeURIComponent(id)+'/history');
+    const data=await response.json();
+    if(!response.ok)return showToast(data.error||'無法載入借用紀錄',true);
+    box.innerHTML='<h3 style="font-size:1.05rem;margin:14px 0 8px;">借用紀錄 · '+escapeText(data.asset.assetName)+'（'+escapeText(data.asset.assetNo)+'）</h3>'+(data.history.length?'<div class="table-container"><table><thead><tr><th>借據</th><th>借用人</th><th>借出</th><th>應還</th><th>歸還</th></tr></thead><tbody>'+data.history.map(entry=>'<tr><td>'+escapeText(entry.formNumber||'—')+'</td><td>'+escapeText(entry.borrower)+'</td><td>'+escapeText(String(entry.since||'').slice(0,10))+'</td><td>'+escapeText(entry.endDate||'—')+'</td><td>'+(entry.returnedAt?escapeText(entry.returnedAt.slice(0,10)):'<strong>借出中</strong>')+'</td></tr>').join('')+'</tbody></table></div>':'<p style="color:var(--text-muted)">尚無借用紀錄。</p>');
+    box.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 function resetEquipmentForm() { document.getElementById('equipment-form').reset(); document.getElementById('equipment-edit-id').value=''; document.getElementById('equipment-save-button').textContent='建立列管資料'; document.querySelector('#equipment-form-details summary').textContent='新增設備'; }
 function editEquipment(id) {
@@ -564,8 +598,8 @@ function previewMemberImport() {
                 const feeDate=dateMatch?dateMatch[1]+'-'+dateMatch[2].padStart(2,'0')+'-'+dateMatch[3].padStart(2,'0'):'';
                 const paidAmount=Number(String(row[incomeColumn]||'').replace(/[,$\s]/g,''));
                 const semester=dateMatch?(Number(dateMatch[2])>=8?(Number(dateMatch[1])-1911)+'-1':(Number(dateMatch[1])-1912)+'-'+(Number(dateMatch[2])===1?1:2)):'';
-                const feeStatus=paidAmount>=1000?'在學會籍':paidAmount>=500?'學期會籍':'未繳費';
-                return {name:studentId?'':raw,studentId,level:'正式社員',feeStatus,feeSemester:feeStatus==='學期會籍'?semester:'',email:'',phone:'',position:'',joinedAt:'',note:feeDate?'社費紀錄日期：'+feeDate:''};
+                const prices=feePrices(feeDate); const feeStatus=paidAmount>=prices.lifetime?'在學會籍':paidAmount>=prices.semester?'一年會籍':'未繳費';
+                return {name:studentId?'':raw,studentId,level:'正式社員',feeStatus,feeSemester:feeStatus==='一年會籍'?semester:'',email:'',phone:'',position:'',joinedAt:'',note:feeDate?'社費紀錄日期：'+feeDate:''};
             }).filter(item=>item.name||item.studentId);
         } else {
             if (columns.name < 0 && columns.studentId < 0) { memberImportRows=[]; return showToast('找不到可辨識的社員欄位；請提供姓名／學號欄，或社費帳本的日期、事宜、收入欄', true); }
@@ -583,7 +617,7 @@ async function submitMemberImport() {
     catch { showToast('匯入失敗，請稍後重試',true); } finally { button.disabled=!memberImportRows.length; }
 }
 const memberLevelLabels={trial:'非正式社員',member:'正式社員',prep:'籌備幹部',officer:'正式幹部'};
-const feeTypeLabels={semester:'學期會籍',lifetime:'在學會籍',other:'其他'};
+const feeTypeLabels={semester:'一年會籍',lifetime:'在學會籍',other:'其他'};
 function memberBadge(text,color) { return '<span style="display:inline-block; padding:2px 8px; border-radius:999px; font-size:.8rem; border:1px solid '+color+'; color:'+color+'; white-space:nowrap;">'+escapeText(text)+'</span>'; }
 function memberFeeCell(status) { return status.paid?memberBadge(status.feeLabel,'#34d399'):status.exempt?memberBadge(status.feeLabel,'#60a5fa'):memberBadge(status.feeLabel,'#fbbf24'); }
 function syncMemberForm() { const fee=document.getElementById('member-fee-status').value, level=document.getElementById('member-level').value; document.getElementById('member-fee-semester-wrap').style.display=fee==='semester'?'grid':'none'; document.getElementById('member-trial-wrap').style.display=level==='trial'?'grid':'none'; }
@@ -598,7 +632,7 @@ async function loadMembers() {
     const body = document.getElementById('members-list');
     body.innerHTML = members.map(item => {
         const status = item.status; const trial = status.level === 'trial' ? '<br><small>免費體驗剩 ' + status.trialRemaining + ' 次</small>' : '';
-        return '<tr' + (selectedMembers.has(item.id) ? ' style="background:rgba(96,165,250,.08);"' : '') + '><td><input type="checkbox" aria-label="選取 ' + escapeText(item.name || item.studentId || '社員') + '" data-id="' + escapeText(item.id) + '" ' + (selectedMembers.has(item.id) ? 'checked' : '') + ' onchange="toggleMember(this.dataset.id, this.checked)"></td><td>' + escapeText(item.name || '（姓名待查）') + '<br><small>' + escapeText(item.studentId || '無學號') + '</small></td><td>' + escapeText(status.levelLabel) + trial + '</td><td>' + memberFeeCell(status) + '</td><td>' + (status.voting ? '有' : '無') + '</td><td>' + escapeText(item.account || '—') + '</td><td>' + escapeText(item.position || '—') + '</td><td>' + escapeText([item.email,item.phone].filter(Boolean).join('／') || '—') + '</td><td style="white-space:pre-wrap">' + escapeText(item.note || '—') + '</td><td>' + escapeText(item.joinedAt || '—') + '</td><td style="white-space:nowrap;">' + (status.unpaid ? '<button class="btn btn-primary" data-id="' + escapeText(item.id) + '" onclick="startFeeFor(this.dataset.id)">記錄繳費</button> ' : '') + (canCreateAccounts && !item.account ? '<button class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="startAccountFor(this.dataset.id)">建立帳號</button> ' : '') + '<button class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="editMember(this.dataset.id)">編輯</button> <button class="btn btn-danger" data-id="' + escapeText(item.id) + '" onclick="deleteMember(this.dataset.id)">刪除</button></td></tr>';
+        return '<tr' + (selectedMembers.has(item.id) ? ' style="background:rgba(96,165,250,.08);"' : '') + '><td><input type="checkbox" aria-label="選取 ' + escapeText(item.name || item.studentId || '社員') + '" data-id="' + escapeText(item.id) + '" ' + (selectedMembers.has(item.id) ? 'checked' : '') + ' onchange="toggleMember(this.dataset.id, this.checked)"></td><td>' + escapeText(item.name || '（姓名待查）') + '<br><small>' + escapeText(item.studentId || '無學號') + '</small></td><td>' + escapeText(status.levelLabel) + trial + '<br><small>社課出席 ' + ((item.attendance && item.attendance.total) || 0) + ' 次（本學年 ' + ((item.attendance && item.attendance.year) || 0) + '）</small></td><td>' + memberFeeCell(status) + '</td><td>' + (status.voting ? '有' : '無') + '</td><td>' + escapeText(item.account || '—') + '</td><td>' + escapeText(item.position || '—') + '</td><td>' + escapeText([item.email,item.phone].filter(Boolean).join('／') || '—') + '</td><td style="white-space:pre-wrap">' + escapeText(item.note || '—') + '</td><td>' + escapeText(item.joinedAt || '—') + '</td><td style="white-space:nowrap;">' + (status.unpaid ? '<button class="btn btn-primary" data-id="' + escapeText(item.id) + '" onclick="startFeeFor(this.dataset.id)">記錄繳費</button> ' : '') + (canCreateAccounts && !item.account ? '<button class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="startAccountFor(this.dataset.id)">建立帳號</button> ' : '') + '<button class="btn btn-secondary" data-id="' + escapeText(item.id) + '" onclick="editMember(this.dataset.id)">編輯</button> <button class="btn btn-danger" data-id="' + escapeText(item.id) + '" onclick="deleteMember(this.dataset.id)">刪除</button></td></tr>';
     }).join('') || '<tr><td colspan="11" style="text-align:center; color:var(--text-muted)">查無社員資料。</td></tr>';
     visibleMemberIds = members.map(item => item.id);
     for (const id of [...selectedMembers]) if (!all.some(item => item.id === id)) selectedMembers.delete(id);
@@ -628,7 +662,7 @@ async function applyBulkMembers() {
     if (!selectedMembers.size) return showToast('請先勾選社員，或按「全選」', true);
     const level = document.getElementById('bulk-level').value, feeStatus = document.getElementById('bulk-fee-status').value, feeSemester = document.getElementById('bulk-fee-semester').value.trim();
     if (!level && !feeStatus) return showToast('請選擇要改成的身分或社費狀態', true);
-    const parts = [level && '身分改為「' + memberLevelLabels[level] + '」', feeStatus && '社費改為「' + {unpaid:'未繳費',semester:'學期會籍' + (feeSemester ? ' ' + feeSemester : '（本學期）'),lifetime:'在學會籍'}[feeStatus] + '」'].filter(Boolean).join('，');
+    const parts = [level && '身分改為「' + memberLevelLabels[level] + '」', feeStatus && '社費改為「' + {unpaid:'未繳費',semester:'一年會籍' + (feeSemester ? ' ' + feeSemester : '（本學期）'),lifetime:'在學會籍'}[feeStatus] + '」'].filter(Boolean).join('，');
     if (!confirm('將 ' + selectedMembers.size + ' 位社員的' + parts + '？')) return;
     const res = await fetch('/api/members/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [...selectedMembers], level, feeStatus, feeSemester }) });
     const data = await res.json(); showToast(res.ok ? '已更新 ' + data.updated + ' 位社員' : data.error, !res.ok);
@@ -661,7 +695,15 @@ function startAccountFor(id) {
     document.getElementById(username.value ? 'account-password' : 'account-username').focus();
     showToast('已帶入 ' + memberName(item) + '：帳號預設為學號，請設定初始密碼');
 }
-function fillFeeAmount() { const type = document.getElementById('fee-type').value; const amount = document.getElementById('fee-amount'); if (type === 'semester') amount.value = 500; else if (type === 'lifetime') amount.value = 1000; }
+// Keep in sync with feePrices() in src/membership.js: 115-1 and 116-1 are promo terms.
+const FEE_PROMO_SEMESTERS = ['115-1', '116-1'];
+function feePrices(dateText) {
+    const m = /^(\d{4})-(\d{2})/.exec(dateText || '') || /^(\d{4})-(\d{2})/.exec(new Date().toISOString());
+    const year = Number(m[1]), month = Number(m[2]);
+    const semester = month >= 8 ? (year - 1911) + '-1' : (year - 1912) + '-' + (month === 1 ? 1 : 2);
+    return FEE_PROMO_SEMESTERS.includes(semester) ? { semester: 300, lifetime: 800, promo: true } : { semester: 500, lifetime: 1000, promo: false };
+}
+function fillFeeAmount() { const type = document.getElementById('fee-type').value; const amount = document.getElementById('fee-amount'); const prices = feePrices(document.getElementById('fee-date').value); if (type === 'semester') amount.value = prices.semester; else if (type === 'lifetime') amount.value = prices.lifetime; }
 function editMember(id) { const item=memberCache.find(member=>member.id===id); if(!item)return; document.getElementById('member-edit-id').value=item.id; document.getElementById('member-name').value=item.name||''; document.getElementById('member-student-id').value=item.studentId||''; document.getElementById('member-position').value=item.position||''; document.getElementById('member-email').value=item.email||''; document.getElementById('member-phone').value=item.phone||''; document.getElementById('member-note').value=item.note||''; document.getElementById('member-joined-at').value=item.joinedAt||''; document.getElementById('member-level').value=item.status.level; document.getElementById('member-fee-status').value=item.status.feeStatus; document.getElementById('member-fee-semester').value=item.feeSemester||''; document.getElementById('member-trial-uses').value=item.trialUses||0; syncMemberForm(); const editing=document.getElementById('member-editing'); editing.textContent='正在編輯：'+memberName(item)+'。改完按「更新社員資料」，或按「取消編輯」放棄。'; editing.style.display='block'; document.getElementById('member-submit').textContent='更新社員資料'; document.getElementById('member-reset').textContent='取消編輯'; document.getElementById('member-form').closest('details').open=true; document.getElementById('member-form').scrollIntoView({behavior:'smooth',block:'center'}); }
 async function saveMember(event) { event.preventDefault(); const id=document.getElementById('member-edit-id').value; const body={name:document.getElementById('member-name').value,studentId:document.getElementById('member-student-id').value,position:document.getElementById('member-position').value,email:document.getElementById('member-email').value,phone:document.getElementById('member-phone').value,note:document.getElementById('member-note').value,joinedAt:document.getElementById('member-joined-at').value,level:document.getElementById('member-level').value,feeStatus:document.getElementById('member-fee-status').value,feeSemester:document.getElementById('member-fee-semester').value,trialUses:Number(document.getElementById('member-trial-uses').value||0)}; const res=await fetch(id?'/api/members/'+encodeURIComponent(id):'/api/members',{method:id?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const data=await res.json(); showToast(res.ok?(id?'社員資料已更新':'社員已新增（'+data.status.levelLabel+'・'+data.status.feeLabel+'）'):data.error,!res.ok); if(res.ok){resetMemberForm();loadMembers();} }
 async function deleteMember(id) { const target=memberCache.find(member=>member.id===id); if (!confirm('確定刪除 '+(target?memberName(target):'此社員')+'？'+(target&&target.account?'綁定的帳號 '+target.account+' 會自動解除綁定（帳號本身保留）。':'')+'此操作無法復原。')) return; const res=await fetch('/api/members/'+encodeURIComponent(id),{method:'DELETE'}); const data=await res.json(); showToast(res.ok?'社員已刪除':data.error,!res.ok); if(res.ok)loadMembers(); }
@@ -678,9 +720,9 @@ async function loadMyMember() {
         if (!res.ok) { box.textContent = data.error || '無法載入'; return; }
         if (!data.member) { box.innerHTML = '此帳號（' + escapeText(data.username) + '）尚未綁定社員資料。請聯絡社長在「帳號與權限」完成綁定。'; return; }
         const m = data.member, status = m.status;
-        const rows = [['姓名', m.name || '—'], ['學號', m.studentId || '—'], ['身分', status.levelLabel + (status.level === 'trial' ? '（免費體驗社課剩 ' + status.trialRemaining + ' 次）' : '')], ['社費', status.feeLabel], ['表決權', status.voting ? '有（列入社員總額）' : '無'], ['幹部職務', m.position || '—'], ['加入日期', m.joinedAt || '—']];
+        const rows = [['姓名', m.name || '—'], ['學號', m.studentId || '—'], ['身分', status.levelLabel + (status.level === 'trial' ? '（免費體驗社課剩 ' + status.trialRemaining + ' 次）' : '')], ['社費', status.feeLabel], ['表決權', status.voting ? '有（列入社員總額）' : '無'], ['幹部職務', m.position || '—'], ['加入日期', m.joinedAt || '—'], ['社課出席', ((m.attendance && m.attendance.total) || 0) + ' 次（本學年 ' + ((m.attendance && m.attendance.year) || 0) + ' 次）']];
         let html = '<dl style="display:grid; grid-template-columns:max-content 1fr; gap:6px 16px; margin:0; color:var(--text-main);">' + rows.map(([k, v]) => '<dt style="color:var(--text-muted);">' + k + '</dt><dd style="margin:0;">' + escapeText(v) + '</dd>').join('') + '</dl>';
-        if (status.unpaid) html += '<p style="margin-top:12px; color:#fbbf24;">目前為未繳費狀態。依《社費細則》，學期會籍每學期 500 元、在學會籍一次 1,000 元；繳費後請向總務簽收。</p>';
+        if (status.unpaid) html += '<p style="margin-top:12px; color:#fbbf24;">目前為未繳費狀態。依《社費細則》，一年會籍（原價 500 元，繳費學期加下一學期連續兩學期有效）、在學會籍（原價 1,000 元）；115-1、116-1 為優惠價 300／800 元；繳費後請向總務簽收。</p>';
         if (data.feeReceipts.length) html += '<p style="margin-top:12px;">繳費紀錄：' + data.feeReceipts.map(item => escapeText(item.date + ' NT$ ' + item.amount + (feeTypeLabels[item.feeType] ? '（' + feeTypeLabels[item.feeType] + '）' : ''))).join('、') + '</p>';
         box.innerHTML = html;
     } catch { box.textContent = '無法載入社員資料'; }

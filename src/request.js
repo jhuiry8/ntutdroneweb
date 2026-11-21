@@ -26,9 +26,12 @@ export class PayloadTooLargeError extends Error {
 export const DEFAULT_JSON_LIMIT = 256 * 1024;
 export const CONTENT_JSON_LIMIT = 1_000_000;
 
-export async function readJsonLimited(request, maxBytes) {
+// Reads a request body into memory, refusing anything over maxBytes (also when Content-Length is absent or wrong).
+export async function readBytesLimited(request, maxBytes) {
+    const declared = Number(request.headers.get('Content-Length'));
+    if (Number.isFinite(declared) && declared > maxBytes) throw new PayloadTooLargeError(maxBytes);
     const reader = request.body?.getReader();
-    if (!reader) throw new ValidationError('請提供 JSON 格式資料');
+    if (!reader) throw new ValidationError('請提供資料內容');
     const chunks = [];
     let size = 0;
     while (true) {
@@ -44,6 +47,12 @@ export async function readJsonLimited(request, maxBytes) {
     const bytes = new Uint8Array(size);
     let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    return bytes;
+}
+
+export async function readJsonLimited(request, maxBytes) {
+    if (!request.body) throw new ValidationError('請提供 JSON 格式資料');
+    const bytes = await readBytesLimited(request, maxBytes);
     try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
     catch { throw new ValidationError('JSON 格式錯誤'); }
 }

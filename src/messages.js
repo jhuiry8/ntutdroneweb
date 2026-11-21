@@ -11,6 +11,8 @@
 //
 // Conversations are "ch~<channelId>" or "dm~<user a>~<user b>" (names sorted).
 
+import { isExportRequest, exportStorage } from './do-export.js';
+
 export class MessageError extends Error {
     constructor(message, status = 400) { super(message); this.name = 'MessageError'; this.status = status; }
 }
@@ -344,6 +346,7 @@ export class MessageStore {
 
     async fetch(request) {
         try {
+            if (isExportRequest(request)) return await exportStorage(this.storage);
             const payload = await request.json();
             const op = new URL(request.url).pathname.slice(1);
             const body = await this.storage.transaction(storage => messageOp(storage, op, payload));

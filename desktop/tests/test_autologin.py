@@ -17,9 +17,11 @@ class FakeClient:
     results: list = []
 
     def __init__(self, base_url):
-        self.base_url, self.token, self.calls = base_url, "", 0
+        self.base_url, self.token, self.calls, self.timeouts = base_url, "", 0, []
+        FakeClient.last = self
 
-    def me(self):
+    def me(self, timeout=None):
+        self.timeouts.append(timeout)
         self.calls += 1
         result = FakeClient.results.pop(0)
         if isinstance(result, Exception):
@@ -42,6 +44,12 @@ class AutoLoginTests(unittest.TestCase):
 
     def setUp(self):
         saved_session.clear()
+        # Pretend to be Windows with a reversible stand-in for DPAPI (the session is only stored there).
+        self.originals = (saved_session.supported, saved_session._dpapi)
+        saved_session.supported = lambda: True
+        saved_session._dpapi = lambda data, decrypt: data[::-1]
+        self.addCleanup(lambda: setattr(saved_session, "supported", self.originals[0]))
+        self.addCleanup(lambda: setattr(saved_session, "_dpapi", self.originals[1]))
         saved_session.save("https://club.example", "admin", "tok")
         self.sleeps = []
 
@@ -77,6 +85,13 @@ class AutoLoginTests(unittest.TestCase):
         result = self.run_login([ApiError("無法連線", 0)] * autologin.AUTOSTART_ATTEMPTS, True)
         self.assertEqual(result[2], autologin.OFFLINE_NOTICE)
         self.assertEqual(len(self.sleeps), autologin.AUTOSTART_ATTEMPTS - 1)
+
+    def test_total_wait_is_bounded_to_about_a_minute(self):
+        self.run_login([ApiError("無法連線", 0)] * autologin.AUTOSTART_ATTEMPTS, True)
+        client = FakeClient.last
+        worst = sum(client.timeouts) + sum(self.sleeps)
+        self.assertLessEqual(worst, 65)
+        self.assertTrue(all(t == autologin.ATTEMPT_TIMEOUT for t in client.timeouts))
 
 
 if __name__ == "__main__":

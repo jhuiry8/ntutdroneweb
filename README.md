@@ -14,7 +14,8 @@
    * 前台頂端導覽列支援「中文 / English」即時切換，並以 Cookie 記憶使用者語言偏好。
    * 後台發佈文章與頁面時，皆可指定專屬語系，實現真正的多語系國際化動態網站。
 3. **🖼️ 文章圖片**
-   * 文章與頁面可用 Markdown 引用 `https://` 圖片網址（例如社群或雲端相簿的公開連結）。基於安全考量，後台不提供直接上傳檔案到網站的功能。
+   * 後台「檔案庫」可直接上傳圖片與檔案（儲存在 Cloudflare R2），按「複製 Markdown」後貼進文章，例如 `![說明](https://您的網站網址/files/…)`；仍可引用外部 `https://` 圖片網址。
+   * **安全措施**：只收 JPG／PNG／WebP／GIF／PDF／DOCX／XLSX／PPTX／ZIP，並檢查檔案內容（魔術位元組）而非只看副檔名，**SVG、HTML、JS 一律拒絕**；圖片上限 10 MB、其他 25 MB，且有上傳頻率限制；儲存路徑為隨機 ID（不使用原始檔名）；下載一律帶 `X-Content-Type-Options: nosniff`、`Content-Security-Policy: default-src 'none'; sandbox`，非圖片強制以附件下載；只有圖片可設為「公開」，其餘檔案每次下載都驗證登入與權限；上傳、修改、刪除皆記錄操作者。詳見「3-5. 檔案庫」。
 4. **📝 動態頁面與文章管理 (CMS Dashboard)**
    * **動態部落格**：支援 Markdown 完整語法，編輯時可即時預覽。
    * **獨立頁面生成器**：免改程式碼！可在後台任意建立如 `/page/info`、`/page/join` 等專屬客製化網頁。
@@ -46,26 +47,30 @@
    * 前往 **Workers & Pages** -> **KV** -> 點擊 **Create Namespace**。
    * 命名為 **`DRONE_DB`**，點擊 Add 建立。
    * 建立成功後，複製此 KV 的 **ID**（一串英數字元，例如 `abc123e456...`）。
+   * 另外到 **R2** 建立私有 bucket `ntut-drone-backups`（備份用，詳見「3-3-1. 自動備份」）。
 3. **取得 Cloudflare Account ID**：
    * 在 Cloudflare 控制台右下角（或網址列中）找到並複製您的 **Account ID**。
 4. **建立 API Token (用於部署授權)**：
    * 點擊右上角個人頭像 -> **My Profile** -> **API Tokens** -> **Create Token**。
    * 選擇 **Edit Cloudflare Workers** 模板（或自訂權限包含 `Workers KV Storage:Edit`, `Workers Routes:Edit`, `Workers Scripts:Edit`）。
    * 建立後，複製並妥善保存這組 **API Token**。
+   * 若使用自訂權限，請另外加入 `Workers R2 Storage:Edit`（檔案庫要用到）。
+5. **建立 R2 儲存桶（檔案庫用）**：前往 **R2 Object Storage** -> **Create bucket**，名稱只能用小寫英文、數字與連字號（例如 `ntut-drone-files`），保持預設的**私有**即可，**不要**開啟 Public Access 或自訂網域——檔案一律經過網站的權限檢查才會送出。
 
 ### 第二步：在 GitHub 儲存庫設定環境金鑰 (Repository Secrets)
 為了安全起見，我們不把敏感的 ID 與金鑰直接寫入程式碼，而是設定在 GitHub 的安全機密庫中，由 GitHub Actions 自動注入：
 1. 進入您的 GitHub 儲存庫 (`jhuiry8/ntutdroneweb`) -> 點擊上方 **Settings (設定)**。
 2. 左側選單展開 **Secrets and variables** -> 點擊 **Actions**。
-3. 在 **Repository secrets** 區塊，點擊 **New repository secret**，依序新增以下 3 個安全機密變數：
+3. 在 **Repository secrets** 區塊，點擊 **New repository secret**，依序新增以下 4 個安全機密變數：
 
 | Secret 名稱 | 填入的內容 | 作用說明 |
 | :--- | :--- | :--- |
 | **`CLOUDFLARE_ACCOUNT_ID`** | 您在第一步取得的 Cloudflare 帳戶 ID | 授權 Wrangler 部署到您的帳號 |
 | **`CLOUDFLARE_API_TOKEN`** | 您在第一步建立的 Cloudflare API Token | 執行自動部署的權限憑證 |
 | **`CLOUDFLARE_KV_ID`** | 您在第一步建立的 `DRONE_DB` KV Namespace ID | **安全注入**到 KV 資料庫綁定中 |
+| **`CLOUDFLARE_R2_BUCKET`** | 檔案庫使用的 R2 儲存桶名稱（見「3-5. 檔案庫」） | **安全注入**到 R2 `FILES` 綁定中；未設定時使用預設名稱 `ntut-drone-files`，部署時若不存在會自動建立（私有） |
 
-> 🎉 **自動化驗證與發佈**：設定完成這 3 個 Secrets 後，只要您在專案有任何 Push 行為（或在 Actions 頁面手動觸發），系統便會開始執行 `.github/workflows/deploy.yml`，自動完成打包、金鑰注入與 Cloudflare Workers 發佈！您可以隨時到 GitHub **Actions** 分頁查看綠色的成功打勾圖示。
+> 🎉 **自動化驗證與發佈**：設定完成這 4 個 Secrets 後，只要您在專案有任何 Push 行為（或在 Actions 頁面手動觸發），系統便會開始執行 `.github/workflows/deploy.yml`，自動完成打包、金鑰注入與 Cloudflare Workers 發佈！您可以隨時到 GitHub **Actions** 分頁查看綠色的成功打勾圖示。
 
 ---
 
@@ -117,11 +122,11 @@
 * 「社員管理」可依姓名、學號、Email、電話、幹部職務、備註或綁定帳號查詢，並能新增、編輯或刪除社員資料。姓名和學號至少填一項，因此可先用學號建立待核對資料；也能補上幹部職務與備註。社員名冊不會自動建立網站登入帳號。
 * **社員身分與社費狀態**依《社員與幹部四級分級細則》與《無人機社社費細則》（115.09.01 修訂），並與 Django 社團管理系統（`droneclubmangsystem` 的 `User.membership_status`／`fee_status`）使用相同分類：
   * 身分：非正式社員（`TRIAL`）、正式社員（`MEMBER`）、籌備幹部（`PREP_OFFICER`）、正式幹部（`OFFICER`）。非正式社員可記錄本學年已用的免費體驗社課次數（上限 2 次）。
-  * 社費：未繳費（`UNPAID`）、學期會籍 500 元（`SEMESTER_PAID`，只在繳費學期有效，例如 `115-1`；8 月至 1 月為第 1 學期、2 月至 7 月為第 2 學期）、在學會籍 1,000 元（`LIFETIME_PAID`）。
+  * 社費：未繳費（`UNPAID`）、一年會籍 500 元（`SEMESTER_PAID`，繳費學期加下一學期連續兩學期有效，例如 `115-1` 繳費用到 `115-2`；8 月至 1 月為第 1 學期、2 月至 7 月為第 2 學期）、在學會籍 1,000 元（`LIFETIME_PAID`）。
   * 新增社員預設為「未繳費的正式社員」，可先登記再收費；列表可篩選「未繳費社員」、「具表決權（社員總額）」、各級身分或「未綁定帳號」，頁首顯示名冊人數、社員總額、未繳費人數與非正式社員人數。
-  * 表決權：正式幹部在任期間具表決權；正式社員與籌備幹部須已繳當學期會籍或具在學會籍；未繳費的籌備幹部與正式幹部顯示「幹部免繳」，但未繳費籌備幹部不具表決權；非正式社員無表決權。
-  * CSV 匯入可加「身分」、「社費狀態」欄，值可填中文（如「未繳費」、「學期會籍」）或 Django 代碼（如 `UNPAID`、`PREP_OFFICER`）。從社費帳本匯入時，收入 1,000 元以上視為在學會籍、500 元以上視為該日期學期的學期會籍。
-* 「社費簽收」可選擇已造冊社員或手動填寫繳費者，記錄金額、繳費方案、日期、收款人姓名與收據編號／線索，便於比對不完整的收據資料。選擇已造冊社員（或填寫名冊中已有的學號）時，系統依方案（未選時 500 元視為學期會籍、1,000 元視為在學會籍）把該社員更新為已繳費，非正式社員同時轉為正式社員；在學會籍不會被之後的學期繳費降級。刪除簽收紀錄不會改回社費狀態。簽收歷史可查閱或刪除；此記錄獨立於財務帳目，不會自動建立或核准帳目。
+  * 表決權：正式幹部在任期間具表決權；正式社員與籌備幹部須已繳有效的一年會籍或具在學會籍；未繳費的籌備幹部與正式幹部顯示「幹部免繳」，但未繳費籌備幹部不具表決權；非正式社員無表決權。
+  * CSV 匯入可加「身分」、「社費狀態」欄，值可填中文（如「未繳費」、「一年會籍」，舊名稱「學期會籍」仍可匯入）或 Django 代碼（如 `UNPAID`、`PREP_OFFICER`）。從社費帳本匯入時，收入 1,000 元以上視為在學會籍、500 元以上視為該日期學期的一年會籍。
+* 「社費簽收」可選擇已造冊社員或手動填寫繳費者，記錄金額、繳費方案、日期、收款人姓名與收據編號／線索，便於比對不完整的收據資料。選擇已造冊社員（或填寫名冊中已有的學號）時，系統依方案（未選時 500 元視為一年會籍、1,000 元視為在學會籍）把該社員更新為已繳費，非正式社員同時轉為正式社員；在學會籍不會被之後的學期繳費降級。刪除簽收紀錄不會改回社費狀態。簽收歷史可查閱或刪除；此記錄獨立於財務帳目，不會自動建立或核准帳目。
 * **帳號與社員綁定**：社長在「帳號與權限」新增帳號時可直接選擇社員，或在帳號列表用「儲存綁定」綁定／解除。一位社員只能綁定一個帳號；刪除社員會自動解除綁定；只變更綁定不會讓對方登出。綁定後，任何角色的帳號都能在「系統設定 → 我的社員資料」查看自己的身分、社費、表決權與繳費紀錄（不含幹部備註）。
 * **法規查詢**：所有登入帳號都可在「社務管理 → 法規查詢」閱讀本社組織章程、四級分級細則、社費細則、社課守則（115.09.01 修訂）及學校《學生社團組織及活動實施辦法》，輸入關鍵字或點常用關鍵字會列出符合的條文並標示關鍵字。尚未有修正生效前使用 `src/regulations.js` 內建的條文。
 * **法規不能直接修改**，只能透過「修正案」依規定程序變更（規則在 `src/regulation-rules.js`）：
@@ -130,7 +135,7 @@
   * **施行細則**：須登錄幹部會議通過日期與社長核定日期；涉及社員權利義務之重大變更或社費標準時，提案勾選「需社員大會」，另須登錄社員大會結果（一般決議：社員總額三分之一以上出席、出席社員二分之一以上同意）。
   * **學校法規**：本社不能修改，只能在學校公告新版後，登錄公告日期與來源並更新為學校版本。
   * 會議未通過時由社長登錄「未通過」並說明情形；提案人或社長可撤回。若同一法規已有其他修正先生效，舊提案會被拒絕，需以最新條文重新提案。生效後保留修正沿革（最近 20 版），可比較各版差異。提案與沿革存於 KV `club:regulation-amendments`、`club:regulations`。
-* **全選與批次修改**：社員列表每列有勾選框，「全選」會選取目前列表（可先用篩選，例如「未繳費社員」）。選好後可一次把身分或社費狀態改成指定值（學期會籍可填學期，留空為本學期），或一次刪除；送出前會確認人數。任何一筆資料不合格時整批都不會修改。舊名冊升級後全部顯示為「未繳費正式社員」，可用此功能快速校正。
+* **全選與批次修改**：社員列表每列有勾選框，「全選」會選取目前列表（可先用篩選，例如「未繳費社員」）。選好後可一次把身分或社費狀態改成指定值（一年會籍可填繳費學期，留空為本學期），或一次刪除；送出前會確認人數。任何一筆資料不合格時整批都不會修改。舊名冊升級後全部顯示為「未繳費正式社員」，可用此功能快速校正。
 * 社員管理的便利功能：未繳費社員列上有「記錄繳費」可直接帶入社費簽收（選方案自動填金額、記住上次的收款人）；社長可在未綁定的社員列按「建立帳號」，帳號預設為學號並自動選好綁定對象；編輯社員時會顯示「正在編輯：某某」；刪除社員或停用帳號前會提示影響。
 * 「設備管理」可建立與編輯列管設備，記錄財產編號、分類、原廠序號、購入資訊、狀況、存放位置、保管人及備註。財產編號由系統產生，原廠序號不可重複；退役設備標記為「已除列」以保留紀錄。可勾選多件設備，列印含社團名稱、設備名稱、分類及財產編號的標籤。
 * 「社課備忘錄」可集中記錄社課日期、課程名稱、課程重點、作業提醒與多個教材或會議網址。社長與一般幹部可新增、刪除；可查看 CMS 的角色能瀏覽紀錄。資料保存在 Cloudflare KV，不會公開在網站前台。
@@ -195,6 +200,41 @@
 * 有後台帳號的社員，需在「帳號與權限」綁定社員資料才能在後台簽到與投票。
 * 部署：新增了 `MEETING_STORE` Durable Object（`wrangler.toml` 的 migration `v4`），推送後 GitHub Actions 會自動建立。
 
+### 3-3-1. 自動備份（R2）
+
+每天 03:00（台北時間）Cron 會把資料備份到獨立的 R2 bucket（binding `BACKUPS`），檔名為 `backups/YYYY-MM-DD.json`，只保留最近 30 份（可用變數 `BACKUP_KEEP` 調整），更早的自動刪除。同一天重跑會覆蓋當天檔案。每日排程在 `wrangler.toml` 的 `crons` 第二項（`0 19 * * *`，UTC），週報排程不受影響；`scheduled()` 依 `controller.cron` 分辨要跑哪一個，改動排程字串時請同步修改 `src/backup.js` 的 `BACKUP_CRON`。
+
+**備份內容**：KV 中 `src/kv-keys.js` 列出的資料、`user:*` 帳號、文章與頁面（`posts_list`、`post:*`、`pages_list`、`page:*`、`homepage_content`）、`admin_password_hash`、推播設定；行事曆訂閱權杖（`calendar:*`）；以及 EquipmentStore、FormStore、SiteStore、MeetingStore、MessageStore、FileStore（檔案庫中繼資料，檔案本身在 R2 檔案庫 bucket）、ClassStore、EventStore、FlightStore 九個 Durable Object 的完整儲存內容（各 DO 的內部匯出端點，外部無法呼叫）。**不含** `session:*` 登入狀態，以及 SiteStore 中幾分鐘就過期的驗證碼與登入次數計數。
+
+**自動建立 bucket**：部署流程（`deploy.yml` 的「Ensure R2 buckets exist」）會檢查 `wrangler.toml` 裡的 R2 bucket，不存在就自動建立（預設私有）；若 API Token 沒有 R2 權限，會停在這一步並顯示清楚的錯誤訊息，而不是讓 `wrangler deploy` 失敗。
+
+**手動建立 bucket**：Cloudflare 控制台 → R2 → Create bucket，名稱 `ntut-drone-backups`（要改名請同步改 `wrangler.toml` 的 `bucket_name`）。部署用的 API Token 需包含 `Workers R2 Storage:Edit`。請與檔案庫等其他功能的 bucket 分開。
+
+> ⚠️ **備份含帳號密碼雜湊、推播權杖等敏感資料。bucket 必須保持私有**：不要開啟 Public access、不要綁定自訂網域、不要建立公開的 r2.dev 網址，也不要把備份檔放進公開場所。
+
+**社長專用 API**（需社長登入）：`POST /api/backup/run` 立即備份；`GET /api/backup/latest` 下載最新備份檔；`GET /api/backup/status` 查看最近一次備份的結果（成功時間與檔名，或失敗原因）。
+
+**失敗通知**：排程備份失敗時會記錄失敗原因（`GET /api/backup/status` 可查），並且若已設定 `REPORT_WEBHOOK_URL`，會往同一個群組發送「網站自動備份失敗」。建議設定該變數，並偶爾看一下 `status`，不要等到要還原時才發現備份早已中斷。
+
+**Cloudflare 子請求上限**：KV 已用批次讀取（每 100 個 key 算 1 次），一次備份約需 `4 + ⌈key 數 ÷ 100⌉ + 9 + 3` 次子請求（KV 列表、KV 讀取、9 個 DO、R2 寫入與整理）。免費方案上限 50 次，約可支撐 3,000 個 KV key；帳號、文章、頁面特別多時請升級付費方案（上限 1,000 次）。
+
+**手動還原步驟**（尚無自動還原功能）：
+1. 下載備份檔（`GET /api/backup/latest` 或 R2 控制台），確認 `format` 為 1。
+2. KV：`kv` 欄位是 `{ key: 原始字串值 }`，用 `wrangler kv key put --binding DRONE_DB "<key>" "<value>"` 逐筆寫回（或用 `wrangler kv bulk put` 轉成 `[{key,value}]` 的 JSON）。
+3. Durable Object：`durableObjects.<綁定名稱>` 是 `[key, value]` 陣列，值為結構化資料，需寫回對應 DO 的 storage（key 與值原樣 `storage.put`）。目前沒有匯入端點，需臨時在該 DO 加一個匯入方法、還原後再移除。還原 EquipmentStore 時別漏掉 `equipment:initialized`。
+4. **一致性限制**：備份是依序讀取各 Durable Object 與 KV，不是同一時間點的快照。讀取的幾秒內若有人新增或刪除資料，KV 與 DO 之間可能對不上（例如某位社員剛被刪除，但他的會議紀錄還在）。還原後請檢查這類關聯；備份檔的 `createdAt` 是開始備份的時間。
+5. 還原後請所有人重新登入（`session:*` 不在備份內），並檢查帳號、設備、表單與會議資料。
+
+### 3-3b. 社課簽到（QR code、體驗社課次數）
+側邊欄「社務管理 → 社課簽到」（社長、財務、幹部）。
+
+1. **建立場次**：填日期、主題、講師、地點。按「產生簽到連結與 QR code」會產生短時間有效（預設 30 分鐘，可選 10／30／60／120 分鐘）的 `/class/<id>?t=…` 連結，投影在現場即可。重新產生連結會讓舊連結立刻失效，連結外流後不能遠端代簽；按「結束簽到」也會收回連結。
+2. **社員簽到**：用手機掃描後輸入學號＋姓名（比照會議簽到：一台裝置一人、同一學號不能重複簽到、同一 IP 輸錯 30 次後等 15 分鐘）。系統呼叫 `membershipStatus()` 判斷身分：正式社員、幹部記錄出席；非正式社員自動扣本學年（ROC 學年，8 月起算）免費體驗次數，第 3 次起標示「需繳費」，仍會記錄，由幹部在出席名單按「放行」或刪除。
+3. **訪客**：名冊找不到時可用訪客身分簽到，並可勾選「同時加入非正式社員」（建立名冊資料，這堂算第 1 次免費體驗）。名冊已有該學號但姓名不符時不會建立重複資料。
+4. **幹部補簽／刪除／匯出**：出席名單可手動補簽社員或訪客、刪除、匯出 CSV（姓名開頭為 `=`、`+`、`-`、`@` 時會加 `'` 防止試算表公式注入）。刪除簽到或刪除場次會把已扣的免費次數退回。
+5. **社員資料**：社員管理列表與「系統設定 → 我的社員資料」顯示社課出席次數（累計／本學年）與本學年剩餘免費體驗次數。名冊的 `trialUses` 現在搭配 `trialYear`（學年）使用；沒有 `trialYear` 的舊資料視為建立當年的次數，幹部在名冊手動修改次數時會標記為本學年。
+* 部署：新增 `CLASS_STORE` Durable Object（`wrangler.toml` 的 migration `v7`）。出席紀錄存在 DO，名冊的 `trialUses` 仍在 KV `members:list`（讀改寫範圍只限該欄位）。
+
 ### 3-4. 社團通訊與外部推播（Durable Object MessageStore）
 後台與桌面版提供專屬「社團通訊 / 訊息中心」（`/api/messages/*`、`/api/announcements/*`），所有訊息資料由 Cloudflare Workers **`MESSAGE_STORE` Durable Object**（原生 SQLite 儲存架構，`wrangler.toml` migration `v5`）集中管理，支援多端同步、未讀狀態追蹤與安全防護：
 
@@ -223,11 +263,95 @@
 * **部署說明**：使用 `MESSAGE_STORE` Durable Object（`wrangler.toml` 的 migration `v5`），推送至 GitHub 後 GitHub Actions 自動部署套用 migration，無須手動設定。
 
 
+### 3-5. 檔案庫（Cloudflare R2）
+後台「檔案庫」讓社員與幹部集中存放活動照片、文章配圖、會議紀錄、收據與文件。檔案內容放在 R2 儲存桶（`wrangler.toml` 的 `FILES` 綁定），中繼資料（原始檔名、類型、大小、上傳者、時間、分類、可見範圍）放在 **`FILE_STORE` Durable Object**（migration `v6`）逐檔儲存、依序處理，不使用整包 JSON，因此多人同時上傳不會互相覆蓋。
+
+**部署設定**（只需做一次）：
+1. 在 Cloudflare 建立 R2 儲存桶（見「第一步」第 5 點），預設私有。
+2. （選用）在 GitHub 儲存庫新增 Actions Secret **`CLOUDFLARE_R2_BUCKET`**，內容為儲存桶名稱；未設定時使用 `ntut-drone-files`。`deploy.yml` 會在部署時把 `wrangler.toml` 裡的占位字串 `your-r2-bucket-name` 換成它（與 KV ID 的作法相同）。本機 `wrangler dev` 則直接把 `bucket_name` 改成自己的桶名即可（本機會模擬 R2）。
+3. API Token 需含 `Workers R2 Storage:Edit` 權限。推送到 `main` 後 GitHub Actions 會自動部署並套用 migration。
+
+**使用方式**：
+* 可上傳者：社長、幹部、財務。可見範圍：**公開**（任何人可讀，只限圖片，適合文章配圖）、**社員**（需登入）、**幹部限定**（社長／幹部／財務）。預設為「幹部限定」。
+* 支援拖放與多檔上傳、縮圖預覽、分類／類型篩選與搜尋、分頁載入；「複製連結」或「複製 Markdown」可貼進文章。已存在的檔案可改名、改說明、分類與可見範圍，只有上傳者與社長可以修改或刪除。
+* 文章編輯、頁面編輯、設備備註、社費簽收備註、社課備忘錄與會議紀錄旁都有「📎 插入檔案連結」，從檔案庫選取後只會把連結貼入該欄位，不改動這些模組本身的資料結構。
+* 文章若引用「社員」或「幹部限定」的檔案，未登入的訪客看不到該圖片；文章配圖請設為「公開」。
+
+**安全設計**：
+* **類型白名單 + 內容檢查**：以檔案開頭的魔術位元組判斷真正類型（DOCX／XLSX／PPTX 另檢查 ZIP 內部結構），副檔名必須與內容一致；SVG、HTML、JS 及其他類型一律拒絕，Content-Type 不採信。
+* **大小與頻率**：圖片 10 MB、其他 25 MB；請求本體讀取時就強制上限（不信任 Content-Length）；每帳號與每 IP 每 10 分鐘有上傳次數限制（`takeAttempt`）；整個檔案庫上限 5,000 個檔案。
+* **隨機物件 key**：R2 key 為 `files/<隨機 UUID>`，原始檔名只存成顯示用標籤（已移除路徑、控制字元與方向覆寫字元）。
+* **安全的下載回應**：`X-Content-Type-Options: nosniff`、依偵測結果設定的 Content-Type、`Content-Security-Policy: default-src 'none'; sandbox`；非圖片（或帶 `?download=1`）加 `Content-Disposition: attachment`，檔名以 RFC 5987 編碼。
+* **權限**：非公開檔案**每次下載都驗證 session**（登出、停用帳號立即失效），無權限時回 404 以免洩漏檔案是否存在；非公開回應為 `private, no-store`；公開圖片使用 5 分鐘快取與 ETag。
+* **稽核**：上傳、修改、刪除都記錄操作者與時間（保留最近 500 筆，社長可由 `GET /api/files/audit` 查看）。
+
+**API**（桌面版與 Android 日後可直接串接；除下載外皆需登入 session，寫入需同源請求）：
+
+| 方法與路徑 | 說明 |
+| :--- | :--- |
+| `GET /files/:id` | 下載／顯示；公開圖片免登入；`?download=1` 強制下載 |
+| `GET /api/files/config` | 分類、可見範圍、類型、大小上限與目前帳號可否上傳 |
+| `GET /api/files` | 列表。參數：`category`、`kind=image\|document`、`q`、`limit`（≤100）、`cursor`；回傳 `{ items, total, nextCursor }` |
+| `POST /api/files` | 上傳（`multipart/form-data`，一次一個檔案）：`file`、`category`、`visibility`、`description`、選填 `name`；成功回傳 201 與含 `url` 的中繼資料 |
+| `GET /api/files/:id` | 單一檔案中繼資料 |
+| `PATCH /api/files/:id` | JSON：`name`、`description`、`category`、`visibility`（需為上傳者或社長） |
+| `DELETE /api/files/:id` | 刪除（需為上傳者或社長） |
+| `GET /api/files/audit` | 操作紀錄（社長） |
+
+錯誤碼：`401` 未登入、`403` 權限不足、`404` 不存在或無權查看、`413` 檔案過大、`415` 類型不支援或副檔名與內容不符、`429` 上傳過於頻繁、`503` 尚未設定 R2／Durable Object。
+
+### 3-6. 連結與瀏覽 Google 雲端硬碟（選用）
+社團原本使用一個社團專用的一般 Google 帳號的雲端硬碟，現在與網站並存：**網站上傳一律放 R2，雲端硬碟只用來「看」，網站絕不寫入 Drive**。
+
+**A. Drive 連結（不需任何設定，部署後即可使用）**
+* 檔案庫「新增 Google 雲端硬碟連結」：貼上網址、填標題，選分類與可見範圍（社員／幹部限定，連結不能設為公開），網站會顯示成卡片；檔案、Google 文件／試算表／簡報可按「預覽」用內嵌視窗查看，也可「在 Google 開啟」。
+* 只接受 `https://drive.google.com` 與 `https://docs.google.com`；網站嚴格解析網址形式與檔案 ID（只允許英數、`-`、`_`），並依 ID 重建連結，不保存使用者貼的其他文字；Drive 圖片網址不會被當成 `<img>` 使用。
+* 連結的檔案要先在 Google 雲端硬碟設好分享權限（例如「知道連結的人可檢視」或指定帳號）；內嵌預覽依瀏覽器登入的 Google 帳號判斷權限。
+* 網站的 CSP `frame-src` 因此加入 `https://drive.google.com` 與 `https://docs.google.com`（只開放這兩個，用於預覽）。
+
+**B. 雲端硬碟分頁（唯讀瀏覽資料夾；設定 secret 之後才會出現）**
+沒有設定 `GOOGLE_SERVICE_ACCOUNT_JSON` 時，這個分頁自動隱藏，也不會出現任何錯誤。設定步驟（全部用社團的 Google 帳號，免費）：
+1. 前往 [Google Cloud Console](https://console.cloud.google.com/)，用社團帳號**建立專案**（例如 `ntut-drone-web`）。
+2. **啟用 API**：API 和服務 → 程式庫 → 搜尋「Google Drive API」→ 啟用。
+3. **建立服務帳號**：IAM 與管理 → 服務帳戶 → 建立（不需要授予任何專案角色）。記下它的 e-mail（`xxx@專案.iam.gserviceaccount.com`）。
+4. **建立金鑰**：進入該服務帳號 → 金鑰 → 新增金鑰 → JSON，下載 JSON 檔。**這個檔案等同密碼，不要放進程式碼或貼到聊天室。**（若組織原則禁止建立金鑰，需先由管理員放行；一般個人帳號沒有此限制。）
+5. **分享資料夾**：在 Google 雲端硬碟把要給網站看的資料夾，用「共用」分享給步驟 3 的服務帳號 e-mail，權限選**檢視者**。
+6. **設定 secret**（二選一）：
+   * GitHub：Settings → Secrets and variables → Actions → 新增 **`GOOGLE_SERVICE_ACCOUNT_JSON`**，內容貼上整份 JSON；下次部署時 `deploy.yml` 會自動用 `wrangler secret put` 寫入 Cloudflare。
+   * 或在 Cloudflare：Workers → 此 Worker → Settings → Variables and Secrets → 新增 Secret，名稱 `GOOGLE_SERVICE_ACCOUNT_JSON`，值為整份 JSON；本機則放在 `.dev.vars`。
+7. 重新部署後，檔案庫會出現「雲端硬碟」分頁。**社長**按「設定資料夾」，每行填 `資料夾網址或 ID, 顯示名稱, member 或 cadre 或 public`，儲存即可（設定存在 `FILE_STORE`）。
+
+**運作與安全**
+* Worker 用金鑰以 RS256（Web Crypto）簽 JWT，向 Google 換 access token（範圍只有 `drive.readonly`，快到期前才重新換），再呼叫 Drive API v3 `files.list`。服務帳號沒有儲存空間，也沒有寫入權限。換取 token 的網址固定寫死，不採用金鑰檔裡的 `token_uri`。
+* 只有已設定的資料夾（及其子資料夾）能被瀏覽；請求其他資料夾一律回 404，即使服務帳號看得到。子資料夾沿用根資料夾的可見範圍，每次請求都驗證 session 與角色。
+* 縮圖由 Worker 代理（`/api/drive/thumb`），只送出 jpeg／png／webp／gif，帶 `nosniff` 與 `private` 快取；因此不需要為 Google 圖片網域放寬 `img-src`。
+* Google API 結果在 Worker 記憶體短暫快取（資料夾列表 60 秒、檔案資訊 5 分鐘），避免每次都打 Google；剛在 Drive 新增的檔案最多約 1 分鐘後才會出現。
+* Google 回傳的錯誤細節只寫入 Worker 日誌，不會顯示給使用者。
+
+**雲端硬碟 API**（需登入；未啟用時除 `status` 外一律回 404）：
+
+| 方法與路徑 | 說明 |
+| :--- | :--- |
+| `POST /api/files/links` | 新增 Drive 連結（JSON：`url`、`name`、`category`、`visibility`＝`member`／`cadre`、`description`；上傳者權限） |
+| `GET /api/drive/status` | `{ enabled, canConfigure }`；未啟用時 `enabled:false` |
+| `GET /api/drive/folders` | 此帳號可開啟的已設定資料夾 |
+| `PUT /api/drive/folders` | 社長：設定 `{ folders: [{ id（或資料夾網址）, name, visibility }] }`，最多 20 個 |
+| `GET /api/drive/list?root=&folder=&pageToken=` | 列出資料夾內容（`folder` 省略時為根資料夾）；回傳 `{ items, nextPageToken }` |
+| `GET /api/drive/thumb?root=&file=` | 縮圖（經 Worker 代理） |
+
 ### 4. 獨立網頁建立 (Custom Pages)
 * 如果您需要為社團迎新、比賽報名或贊助招商建立專屬介紹頁，前往 **「頁面管理」** -> 「新增獨立網頁」。
 * 填寫標題與路徑（例如 `join-us`；文章與頁面的路徑只能使用英文字母、數字、底線或連字號，最多 100 字），儲存後即可直接透過 `https://您的網站網址/page/join-us` 分享給所有人，無須修改任何一行程式碼！
 
 ---
+
+## 📅 活動報名與社團行事曆
+
+- 幹部在 `/admin/events` 建立活動（類別、時間、地點、名額、報名截止、限制對象、是否繳費），可看名單、匯出 CSV、手動加入／移除、標記繳費。
+- 前台 `/events/<id>` 報名：登入社員一鍵報名；公開活動允許訪客以姓名＋學號＋Email 報名（Turnstile 或圖形驗證碼，另有每 IP／每活動速率限制）。名額滿自動候補，有人取消時依報名先後自動遞補。
+- `/calendar` 月曆／列表（活動＋已公告會議，只顯示公開資訊）；`/calendar.ics` 為公開活動訂閱網址，登入後在 `/calendar` 頁面可取得含社員活動與會議的個人 token 訂閱網址（可重新產生）。
+- 活動前一天提醒：每日 cron（`0 12 * * *`，台北 20:00）為隔天有人報名的活動發一則公告（只含人數，不公開姓名），每個活動只提醒一次。
+- 資料放在 `EVENT_STORE` Durable Object（migration `v6`），報名／取消／遞補在同一個 transaction 內完成，不會超賣。
 
 ## ⚠️ 錯誤自查與排除指南 (Troubleshooting)
 

@@ -217,8 +217,10 @@ class MeetingWindow(QDialog):
         self.officer = bool(page.me.get("officer"))
 
         self.header = QLabel()
+        self.header.setTextFormat(Qt.RichText)  # its text is escaped HTML: never guess the format
         self.header.setObjectName("CaptionBar")
         self.summary = QLabel()
+        self.summary.setTextFormat(Qt.RichText)
         self.summary.setWordWrap(True)
         self.summary.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse)
         self.summary.setOpenExternalLinks(True)
@@ -365,6 +367,7 @@ class MeetingWindow(QDialog):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         self.minutes_state = QLabel()
+        self.minutes_state.setTextFormat(Qt.RichText)
         layout.addWidget(self.minutes_state)
         self.minutes = QPlainTextEdit()
         self.minutes.setPlaceholderText("會議紀錄（Markdown）。散會後可按「AI 產生會議紀錄」依各案紀錄與表決結果撰寫。")
@@ -410,8 +413,9 @@ class MeetingWindow(QDialog):
     def render(self, full: bool) -> None:
         m = self.meeting
         self.setWindowTitle(f"{raw(m.get('title', ''))} - 會議")
-        self.header.setText(f"{raw(m.get('title', ''))}　〔{raw(m.get('typeLabel', ''))}・{raw(m.get('statusLabel', ''))}〕")
-        where = raw(m.get("location")) or "（地點待補）"
+        self.header.setText(f"{raw(html.escape(m.get('title', '')))}　〔{raw(html.escape(m.get('typeLabel', '')))}"
+                            f"・{raw(html.escape(m.get('statusLabel', '')))}〕")
+        where = raw(html.escape(m.get("location") or "")) or "（地點待補）"
         if m.get("onlineUrl"):
             where += f'・<a href="{html.escape(m["onlineUrl"])}">線上會議</a>'
         code = f"・簽到碼 <b>{html.escape(m['checkInCode'])}</b>" if self.officer and m.get("checkInCode") else ""
@@ -457,8 +461,8 @@ class MeetingWindow(QDialog):
             self.minutes.setPlainText(minutes.get("content", ""))
             self.minutes.document().setModified(False)
         final = bool(minutes.get("finalizedAt"))
-        self.minutes_state.setText(f"已定稿（{minutes.get('finalizedAt', '')[:10]}，{raw(minutes.get('finalizedBy', ''))}）" if final
-                                   else "草稿" + (f"（最後修改：{raw(minutes.get('updatedBy'))}）" if minutes.get("updatedBy") else ""))
+        self.minutes_state.setText(f"已定稿（{minutes.get('finalizedAt', '')[:10]}，{raw(html.escape(minutes.get('finalizedBy', '')))}）" if final
+                                   else "草稿" + (f"（最後修改：{raw(html.escape(minutes.get('updatedBy')))}）" if minutes.get("updatedBy") else ""))
         self.minutes.setReadOnly(final or not self.officer)
         for button in (self.ai_minutes, self.save_minutes, self.finalize):
             button.setEnabled(self.officer and not final)
