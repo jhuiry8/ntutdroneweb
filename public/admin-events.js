@@ -34,12 +34,23 @@
                 h('td', {}, [h('strong', { text: ev.title }), h('span', { class: 'tag', text: ev.categoryLabel, style: 'margin-left:6px;' })]),
                 h('td', { text: fmt(ev.startsAt) }), h('td', { text: ev.audienceLabel }),
                 h('td', { text: ev.capacity ? ev.confirmed + '/' + ev.capacity : String(ev.confirmed) }), h('td', { text: String(ev.waitlist) }),
-                h('td', {}, [h('button', { class: 'secondary', text: '名單', onclick: function () { roster(ev); } }), ' ', h('button', { class: 'secondary', text: '編輯', onclick: function () { form(ev); } })])
+                h('td', {}, [h('button', { class: 'secondary', text: '名單', onclick: function () { roster(ev); } }), ' ', h('button', { class: 'secondary', text: '編輯', onclick: function () { form(ev); } }), ' ', h('button', { class: 'secondary', text: '回饋問卷', onclick: function () { feedback(ev); } })])
             ]));
         });
         box.appendChild(h('div', { class: 'wrap' }, [table]));
         app.appendChild(box);
         app.appendChild(h('div', { id: 'detail' }));
+    }
+
+    function feedback(ev) {
+        call('/api/surveys/from-link', 'POST', { type: 'event', id: ev.id }).then(function (r) {
+            var d = detail();
+            d.appendChild(h('div', { class: 'card' }, [h('h2', { text: ev.title + ' － 回饋問卷' }),
+                h('p', { class: 'muted', text: r.existing ? '這個活動已有回饋問卷，連結如下：' : '已建立回饋問卷（活動滿意度範本），連結如下：' }),
+                h('input', { readonly: 'readonly', value: r.url, onfocus: function (e) { e.target.select(); } }),
+                h('div', { class: 'row' }, [h('a', { class: 'btn', href: '/admin/surveys/' + r.survey.id + '/report', text: '看報表' }), h('a', { class: 'btn secondary', href: '/admin/surveys', text: '編輯問卷' })])]));
+            say(r.existing ? '已有回饋問卷' : '已建立回饋問卷');
+        }).catch(function (e) { say(e.message, true); });
     }
 
     function detail() { var d = document.getElementById('detail'); d.textContent = ''; return d; }

@@ -46,6 +46,10 @@ class_name = "EventStore"
 name = "FLIGHT_STORE"
 class_name = "FlightStore"
 
+[[durable_objects.bindings]]
+name = "SURVEY_STORE"
+class_name = "SurveyStore"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["EquipmentStore"]
@@ -81,6 +85,10 @@ new_sqlite_classes = ["EventStore"]
 [[migrations]]
 tag = "v9"
 new_sqlite_classes = ["FlightStore"]
+
+[[migrations]]
+tag = "v10"
+new_sqlite_classes = ["SurveyStore"]
 
 # File library (檔案庫): photos and documents are stored in this R2 bucket. See README「檔案庫」.
 [[r2_buckets]]

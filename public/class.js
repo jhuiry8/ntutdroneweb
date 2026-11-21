@@ -25,6 +25,7 @@
         if (me.overLimit) html += '<p class="warn">您本學年的免費體驗次數（2 次）已用完，後續社課需要繳費。這筆簽到已先記錄，是否放行由幹部決定，請向幹部說明。</p>';
         else if (me.kind === 'trial') html += '<p>' + (me.joined ? '已將您加入非正式社員。' : '') + '這是免費體驗社課，本學年還剩 <strong>' + esc(me.remaining) + '</strong> 次免費體驗。</p>';
         else if (me.kind === 'guest') html += '<p class="muted">已用訪客身分簽到。想成為社員，歡迎向幹部詢問。</p>';
+        if (state && state.feedbackUrl) html += '<p><a class="primary" style="display:inline-block;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:700" href="' + esc(state.feedbackUrl) + '">填寫回饋</a></p>';
         return html + '<p class="muted">請不要清除瀏覽器資料或換裝置；一台裝置只能替一個人簽到。</p></div>';
     }
 

@@ -52,6 +52,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     <div class="nav-group"><p class="nav-group-label">社務管理</p>
                         <button class="nav-item" onclick="showPanel('forms'); loadForms()"><i data-lucide="file-pen-line"></i> 表單申請</button>
                         ${viewCms ? `<a class="nav-item" href="/admin/events"><i data-lucide="calendar-days"></i> 活動報名</a>` : ''}
+                        ${viewCms ? `<a class="nav-item" href="/admin/surveys"><i data-lucide="clipboard-list"></i> 問卷與回饋</a>` : ''}
                         <a class="nav-item" href="/admin/flights"><i data-lucide="plane"></i> 飛行紀錄與證照</a>
                         ${manageMembers ? `<button class="nav-item" onclick="showPanel('members'); loadMembers()"><i data-lucide="contact-round"></i> 社員管理</button>` : ''}
                         ${manageFinance ? `<button class="nav-item" onclick="showPanel('finance'); loadFinance()"><i data-lucide="wallet-cards"></i> 財務管理</button>` : ''}

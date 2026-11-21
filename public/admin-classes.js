@@ -103,7 +103,7 @@
 
     function detailHtml(c) {
         return '<p><button class="btn btn-secondary" id="cl-back">← 返回場次列表</button></p><div class="cl-card"><h2>' + esc(c.topic) + ' <span class="cl-pill ' + (c.status === 'open' ? 'cl-ok' : 'cl-muted') + '">' + esc(c.statusLabel) + '</span></h2><p class="cl-muted">' + esc(c.date + (c.time ? ' ' + c.time : '') + '・' + (c.instructor ? '講師 ' + c.instructor + '・' : '') + (c.location || '地點未填') + '・' + c.year + ' 學年') + '</p>'
-            + '<div class="cl-row"><button class="btn btn-secondary" id="cl-toggle">' + (c.status === 'open' ? '結束簽到' : '重新開放簽到') + '</button><a class="btn btn-secondary" href="/api/classes/' + esc(c.id) + '/export.csv">匯出 CSV</a><button class="btn btn-danger" id="cl-delete">刪除場次</button></div></div>'
+            + '<div class="cl-row"><button class="btn btn-secondary" id="cl-toggle">' + (c.status === 'open' ? '結束簽到' : '重新開放簽到') + '</button><a class="btn btn-secondary" href="/api/classes/' + esc(c.id) + '/export.csv">匯出 CSV</a><button class="btn btn-secondary" id="cl-feedback">產生回饋問卷</button><button class="btn btn-danger" id="cl-delete">刪除場次</button></div><div id="cl-feedback-out" class="cl-muted" style="margin-top:8px;"></div></div>'
             + tokenHtml(c) + attendanceHtml(c);
     }
 
@@ -141,6 +141,13 @@
         on('cl-delete', 'click', function () {
             if (!confirm('刪除「' + c.topic + '」與其 ' + c.attendanceCount + ' 筆簽到紀錄？已扣除的免費體驗次數會退回，無法復原。')) return;
             guard(api(base, 'DELETE').then(function () { state.currentId = ''; state.detail = null; toast('已刪除場次'); return load(); }));
+        });
+        on('cl-feedback', 'click', function () {
+            guard(api('/api/surveys/from-link', 'POST', { type: 'class', id: c.id }).then(function (r) {
+                var out = document.getElementById('cl-feedback-out');
+                out.innerHTML = (r.existing ? '這場社課已有回饋問卷：' : '已建立回饋問卷：') + '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.url) + '</a>　<a href="/admin/surveys/' + esc(r.survey.id) + '/report">看報表</a>　<a href="/admin/surveys">編輯問卷</a><br>學員簽到成功後，簽到頁會自動顯示「填寫回饋」連結。';
+                if (navigator.clipboard) navigator.clipboard.writeText(r.url).then(function () { toast('已複製回饋問卷連結'); }, function () {});
+            }));
         });
         on('cl-token', 'click', function () { update(api(base + '/token', 'POST', { ttlMinutes: Number(document.getElementById('cl-ttl').value) }), '已產生新的簽到連結，舊連結已失效'); });
         on('cl-copy', 'click', function () {

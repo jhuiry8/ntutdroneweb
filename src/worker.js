@@ -10,6 +10,7 @@ import { MessageError } from './messages.js';
 import { FileError } from './files.js';
 import { EventError } from './events.js';
 import { FlightError } from './flight-store.js';
+import { SurveyError } from './surveys.js';
 import { PayloadTooLargeError, readJsonLimited } from './request.js';
 import { ValidationError, parseStoredList } from './validation.js';
 import { takeAttempt, giveBackAttempt, sessionUser, listUsers } from './session.js';
@@ -34,6 +35,7 @@ import { handleEventRequest, runEventReminders, EVENT_REMINDER_CRON } from './ev
 import { equipmentStoreRequest } from './equipment-store.js';
 import { handleLoanRequest, remindOverdueLoans } from './loan-routes.js';
 import { handleFlightRequest, runCertReminders } from './flight-routes.js';
+import { handleSurveyRequest } from './survey-routes.js';
 export { EquipmentStore } from './equipment-store.js';
 export { FormStore } from './form-store.js';
 export { MeetingStore } from './meetings.js';
@@ -43,6 +45,7 @@ export { EventStore } from './events.js';
 export { SiteStore } from './site-store.js';
 export { FlightStore } from './flight-store.js';
 export { FileStore } from './file-store.js';
+export { SurveyStore } from './surveys.js';
 
 const WEEKLY_REPORT_CRON = '0 1 * * 1';
 const LOAN_REMINDER_CRON = '0 18 * * *';
@@ -94,6 +97,7 @@ const ROUTES = [
     (request, env) => handleMessageRequest(request, env, aiDeps),
     (request, env) => handleEventRequest(request, env, aiDeps),
     (request, env) => handleFlightRequest(request, env, aiDeps),
+    (request, env) => handleSurveyRequest(request, env, aiDeps),
     handleCmsRequest,
     handleFinanceRequest,
     handleFileRequest,
@@ -164,6 +168,7 @@ async function handleRequest(request, env, ctx) {
         if (e instanceof FileError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof FlightError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof MessageError) return Response.json({ error: e.message }, { status: e.status });
+        if (e instanceof SurveyError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof EventError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof PasswordResetRequiredError) {
             if (path === '/api/login') {

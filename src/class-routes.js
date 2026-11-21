@@ -6,6 +6,7 @@ import { escapeHtml } from './html.js';
 import { findMemberByIdentity } from './meetings.js';
 import { MEMBERS_KEY } from './kv-keys.js';
 import { parseStoredList } from './validation.js';
+import { feedbackPathFor } from './survey-client.js';
 import { ClassError, academicYearOf, applyTrialDelta, attendeeFromMember, classCsv, classListView, classView, publicClassView, requireToken, trialSummary } from './classes.js';
 
 const json = (body, status = 200) => Response.json(body, { status });
@@ -117,7 +118,7 @@ async function handlePublicClass(request, env, deps, path, method) {
         if (method !== 'GET') return json({ error: '方法不允許' }, 405);
         let tokenError = '';
         try { requireToken(session, url.searchParams.get('t'), Date.now()); } catch (error) { if (!(error instanceof ClassError)) throw error; tokenError = error.message; }
-        return new Response(JSON.stringify({ ...publicClassView(session), tokenError, me: mine ? meSummary(mine) : null }), { headers: { 'Content-Type': 'application/json', ...noCache } });
+        return new Response(JSON.stringify({ ...publicClassView(session), tokenError, me: mine ? meSummary(mine) : null, feedbackUrl: mine ? await feedbackPathFor(env, 'class', id) : '' }), { headers: { 'Content-Type': 'application/json', ...noCache } });
     }
     if (method !== 'POST') return json({ error: '方法不允許' }, 405);
     const body = await deps.readJsonLimited(request, 8 * 1024);
@@ -161,7 +162,7 @@ async function handlePublicClass(request, env, deps, path, method) {
     if (created && entry.deducted) await settleTrial(env, id, entry, 1);
     // priorUses was read before this request, so it already includes the class when the person is only signing back in.
     const remaining = entry.kind === 'trial' ? Math.max(0, FREE_TRIAL_CLASSES - (attendee.priorUses + (created && entry.deducted ? 1 : 0))) : null;
-    return new Response(JSON.stringify({ ...publicClassView(result.body.session), tokenError: '', me: { ...meSummary(entry), remaining } }), { headers: { 'Content-Type': 'application/json', ...noCache, 'Set-Cookie': `${deviceCookieName(id)}=${newToken}; Path=/; HttpOnly; Max-Age=${COOKIE_SECONDS}; Secure; SameSite=Strict` } });
+    return new Response(JSON.stringify({ ...publicClassView(result.body.session), tokenError: '', me: { ...meSummary(entry), remaining }, feedbackUrl: await feedbackPathFor(env, 'class', id) }), { headers: { 'Content-Type': 'application/json', ...noCache, 'Set-Cookie': `${deviceCookieName(id)}=${newToken}; Path=/; HttpOnly; Max-Age=${COOKIE_SECONDS}; Secure; SameSite=Strict` } });
 }
 
 // Moves the member's roster counter for a deducted entry. The attendance record is already saved; when
