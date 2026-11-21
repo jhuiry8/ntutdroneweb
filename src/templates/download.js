@@ -19,7 +19,7 @@ const STYLE = `<style>
     .dl-meta { font-size: .8rem; color: var(--text-secondary); }
 </style>`;
 
-// release: the desktop release the website announces ({version, url}) or null.
+// release: the newest desktop release ({version, url, win7Url?, apkUrl?}) or null.
 export function renderDownloadPage({ lang = 'zh', release = null } = {}) {
     lang = lang === 'en' ? 'en' : 'zh';
     const t = locales[lang];
@@ -35,7 +35,7 @@ export function renderDownloadPage({ lang = 'zh', release = null } = {}) {
                     <section class="dl-card" id="android">
                         <h2>${icon('smartphone')} ${escapeHtml(t.dlAndroidTitle)}</h2>
                         <p>${escapeHtml(t.dlAndroidDesc)}</p>
-                        <a class="dl-btn" href="${escapeHtml(ANDROID_APK_URL)}" rel="noopener">${icon('download')} ${escapeHtml(t.dlAndroidBtn)}</a>
+                        <a class="dl-btn" href="${escapeHtml(release?.apkUrl || ANDROID_APK_URL)}" rel="noopener">${icon('download')} ${escapeHtml(t.dlAndroidBtn)}</a>
                     </section>
                     <section class="dl-card" id="windows">
                         <h2>${icon('monitor')} ${escapeHtml(t.dlWindowsTitle)}</h2>
@@ -46,7 +46,9 @@ export function renderDownloadPage({ lang = 'zh', release = null } = {}) {
                     <section class="dl-card" id="windows7">
                         <h2>${icon('monitor')} ${escapeHtml(t.dlWin7Title)}</h2>
                         <p>${escapeHtml(t.dlWin7Desc)}</p>
-                        <a class="dl-btn secondary" href="${escapeHtml(RELEASES_URL)}/latest" rel="noopener">${icon('external-link')} ${escapeHtml(t.dlAllReleases)}</a>
+                        ${release?.win7Url
+                            ? `<a class="dl-btn" href="${escapeHtml(release.win7Url)}" rel="noopener">${icon('download')} ${escapeHtml(t.dlWin7Btn)}</a>`
+                            : `<a class="dl-btn secondary" href="${escapeHtml(RELEASES_URL)}/latest" rel="noopener">${icon('external-link')} ${escapeHtml(t.dlAllReleases)}</a>`}
                     </section>
                     <section class="dl-card" id="ios">
                         <h2>${icon('tablet-smartphone')} ${escapeHtml(t.dlIosTitle)}</h2>

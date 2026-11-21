@@ -79,19 +79,59 @@ test('the release token is ignored when it is missing or too short', async () =>
     assert.equal(response.status, 401);
 });
 
-test('the public download page links the Android APK and the announced Windows installer', async () => {
-    const empty = withSiteStore({ DRONE_DB: kv() });
-    let response = await worker.fetch(new Request('https://example.com/download'), empty);
-    assert.equal(response.status, 200);
-    let html = await response.text();
-    assert.match(html, /releases\/latest\/download\/NTUT-Drone-Club\.apk/);
-    assert.match(html, /github\.com\/jhuiry8\/ntutdroneweb\/releases\/latest"/);
+function stubGithub(reply) {
+    const original = globalThis.fetch;
+    globalThis.fetch = async input => {
+        if (!String(input).startsWith('https://api.github.com/')) return original(input);
+        if (reply instanceof Error) throw reply;
+        return Response.json(reply);
+    };
+    return () => { globalThis.fetch = original; };
+}
 
-    const env = withSiteStore({ DRONE_DB: kv({ 'desktop:release': JSON.stringify(release) }) });
-    response = await worker.fetch(new Request('https://example.com/download?lang=en'), env);
-    html = await response.text();
-    assert.ok(html.includes(release.url));
-    assert.match(html, /Download Android APK/);
+const githubLatest = version => ({
+    tag_name: `desktop-v${version}`,
+    assets: [`ClubDesk-Setup-${version}.exe`, `ClubDesk-Win7-Setup-${version}.exe`, 'NTUT-Drone-Club.apk'].map(name => ({
+        name, browser_download_url: `https://github.com/jhuiry8/ntutdroneweb/releases/download/desktop-v${version}/${name}`
+    }))
+});
+
+test('the download page falls back to the latest release page when GitHub and the site know nothing', async () => {
+    const restore = stubGithub(new Error('offline'));
+    try {
+        const response = await worker.fetch(new Request('https://example.com/download'), withSiteStore({ DRONE_DB: kv() }));
+        assert.equal(response.status, 200);
+        const html = await response.text();
+        assert.match(html, /releases\/latest\/download\/NTUT-Drone-Club\.apk/);
+        assert.match(html, /github\.com\/jhuiry8\/ntutdroneweb\/releases\/latest"/);
+    } finally { restore(); }
+});
+
+test('the download page shows the GitHub release when the announced version lags behind', async () => {
+    const restore = stubGithub(githubLatest('1.2.5'));
+    try {
+        const env = withSiteStore({ DRONE_DB: kv({ 'desktop:release': JSON.stringify(release) }) });
+        const html = await (await worker.fetch(new Request('https://example.com/download?lang=en'), env)).text();
+        assert.match(html, /Current version：1\.2\.5/);
+        assert.ok(html.includes('releases/download/desktop-v1.2.5/ClubDesk-Setup-1.2.5.exe'));
+        assert.ok(html.includes('releases/download/desktop-v1.2.5/ClubDesk-Win7-Setup-1.2.5.exe'));
+        assert.ok(!html.includes('ClubDesk-Setup-1.2.0.exe'));
+    } finally { restore(); }
+});
+
+test('the download page keeps the announced release when it is newer than GitHub, or GitHub is down', async () => {
+    let restore = stubGithub(githubLatest('1.1.0'));
+    try {
+        const env = withSiteStore({ DRONE_DB: kv({ 'desktop:release': JSON.stringify(release) }) });
+        const html = await (await worker.fetch(new Request('https://example.com/download'), env)).text();
+        assert.ok(html.includes(release.url));
+    } finally { restore(); }
+    restore = stubGithub(new Error('offline'));
+    try {
+        const env = withSiteStore({ DRONE_DB: kv({ 'desktop:release': JSON.stringify(release) }) });
+        const html = await (await worker.fetch(new Request('https://example.com/download'), env)).text();
+        assert.ok(html.includes(release.url));
+    } finally { restore(); }
 });
 
 test('the site header links to the download page', async () => {

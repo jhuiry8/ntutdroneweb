@@ -36,6 +36,33 @@ function parseDesktopRelease(json) {
     } catch { return null; }
 }
 
+const GITHUB_LATEST_RELEASE_API = 'https://api.github.com/repos/jhuiry8/ntutdroneweb/releases/latest';
+
+// Newest GitHub Release as {version, url, win7Url, apkUrl}, or null when GitHub cannot be reached.
+// Cached by Cloudflare for 10 minutes to stay far below GitHub's unauthenticated rate limit.
+export async function latestGithubRelease() {
+    try {
+        const response = await fetch(GITHUB_LATEST_RELEASE_API, {
+            headers: { 'User-Agent': 'ntut-drone-web', Accept: 'application/vnd.github+json' },
+            cf: { cacheTtl: 600, cacheEverything: true },
+            signal: AbortSignal.timeout(3000)
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        const version = /^desktop-v(\d{1,4}\.\d{1,4}\.\d{1,4})$/.exec(String(data?.tag_name || ''))?.[1];
+        if (!version || data.draft) return null;
+        const assets = Array.isArray(data.assets) ? data.assets : [];
+        const asset = pattern => {
+            const link = assets.find(item => pattern.test(String(item?.name || '')))?.browser_download_url;
+            return typeof link === 'string' && link.startsWith('https://github.com/') ? link : null;
+        };
+        const url = asset(/^ClubDesk-Setup-.*\.exe$/i);
+        return url ? { version, url, win7Url: asset(/^ClubDesk-Win7-Setup-.*\.exe$/i), apkUrl: asset(/\.apk$/i) } : null;
+    } catch {
+        return null;
+    }
+}
+
 // Returns a Response for /api/desktop/version and the public /download page, or null for any other path.
 export async function handleDesktopRequest(request, env) {
     const url = new URL(request.url);
@@ -77,9 +104,14 @@ export async function handleDesktopRequest(request, env) {
 
     // ==================== Public download page ====================
     if ((path === '/download' || path === '/download/') && method === 'GET') {
-        const release = parseDesktopRelease(await env.DRONE_DB.get(DESKTOP_RELEASE_KEY));
-        const safe = release && /^https:\/\/github\.com\//.test(String(release.url || '')) ? release : null;
-        const html = renderDownloadPage({ lang: url.searchParams.get('lang'), release: safe });
+        const stored = parseDesktopRelease(await env.DRONE_DB.get(DESKTOP_RELEASE_KEY));
+        const announced = stored && /^https:\/\/github\.com\//.test(String(stored.url || '')) ? stored : null;
+        // The announced version lags whenever the automatic announcement fails, so the page
+        // also asks GitHub and shows whichever is newer.
+        const github = await latestGithubRelease();
+        const release = github && (!announced || compareVersions(github.version, announced.version) >= 0)
+            ? github : announced && { ...announced, ...(github ? { win7Url: github.win7Url, apkUrl: github.apkUrl } : {}) };
+        const html = renderDownloadPage({ lang: url.searchParams.get('lang'), release });
         return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
     }
 
