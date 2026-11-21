@@ -164,6 +164,9 @@ test('KV is read in bulk: many keys cost few subrequests', async () => {
     // A KV without bulk get still works, one read per key.
     const plain = { ...env.DRONE_DB, async get(key) { return Array.isArray(key) ? null : env.DRONE_DB._store.get(key) ?? null; } };
     assert.equal(Object.keys(await exportKv(plain)).length, Object.keys(data).length);
+    // A KV that rejects bulk get (local wrangler dev, older runtimes) also falls back.
+    const throwing = { ...env.DRONE_DB, async get(key) { if (Array.isArray(key)) throw new Error('KV GET_BULK failed: 405 Method Not Allowed'); return env.DRONE_DB._store.get(key) ?? null; } };
+    assert.equal(Object.keys(await exportKv(throwing)).length, Object.keys(data).length);
 });
 
 test('backup status is recorded, and a failure alerts the webhook and is rethrown', async t => {

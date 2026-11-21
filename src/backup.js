@@ -50,7 +50,11 @@ async function readKvValues(kv, names) {
     const values = new Map();
     for (let i = 0; i < names.length; i += KV_BULK_SIZE) {
         const chunk = names.slice(i, i + KV_BULK_SIZE);
-        const bulk = await kv.get(chunk);
+        // Bulk get is not available everywhere (older runtimes and local wrangler dev reject it), so fall
+        // back to one read per key instead of failing the whole backup.
+        let bulk = null;
+        try { bulk = await kv.get(chunk); }
+        catch (error) { console.warn('KV bulk get unavailable, reading keys one by one', error?.message || String(error)); }
         if (bulk instanceof Map) {
             for (const [name, value] of bulk) values.set(name, value);
         } else {
