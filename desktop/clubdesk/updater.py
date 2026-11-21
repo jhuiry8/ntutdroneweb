@@ -117,11 +117,27 @@ def offer_update(parent, release: dict) -> bool:
         return False
     if not path:
         return False
-    if not QProcess.startDetached(path, []):
-        show_error(parent, ApiError(f"無法啟動安裝程式，請手動執行：\n{path}"), "軟體更新")
+    if not launch_installer(path):
+        show_error(parent, ApiError(f"無法自動啟動安裝程式，請手動執行：\n{path}"), "軟體更新")
+        QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))  # show the file
         return False
+    # Give the installer a moment to appear before this program closes, so its window is not
+    # lost with us, and tell the user what is about to happen.
+    QMessageBox.information(parent, "軟體更新", "即將開啟安裝程式，本程式會先關閉。\n"
+                            "請在安裝精靈中按「安裝」，完成後再重新開啟。")
     QApplication.quit()
     return True
+
+
+def launch_installer(path: str) -> bool:
+    """Starts the downloaded installer the way double-clicking it would (UAC, SmartScreen)."""
+    if hasattr(os, "startfile"):  # Windows: ShellExecute
+        try:
+            os.startfile(path)  # noqa: S606 - the file was just downloaded and SHA-256 checked
+            return True
+        except OSError:
+            pass
+    return QProcess.startDetached(path, [])
 
 
 def check_and_offer(parent, api: ApiClient, quiet: bool = True) -> bool:
