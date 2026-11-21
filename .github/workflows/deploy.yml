@@ -31,6 +31,28 @@ jobs:
           sed -i "s/YOUR_KV_NAMESPACE_ID/$KV_ID/g" wrangler.toml
           echo "KV Namespace ID successfully injected."
 
+      # `wrangler deploy` fails when a bound R2 bucket does not exist or the token cannot use R2.
+      # Create missing buckets (R2 buckets are private by default) and stop with a clear message otherwise.
+      - name: Ensure R2 buckets exist
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          BUCKETS=$(sed -n 's/^bucket_name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' wrangler.toml)
+          [ -z "$BUCKETS" ] && exit 0
+          EXISTING=$(npx wrangler r2 bucket list) || { echo "::error::Cannot list R2 buckets. Give CLOUDFLARE_API_TOKEN the 'Workers R2 Storage: Edit' permission (see README 3-3-1)."; exit 1; }
+          for BUCKET in $BUCKETS; do
+            if echo "$EXISTING" | grep -qE "^name:[[:space:]]+$BUCKET\$"; then
+              echo "R2 bucket $BUCKET exists."
+            else
+              echo "Creating private R2 bucket $BUCKET."
+              if ! OUTPUT=$(npx wrangler r2 bucket create "$BUCKET" 2>&1); then
+                echo "$OUTPUT"
+                echo "$OUTPUT" | grep -qi "already exists" || { echo "::error::Could not create R2 bucket $BUCKET. Create it in the Cloudflare dashboard (keep it private) and check the token's R2 permission."; exit 1; }
+              fi
+            fi
+          done
+
       - name: Deploy to Cloudflare Workers
         run: npx wrangler deploy
         env:

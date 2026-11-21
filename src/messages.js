@@ -12,6 +12,7 @@
 // Conversations are "ch~<channelId>" or "dm~<user a>~<user b>" (names sorted).
 
 import { isExportRequest, exportStorage } from './do-export.js';
+
 export class MessageError extends Error {
     constructor(message, status = 400) { super(message); this.name = 'MessageError'; this.status = status; }
 }
