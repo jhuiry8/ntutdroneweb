@@ -30,6 +30,10 @@ class_name = "MeetingStore"
 name = "MESSAGE_STORE"
 class_name = "MessageStore"
 
+[[durable_objects.bindings]]
+name = "FILE_STORE"
+class_name = "FileStore"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["EquipmentStore"]
@@ -49,6 +53,15 @@ new_sqlite_classes = ["MeetingStore"]
 [[migrations]]
 tag = "v5"
 new_sqlite_classes = ["MessageStore"]
+
+[[migrations]]
+tag = "v6"
+new_sqlite_classes = ["FileStore"]
+
+# File library (檔案庫): photos and documents are stored in this R2 bucket. See README「檔案庫」.
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "your-r2-bucket-name" # Replaced from the CLOUDFLARE_R2_BUCKET GitHub secret by deploy.yml
 
 # Private R2 bucket for daily backups (see README 「自動備份」). Keep it private: it holds password hashes.
 [[r2_buckets]]
