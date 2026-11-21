@@ -22,11 +22,13 @@ import { handleFormRequest, formStore, withAiQuota, aiDailyLimit } from './form-
 import { handleDesktopRequest } from './desktop-routes.js';
 import { handleAiRequest, generateClubReport } from './ai-routes.js';
 import { handleMeetingRequest } from './meeting-routes.js';
+import { handleClassRequest } from './class-routes.js';
 import { handleMessageRequest } from './message-routes.js';
 import { equipmentStoreRequest } from './equipment-store.js';
 export { EquipmentStore } from './equipment-store.js';
 export { FormStore } from './form-store.js';
 export { MeetingStore } from './meetings.js';
+export { ClassStore } from './classes.js';
 export { MessageStore } from './messages.js';
 export { SiteStore } from './site-store.js';
 
@@ -72,6 +74,7 @@ const ROUTES = [
     handleAuthRequest,
     (request, env) => handleAiRequest(request, env, aiDeps),
     (request, env) => handleMeetingRequest(request, env, aiDeps),
+    (request, env) => handleClassRequest(request, env, aiDeps),
     (request, env) => handleMessageRequest(request, env, aiDeps),
     handleCmsRequest,
     handleFinanceRequest,
