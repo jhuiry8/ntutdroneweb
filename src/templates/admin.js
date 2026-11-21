@@ -604,6 +604,8 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             </div>` : ''}
             <div id="panel-files" class="panel" data-can-upload="${canUploadFiles(user) ? '1' : ''}">
                 <div class="content-header"><div><h1>檔案庫</h1><p style="color:var(--text-muted); margin-top:6px;">上傳照片與檔案，複製連結後可貼進文章（Markdown）或其他欄位。只收 JPG／PNG／WebP／GIF／PDF／DOCX／XLSX／PPTX／ZIP，圖片上限 10 MB、其他 25 MB。</p></div><button type="button" class="btn btn-secondary" onclick="loadFiles()">重新載入</button></div>
+                <div class="files-tabs" role="tablist" style="display:flex; gap:8px; margin-bottom:16px;"><button type="button" class="btn btn-primary" data-files-tab="library" role="tab">檔案庫</button><button type="button" class="btn btn-secondary" data-files-tab="drive" role="tab" hidden>雲端硬碟</button></div>
+                <div id="files-library">
                 ${canUploadFiles(user) ? `<div id="files-drop" class="files-drop" tabindex="0" role="button" aria-label="選擇或拖放檔案上傳">
                     <strong>把檔案拖放到這裡，或點此選擇檔案</strong><span style="color:var(--text-muted);">可一次選多個檔案</span>
                     <input id="files-input" type="file" multiple hidden accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.docx,.xlsx,.pptx,.zip">
@@ -613,7 +615,16 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     <select id="files-up-visibility" class="form-control" aria-label="可見範圍"></select>
                     <input id="files-up-description" class="form-control" maxlength="300" placeholder="說明（選填，套用到這次上傳的所有檔案）">
                 </div>
-                <div id="files-queue" style="display:grid; gap:6px; margin-bottom:14px;"></div>` : ''}
+                <div id="files-queue" style="display:grid; gap:6px; margin-bottom:14px;"></div>
+                <details style="margin-bottom:14px; padding:12px 16px; border:1px solid var(--border-glass); border-radius:12px;"><summary style="cursor:pointer; font-weight:600;">新增 Google 雲端硬碟連結（不上傳檔案）</summary>
+                    <form id="files-link-form" class="responsive-form-grid" style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:12px;">
+                        <input id="files-link-url" class="form-control" type="url" placeholder="https://drive.google.com/file/d/…/view 或 docs.google.com 文件網址" maxlength="500" required>
+                        <input id="files-link-name" class="form-control" placeholder="標題（必填）" maxlength="120" required>
+                        <select id="files-link-visibility" class="form-control" aria-label="Drive 連結可見範圍"><option value="member">社員可見</option><option value="cadre">幹部限定</option></select>
+                        <button class="btn btn-primary" type="submit">新增連結（分類與說明沿用上方設定）</button>
+                    </form>
+                    <p style="color:var(--text-muted); font-size:.85rem; margin-top:8px;">連結的檔案要先在 Google 雲端硬碟設定好分享權限。只接受 drive.google.com 與 docs.google.com。</p>
+                </details>` : ''}
                 <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
                     <select id="files-filter-category" class="form-control" style="max-width:200px;" aria-label="分類篩選"></select>
                     <select id="files-filter-kind" class="form-control" style="max-width:160px;" aria-label="類型篩選"><option value="">全部類型</option><option value="image">圖片</option><option value="document">文件</option></select>
@@ -621,6 +632,18 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 </div>
                 <div id="files-grid" class="files-grid"><p style="color:var(--text-muted);">尚未載入。</p></div>
                 <div style="margin-top:14px; text-align:center;"><button id="files-more" type="button" class="btn btn-secondary" style="display:none;">載入更多</button></div>
+                </div>
+                <div id="files-drive" hidden>
+                    <p style="color:var(--text-muted); margin-bottom:12px;">社團 Google 雲端硬碟中已設定的資料夾（唯讀瀏覽；要新增或修改檔案請直接在 Google 雲端硬碟操作）。</p>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px;"><select id="drive-root" class="form-control" style="max-width:260px;" aria-label="雲端硬碟資料夾"></select><nav id="drive-crumbs" style="display:flex; gap:6px; flex-wrap:wrap;"></nav><button id="drive-config-button" type="button" class="btn btn-secondary" hidden>設定資料夾</button></div>
+                    <div id="drive-config" hidden style="margin-bottom:14px; padding:12px 16px; border:1px solid var(--border-glass); border-radius:12px;">
+                        <p style="color:var(--text-muted); font-size:.85rem; margin-bottom:8px;">每行一個資料夾：<code>資料夾網址或 ID, 顯示名稱, member 或 cadre 或 public</code>。資料夾要先分享給服務帳號的 e-mail（檢視者即可）。</p>
+                        <textarea id="drive-config-text" class="form-control" rows="4" spellcheck="false"></textarea>
+                        <div style="margin-top:8px; display:flex; gap:8px;"><button id="drive-config-save" type="button" class="btn btn-primary">儲存</button></div>
+                    </div>
+                    <div id="drive-grid" class="files-grid"></div>
+                    <div style="margin-top:14px; text-align:center;"><button id="drive-more" type="button" class="btn btn-secondary" style="display:none;">載入更多</button></div>
+                </div>
             </div>
             <div id="panel-forms" class="panel" data-username="${escapeHtml(user?.username || '')}" data-role="${escapeHtml(user?.role || 'member')}">
                 <div class="content-header"><div><h1>表單申請</h1><p style="color:var(--text-muted); margin-top:6px;">線上填寫並自動帶入資料，列印成紙本後交由財務長、社長及學校單位簽核；審核以紙本為準。</p><p id="forms-ai-status" class="forms-muted"></p><p class="forms-muted">非社團帳號也能用公開頁面填寫設備借據（不需登入、不提供 AI）：<a href="/forms/equipment-loan" target="_blank" rel="noopener" style="color:var(--color-cyan);">/forms/equipment-loan</a>；送出的借據會出現在下方紀錄並標示「外部填寫」。</p></div></div>

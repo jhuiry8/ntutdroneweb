@@ -260,6 +260,45 @@
 
 錯誤碼：`401` 未登入、`403` 權限不足、`404` 不存在或無權查看、`413` 檔案過大、`415` 類型不支援或副檔名與內容不符、`429` 上傳過於頻繁、`503` 尚未設定 R2／Durable Object。
 
+### 3-6. 連結與瀏覽 Google 雲端硬碟（選用）
+社團原本使用一個社團專用的一般 Google 帳號的雲端硬碟，現在與網站並存：**網站上傳一律放 R2，雲端硬碟只用來「看」，網站絕不寫入 Drive**。
+
+**A. Drive 連結（不需任何設定，部署後即可使用）**
+* 檔案庫「新增 Google 雲端硬碟連結」：貼上網址、填標題，選分類與可見範圍（社員／幹部限定，連結不能設為公開），網站會顯示成卡片；檔案、Google 文件／試算表／簡報可按「預覽」用內嵌視窗查看，也可「在 Google 開啟」。
+* 只接受 `https://drive.google.com` 與 `https://docs.google.com`；網站嚴格解析網址形式與檔案 ID（只允許英數、`-`、`_`），並依 ID 重建連結，不保存使用者貼的其他文字；Drive 圖片網址不會被當成 `<img>` 使用。
+* 連結的檔案要先在 Google 雲端硬碟設好分享權限（例如「知道連結的人可檢視」或指定帳號）；內嵌預覽依瀏覽器登入的 Google 帳號判斷權限。
+* 網站的 CSP `frame-src` 因此加入 `https://drive.google.com` 與 `https://docs.google.com`（只開放這兩個，用於預覽）。
+
+**B. 雲端硬碟分頁（唯讀瀏覽資料夾；設定 secret 之後才會出現）**
+沒有設定 `GOOGLE_SERVICE_ACCOUNT_JSON` 時，這個分頁自動隱藏，也不會出現任何錯誤。設定步驟（全部用社團的 Google 帳號，免費）：
+1. 前往 [Google Cloud Console](https://console.cloud.google.com/)，用社團帳號**建立專案**（例如 `ntut-drone-web`）。
+2. **啟用 API**：API 和服務 → 程式庫 → 搜尋「Google Drive API」→ 啟用。
+3. **建立服務帳號**：IAM 與管理 → 服務帳戶 → 建立（不需要授予任何專案角色）。記下它的 e-mail（`xxx@專案.iam.gserviceaccount.com`）。
+4. **建立金鑰**：進入該服務帳號 → 金鑰 → 新增金鑰 → JSON，下載 JSON 檔。**這個檔案等同密碼，不要放進程式碼或貼到聊天室。**（若組織原則禁止建立金鑰，需先由管理員放行；一般個人帳號沒有此限制。）
+5. **分享資料夾**：在 Google 雲端硬碟把要給網站看的資料夾，用「共用」分享給步驟 3 的服務帳號 e-mail，權限選**檢視者**。
+6. **設定 secret**（二選一）：
+   * GitHub：Settings → Secrets and variables → Actions → 新增 **`GOOGLE_SERVICE_ACCOUNT_JSON`**，內容貼上整份 JSON；下次部署時 `deploy.yml` 會自動用 `wrangler secret put` 寫入 Cloudflare。
+   * 或在 Cloudflare：Workers → 此 Worker → Settings → Variables and Secrets → 新增 Secret，名稱 `GOOGLE_SERVICE_ACCOUNT_JSON`，值為整份 JSON；本機則放在 `.dev.vars`。
+7. 重新部署後，檔案庫會出現「雲端硬碟」分頁。**社長**按「設定資料夾」，每行填 `資料夾網址或 ID, 顯示名稱, member 或 cadre 或 public`，儲存即可（設定存在 `FILE_STORE`）。
+
+**運作與安全**
+* Worker 用金鑰以 RS256（Web Crypto）簽 JWT，向 Google 換 access token（範圍只有 `drive.readonly`，快到期前才重新換），再呼叫 Drive API v3 `files.list`。服務帳號沒有儲存空間，也沒有寫入權限。換取 token 的網址固定寫死，不採用金鑰檔裡的 `token_uri`。
+* 只有已設定的資料夾（及其子資料夾）能被瀏覽；請求其他資料夾一律回 404，即使服務帳號看得到。子資料夾沿用根資料夾的可見範圍，每次請求都驗證 session 與角色。
+* 縮圖由 Worker 代理（`/api/drive/thumb`），只送出 jpeg／png／webp／gif，帶 `nosniff` 與 `private` 快取；因此不需要為 Google 圖片網域放寬 `img-src`。
+* Google API 結果在 Worker 記憶體短暫快取（資料夾列表 60 秒、檔案資訊 5 分鐘），避免每次都打 Google；剛在 Drive 新增的檔案最多約 1 分鐘後才會出現。
+* Google 回傳的錯誤細節只寫入 Worker 日誌，不會顯示給使用者。
+
+**雲端硬碟 API**（需登入；未啟用時除 `status` 外一律回 404）：
+
+| 方法與路徑 | 說明 |
+| :--- | :--- |
+| `POST /api/files/links` | 新增 Drive 連結（JSON：`url`、`name`、`category`、`visibility`＝`member`／`cadre`、`description`；上傳者權限） |
+| `GET /api/drive/status` | `{ enabled, canConfigure }`；未啟用時 `enabled:false` |
+| `GET /api/drive/folders` | 此帳號可開啟的已設定資料夾 |
+| `PUT /api/drive/folders` | 社長：設定 `{ folders: [{ id（或資料夾網址）, name, visibility }] }`，最多 20 個 |
+| `GET /api/drive/list?root=&folder=&pageToken=` | 列出資料夾內容（`folder` 省略時為根資料夾）；回傳 `{ items, nextPageToken }` |
+| `GET /api/drive/thumb?root=&file=` | 縮圖（經 Worker 代理） |
+
 ### 4. 獨立網頁建立 (Custom Pages)
 * 如果您需要為社團迎新、比賽報名或贊助招商建立專屬介紹頁，前往 **「頁面管理」** -> 「新增獨立網頁」。
 * 填寫標題與路徑（例如 `join-us`；文章與頁面的路徑只能使用英文字母、數字、底線或連字號，最多 100 字），儲存後即可直接透過 `https://您的網站網址/page/join-us` 分享給所有人，無須修改任何一行程式碼！

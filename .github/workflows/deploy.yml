@@ -64,3 +64,17 @@ jobs:
             exit 0
           fi
           printf '%s' "$DESKTOP_RELEASE_TOKEN" | npx wrangler secret put DESKTOP_RELEASE_TOKEN
+
+      # Optional: lets the file library's 雲端硬碟 tab read the club's Google Drive (read-only).
+      # Skipped when the GitHub secret is not set; the tab then stays hidden. See README「檔案庫」.
+      - name: Sync Google service account key
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "GOOGLE_SERVICE_ACCOUNT_JSON is not set; the Google Drive tab stays hidden."
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" | npx wrangler secret put GOOGLE_SERVICE_ACCOUNT_JSON

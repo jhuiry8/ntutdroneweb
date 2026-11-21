@@ -25,6 +25,7 @@ import { handleAiRequest, generateClubReport } from './ai-routes.js';
 import { handleMeetingRequest } from './meeting-routes.js';
 import { handleMessageRequest } from './message-routes.js';
 import { handleFileRequest } from './file-routes.js';
+import { handleDriveRequest } from './drive-routes.js';
 import { equipmentStoreRequest } from './equipment-store.js';
 export { EquipmentStore } from './equipment-store.js';
 export { FormStore } from './form-store.js';
@@ -44,7 +45,8 @@ const CONTENT_SECURITY_POLICY = [
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' https: data:",
     "connect-src 'self'",
-    'frame-src https://challenges.cloudflare.com',
+    // Drive and Docs previews in the file library (/preview pages of files the club linked).
+    'frame-src https://challenges.cloudflare.com https://drive.google.com https://docs.google.com',
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -79,6 +81,7 @@ const ROUTES = [
     handleCmsRequest,
     handleFinanceRequest,
     handleFileRequest,
+    handleDriveRequest,
     handleEquipmentRequest,
     handleMemberRequest,
     handleRegulationRequest,

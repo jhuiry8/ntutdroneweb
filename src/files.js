@@ -156,3 +156,65 @@ export function visibleLevels(user) {
     return canSeeCadreFiles(user) ? ['public', 'member', 'cadre'] : ['public', 'member'];
 }
 export const canManageFile = (user, record) => !!user && (user.role === 'president' || (canUploadFiles(user) && record?.uploadedBy === user.username));
+
+// ---- Google Drive links (no file is stored; only a link, a title, a category and who may see it) ----
+const DRIVE_ID = /^[A-Za-z0-9_-]{10,100}$/;
+const DOC_KINDS = ['document', 'spreadsheets', 'presentation', 'forms'];
+const segment = value => { try { return decodeURIComponent(value); } catch { return ''; } };
+
+// Reads a Drive / Docs URL strictly: https only, host exactly drive.google.com or docs.google.com, no
+// credentials or port, and the file id taken from a known path shape and checked against [A-Za-z0-9_-].
+// The stored links are rebuilt from the id, so nothing else from the pasted text is kept.
+// Returns { kind, id, viewUrl, embedUrl } (embedUrl is null when the item cannot be previewed) or null.
+export function parseDriveUrl(input) {
+    let url;
+    try { url = new URL(String(input ?? '').trim()); } catch { return null; }
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+    if (url.hostname !== 'drive.google.com' && url.hostname !== 'docs.google.com') return null;
+    const parts = url.pathname.split('/').filter(Boolean).map(segment);
+    if (parts[0] === 'u' && /^\d+$/.test(parts[1] || '')) parts.splice(0, 2);
+    if (url.hostname === 'drive.google.com' && parts[0] === 'drive' && parts[1] === 'u' && /^\d+$/.test(parts[2] || '')) parts.splice(1, 2);
+    let kind = null, id = null;
+    if (url.hostname === 'drive.google.com') {
+        if (parts[0] === 'file' && parts[1] === 'd') { kind = 'file'; id = parts[2]; }
+        else if (parts[0] === 'drive' && parts[1] === 'folders') { kind = 'folder'; id = parts[2]; }
+        else if ((parts[0] === 'open' || parts[0] === 'uc') && parts.length === 1) { kind = 'file'; id = url.searchParams.get('id'); }
+    } else if (DOC_KINDS.includes(parts[0]) && parts[1] === 'd') { kind = parts[0]; id = parts[2]; }
+    if (!kind || !DRIVE_ID.test(id || '')) return null;
+    if (kind === 'file') return { kind, id, viewUrl: `https://drive.google.com/file/d/${id}/view`, embedUrl: `https://drive.google.com/file/d/${id}/preview` };
+    if (kind === 'folder') return { kind, id, viewUrl: `https://drive.google.com/drive/folders/${id}`, embedUrl: null };
+    return { kind, id, viewUrl: `https://docs.google.com/${kind}/d/${id}/edit`, embedUrl: kind === 'forms' ? null : `https://docs.google.com/${kind}/d/${id}/preview` };
+}
+
+export const isDriveId = value => DRIVE_ID.test(String(value ?? ''));
+// A folder given as a bare id or as a Drive folder URL.
+export function parseFolderInput(input) {
+    const text = String(input ?? '').trim();
+    if (DRIVE_ID.test(text)) return text;
+    const parsed = parseDriveUrl(text);
+    return parsed?.kind === 'folder' ? parsed.id : null;
+}
+
+export function cleanTitle(value) {
+    const title = String(value ?? '').normalize('NFC').replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '').replace(/\s+/g, ' ').trim();
+    if (!title) throw new FileError('請輸入標題');
+    if (title.length > 120) throw new FileError('標題不可超過 120 字');
+    return title;
+}
+
+export const isDriveLink = record => record?.type === 'drive';
+// Link items may be seen by members or officers only (a link card is never an anonymous resource).
+export function cleanLinkVisibility(value) {
+    const visibility = String(value ?? 'member').trim() || 'member';
+    if (visibility !== 'member' && visibility !== 'cadre') throw new FileError('Drive 連結的可見範圍只能是「社員」或「幹部限定」');
+    return visibility;
+}
+
+export function validateDriveLink({ url, name, category, visibility, description }) {
+    const parsed = parseDriveUrl(url);
+    if (!parsed) throw new FileError('只接受 drive.google.com 或 docs.google.com 的檔案、資料夾或文件連結');
+    return {
+        type: 'drive', mime: '', size: 0, driveKind: parsed.kind, driveId: parsed.id, viewUrl: parsed.viewUrl, embedUrl: parsed.embedUrl,
+        name: cleanTitle(name), category: cleanCategory(category), visibility: cleanLinkVisibility(visibility), description: cleanDescription(description)
+    };
+}
