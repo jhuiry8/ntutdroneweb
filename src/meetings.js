@@ -5,6 +5,7 @@
 // through MeetingStore, a Durable Object, so concurrent check-ins and ballots
 // are applied one at a time.
 import { assemblyThresholds } from './regulation-rules.js';
+import { isExportRequest, exportStorage } from './do-export.js';
 
 export class MeetingError extends Error {
     constructor(message, status = 400) { super(message); this.status = status; }
@@ -364,6 +365,7 @@ export class MeetingStore {
 
     async fetch(request) {
         try {
+            if (isExportRequest(request)) return await exportStorage(this.storage);
             const url = new URL(request.url);
             const payload = await request.json();
             const now = new Date().toISOString();

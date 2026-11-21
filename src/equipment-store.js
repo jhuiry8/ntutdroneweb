@@ -2,6 +2,7 @@
 // Object that serializes every change, and the client the routes use to reach it.
 import { RegulationRuleError } from './regulation-rules.js';
 import { ValidationError, financeText, financeAmount, importedDate, parseStoredList } from './validation.js';
+import { isExportRequest, exportStorage } from './do-export.js';
 import { EQUIPMENT_KEY, EQUIPMENT_MIGRATION_KEY } from './kv-keys.js';
 
 export function normalizeEquipmentInput(body) {
@@ -62,6 +63,7 @@ export class EquipmentStore {
 
     async fetch(request) {
         try {
+            if (isExportRequest(request)) return await exportStorage(this.storage);
             if (request.method !== 'POST') return Response.json({ error: '方法不允許' }, { status: 405 });
             const url = new URL(request.url);
             const payload = await request.json();

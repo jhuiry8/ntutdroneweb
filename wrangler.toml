@@ -63,6 +63,11 @@ new_sqlite_classes = ["FileStore"]
 binding = "FILES"
 bucket_name = "your-r2-bucket-name" # Replaced from the CLOUDFLARE_R2_BUCKET GitHub secret by deploy.yml
 
+# Private R2 bucket for daily backups (see README 「自動備份」). Keep it private: it holds password hashes.
+[[r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "ntut-drone-backups"
+
 # Weekly club report: every Monday 01:00 UTC (09:00 Taipei). See README「AI 功能」.
 [triggers]
-crons = ["0 1 * * 1"]
+crons = ["0 1 * * 1", "0 19 * * *"] # second entry: daily backup 03:00 Taipei (BACKUP_CRON in src/backup.js)

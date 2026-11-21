@@ -21,7 +21,7 @@ export function normalizeMemberInput(body, index = null, defaultJoinedAt = true)
     const level = body?.level ? parseMemberLevel(body.level) : 'member';
     if (!level) throw new ValidationError(`${prefix}社員身分無效（可填 非正式社員、正式社員、籌備幹部、正式幹部）`);
     const feeStatus = body?.feeStatus ? parseFeeStatus(body.feeStatus) : 'unpaid';
-    if (!feeStatus) throw new ValidationError(`${prefix}社費狀態無效（可填 未繳費、學期會籍、在學會籍）`);
+    if (!feeStatus) throw new ValidationError(`${prefix}社費狀態無效（可填 未繳費、一年會籍、在學會籍）`);
     let feeSemester = String(body?.feeSemester ?? '').trim();
     if (feeStatus === 'semester' && !feeSemester) feeSemester = semesterOf();
     if (feeStatus !== 'semester') feeSemester = '';
@@ -172,7 +172,7 @@ export async function handleMemberRequest(request, env) {
         const date = financeDate(body.date || new Date().toISOString().slice(0, 10));
         const receiptNumber = String(body.receiptNumber || '').trim().slice(0, 80);
         const note = String(body.note || '').trim().slice(0, 500);
-        const feeType = receiptFeeType(body.feeType, amount);
+        const feeType = receiptFeeType(body.feeType, amount, date);
         // A receipt for a roster entry (chosen, or matched by student ID) updates that
         // member's fee status, like Django's FeeRecord does for User.fee_status.
         if (!member && studentId) {

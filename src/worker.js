@@ -26,6 +26,7 @@ import { handleMeetingRequest } from './meeting-routes.js';
 import { handleMessageRequest } from './message-routes.js';
 import { handleFileRequest } from './file-routes.js';
 import { handleDriveRequest } from './drive-routes.js';
+import { handleBackupRequest, runBackup, BACKUP_CRON } from './backup.js';
 import { equipmentStoreRequest } from './equipment-store.js';
 export { EquipmentStore } from './equipment-store.js';
 export { FormStore } from './form-store.js';
@@ -86,7 +87,8 @@ const ROUTES = [
     handleMemberRequest,
     handleRegulationRequest,
     handleFormRequest,
-    handleDesktopRequest
+    handleDesktopRequest,
+    handleBackupRequest
 ];
 
 export default {
@@ -94,8 +96,13 @@ export default {
         const response = await handleRequest(request, env, ctx);
         return addSecurityHeaders(response, request);
     },
-    // Cron trigger (wrangler.toml): builds the weekly club report and posts it to REPORT_WEBHOOK_URL.
+    // Cron triggers (wrangler.toml): the daily one backs up to R2, any other builds the weekly club report
+    // and posts it to REPORT_WEBHOOK_URL.
     async scheduled(controller, env, ctx) {
+        if (controller.cron === BACKUP_CRON) {
+            ctx.waitUntil(runBackup(env).catch(error => console.error('Backup failed', error?.message || String(error))));
+            return;
+        }
         ctx.waitUntil(generateClubReport(env, aiDeps, { trigger: 'cron' }).catch(error => console.error('Weekly report failed', error?.message || String(error))));
     }
 };
