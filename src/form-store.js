@@ -3,6 +3,7 @@
 // concurrent submissions cannot overwrite each other, numbers are never reused,
 // and quota checks increment atomically.
 
+import { isExportRequest, exportStorage } from './do-export.js';
 const RECORD_PREFIX = 'form:';
 const QUOTA_PREFIX = 'quota:';
 
@@ -15,6 +16,7 @@ export class FormStore {
 
     async fetch(request) {
         try {
+            if (isExportRequest(request)) return await exportStorage(this.storage);
             if (request.method !== 'POST') return Response.json({ error: '方法不允許' }, { status: 405 });
             const path = new URL(request.url).pathname;
             const payload = await request.json();

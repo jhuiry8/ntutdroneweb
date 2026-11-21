@@ -10,6 +10,7 @@
 // there), but every change to them goes through this object, so two editors
 // saving at once can no longer overwrite each other's list entries.
 
+import { isExportRequest, exportStorage } from './do-export.js';
 const CAPTCHA_PREFIX = 'captcha:';
 const LIMIT_PREFIX = 'limit:';
 const SWEEP_INTERVAL_MS = 15 * 60 * 1000;
@@ -33,6 +34,8 @@ export class SiteStore {
 
     async fetch(request) {
         try {
+            // CAPTCHA challenges and rate-limit counters expire within minutes; not worth backing up.
+            if (isExportRequest(request)) return await exportStorage(this.storage, { skipPrefixes: [CAPTCHA_PREFIX, LIMIT_PREFIX] });
             if (request.method !== 'POST') return Response.json({ error: '方法不允許' }, { status: 405 });
             const path = new URL(request.url).pathname;
             const payload = await request.json();
