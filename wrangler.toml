@@ -30,6 +30,10 @@ class_name = "MeetingStore"
 name = "MESSAGE_STORE"
 class_name = "MessageStore"
 
+[[durable_objects.bindings]]
+name = "EVENT_STORE"
+class_name = "EventStore"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["EquipmentStore"]
@@ -50,6 +54,11 @@ new_sqlite_classes = ["MeetingStore"]
 tag = "v5"
 new_sqlite_classes = ["MessageStore"]
 
+[[migrations]]
+tag = "v6"
+new_sqlite_classes = ["EventStore"]
+
 # Weekly club report: every Monday 01:00 UTC (09:00 Taipei). See README「AI 功能」.
 [triggers]
-crons = ["0 1 * * 1"]
+# 12:00 UTC (20:00 Taipei) daily: day-before event reminders (src/event-routes.js EVENT_REMINDER_CRON).
+crons = ["0 1 * * 1", "0 12 * * *"]

@@ -7,6 +7,7 @@ import { RegulationRuleError } from './regulation-rules.js';
 import { FormValidationError, FormServiceError } from './forms.js';
 import { MeetingError } from './meetings.js';
 import { MessageError } from './messages.js';
+import { EventError } from './events.js';
 import { PayloadTooLargeError, readJsonLimited } from './request.js';
 import { ValidationError, parseStoredList } from './validation.js';
 import { takeAttempt, giveBackAttempt, sessionUser, listUsers } from './session.js';
@@ -23,11 +24,13 @@ import { handleDesktopRequest } from './desktop-routes.js';
 import { handleAiRequest, generateClubReport } from './ai-routes.js';
 import { handleMeetingRequest } from './meeting-routes.js';
 import { handleMessageRequest } from './message-routes.js';
+import { handleEventRequest, runEventReminders, EVENT_REMINDER_CRON } from './event-routes.js';
 import { equipmentStoreRequest } from './equipment-store.js';
 export { EquipmentStore } from './equipment-store.js';
 export { FormStore } from './form-store.js';
 export { MeetingStore } from './meetings.js';
 export { MessageStore } from './messages.js';
+export { EventStore } from './events.js';
 export { SiteStore } from './site-store.js';
 
 // The pages still use inline scripts and onclick handlers, so 'unsafe-inline'
@@ -73,6 +76,7 @@ const ROUTES = [
     (request, env) => handleAiRequest(request, env, aiDeps),
     (request, env) => handleMeetingRequest(request, env, aiDeps),
     (request, env) => handleMessageRequest(request, env, aiDeps),
+    (request, env) => handleEventRequest(request, env, aiDeps),
     handleCmsRequest,
     handleFinanceRequest,
     handleEquipmentRequest,
@@ -88,7 +92,12 @@ export default {
         return addSecurityHeaders(response, request);
     },
     // Cron trigger (wrangler.toml): builds the weekly club report and posts it to REPORT_WEBHOOK_URL.
+    // The daily EVENT_REMINDER_CRON posts day-before event reminders instead.
     async scheduled(controller, env, ctx) {
+        if (controller.cron === EVENT_REMINDER_CRON) {
+            ctx.waitUntil(runEventReminders(env).catch(error => console.error('Event reminders failed', error?.message || String(error))));
+            return;
+        }
         ctx.waitUntil(generateClubReport(env, aiDeps, { trigger: 'cron' }).catch(error => console.error('Weekly report failed', error?.message || String(error))));
     }
 };
@@ -124,6 +133,7 @@ async function handleRequest(request, env, ctx) {
         if (e instanceof FormServiceError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof MeetingError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof MessageError) return Response.json({ error: e.message }, { status: e.status });
+        if (e instanceof EventError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof PasswordResetRequiredError) {
             if (path === '/api/login') {
                 return loginPageResponse(env, e.message, 409);
