@@ -119,7 +119,8 @@ class LoginDialog(QDialog):
         self.language.currentIndexChanged.connect(self.language_changed)
 
         self.remember = QCheckBox("保持登入 30 天（下次開啟程式自動登入）(&K)")
-        self.remember.setChecked(self.settings.value("login/remember", True, bool))
+        self.remember.setChecked(saved_session.supported() and self.settings.value("login/remember", True, bool))
+        self.remember.setVisible(saved_session.supported())  # the token can only be stored encrypted on Windows
         self.autostart = QCheckBox("開機時自動啟動並縮小到系統匣(&A)")
         # On by default; afterwards the last choice is remembered.
         self.autostart.setChecked(self.settings.value("login/autostart", True, bool))
@@ -240,7 +241,8 @@ class LoginDialog(QDialog):
             return
         self.settings.setValue("server", url)
         self.settings.setValue("username", self.username.text().strip().lower())
-        self.settings.setValue("login/remember", self.remember.isChecked())
+        if saved_session.supported():
+            self.settings.setValue("login/remember", self.remember.isChecked())
         if self.remember.isChecked() and self.client.token:
             saved_session.save(url, self.user.get("username", ""), self.client.token, self.client.session_seconds or None)
         else:

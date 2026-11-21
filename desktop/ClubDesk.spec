@@ -5,9 +5,9 @@
 # combination that still runs on Windows 7 SP1 (it also runs on Windows 8 - 11);
 # with Python 3.9+ the same spec builds against PySide6 (Qt 6, Windows 10+ only).
 # Only the Qt pieces the program uses are kept: QtCore, QtGui, QtWidgets
-# and QtSvg, the Windows platform plugin, the SVG/ICO image plugins and the
+# QtSvg and QtNetwork (only for the single-instance local socket), the Windows platform plugin, the SVG/ICO image plugins and the
 # Traditional Chinese translation for standard dialog buttons. Everything else
-# (QML, Quick, PDF, networking, the 20 MB software OpenGL renderer...) is left out
+# (QML, Quick, PDF, the 20 MB software OpenGL renderer...) is left out
 # so the installer stays around the size of a 2010-era program (about 15-18 MB).
 import re
 import sys
@@ -38,7 +38,7 @@ if sys.platform == "win32":
         ],
     )
 
-_UNUSED_QT = ["QtNetwork", "QtQml", "QtQuick", "QtPdf", "QtOpenGL", "QtOpenGLWidgets", "QtDBus", "QtPrintSupport",
+_UNUSED_QT = ["QtQml", "QtQuick", "QtPdf", "QtOpenGL", "QtOpenGLWidgets", "QtDBus", "QtPrintSupport",
               "QtSql", "QtTest", "QtXml", "QtConcurrent", "QtSvgWidgets", "QtWebEngineCore", "QtWebEngineWidgets",
               "QtWebChannel", "QtMultimedia", "QtMultimediaWidgets", "QtWebSockets", "QtScript", "QtQuickWidgets",
               "QtXmlPatterns", "QtHelp", "QtLocation", "QtPositioning", "QtSensors", "QtBluetooth", "QtNfc"]
@@ -48,7 +48,7 @@ UNUSED_MODULES += [f"{binding}.{name}" for binding in ("PySide2", "PySide6") for
 DROP = re.compile(r"""(?ix)
     (^|[/\\])(
         opengl32sw\.dll | d3dcompiler_\d+\.dll |
-        (lib)?Qt[56](Quick|Qml|Pdf|Network|OpenGL|VirtualKeyboard|DBus|WaylandClient|WaylandEglClientHwIntegration|
+        (lib)?Qt[56](Quick|Qml|Pdf|OpenGL|VirtualKeyboard|DBus|WaylandClient|WaylandEglClientHwIntegration|
                   EglFSDeviceIntegration|XcbQpa|SvgWidgets|PrintSupport|Sql|Test|Xml|Concurrent|WebEngine|WebChannel|
                   Positioning|ShaderTools|LanguageServer|QmlModels|QmlWorkerScript)[^/\\]*
     )$
@@ -57,7 +57,6 @@ DROP = re.compile(r"""(?ix)
     | [/\\]plugins[/\\]imageformats[/\\](?!(lib)?q(svg|ico)\b)
     | [/\\]plugins[/\\]platforms[/\\](?!(lib)?q(windows|xcb|offscreen|cocoa)\b)
     | [/\\]translations[/\\](?!qtbase_zh_TW\.qm$)
-    | [/\\]QtNetwork\.(pyd|abi3\.so)$
     | [/\\]PySide[26][/\\]qml[/\\]
 """)
 
@@ -76,7 +75,7 @@ a = Analysis(
     binaries=[],
     datas=[("clubdesk/resources/app.ico", "clubdesk/resources"), ("clubdesk/resources/app.png", "clubdesk/resources")],
     # qtcompat loads PySide2 by name, which PyInstaller's static analysis cannot follow.
-    hiddenimports=["PySide2.QtCore", "PySide2.QtGui", "PySide2.QtWidgets", "PySide2.QtSvg"]
+    hiddenimports=["PySide2.QtCore", "PySide2.QtGui", "PySide2.QtWidgets", "PySide2.QtSvg", "PySide2.QtNetwork"]
     if qtcompat.BINDING == "PySide2" else [],
     hookspath=[],
     hooksconfig={},
