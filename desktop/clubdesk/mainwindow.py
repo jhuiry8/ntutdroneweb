@@ -22,6 +22,7 @@ from .api import (ROLE_LABELS, ApiClient, ApiError, can_manage_equipment, can_ma
 from . import i18n
 from .help import HelpWindow, WelcomeDialog
 from .icons import app_icon, icon
+from .notifier import Notifier
 from .login import run_login, switch_language
 from .notifications import NotificationCenter, NotificationSettingsDialog, NotificationsPage, set_setting, setting
 from .pages.admin import AssistantPage, NotesPage, ReportsPage, UsersPage
@@ -304,34 +305,29 @@ class MainWindow(QMainWindow):
             messages = 0
         if not setting("enabled"):
             return
-        shown = False
         if fresh_announcements:
-            shown = self.popup(AnnouncementsPage, "", "新公告" if not first else f"您有 {announcements} 則未讀公告",
-                               fresh_announcements[0]["title"], 8000)
+            self.notifier.notify("新公告" if not first else f"您有 {announcements} 則未讀公告", fresh_announcements[0]["title"],
+                                 AnnouncementsPage, "", 8000, quiet=first)
         elif fresh_messages and not first:
             conv = fresh_messages[0]
-            shown = self.popup(MessagesPage, conv.get("conv", ""), f"新訊息：{conv.get('name', '')}",
-                               f"{conv.get('lastAuthor', '')}：{conv.get('lastPreview', '')}", 6000)
+            self.notifier.notify(f"新訊息：{conv.get('name', '')}", f"{conv.get('lastAuthor', '')}：{conv.get('lastPreview', '')}",
+                                 MessagesPage, conv.get("conv", ""))
         elif first and messages:
-            shown = self.popup(MessagesPage, "", "未讀訊息", f"您有 {messages} 則未讀訊息", 6000)
-        if shown and not first:
-            if setting("sound"):
-                QApplication.beep()
-            QApplication.alert(self, 0)  # flash the taskbar button
+            self.notifier.notify("未讀訊息", f"您有 {messages} 則未讀訊息", MessagesPage, "", quiet=True)
 
-    def popup(self, target, conv: str, title: str, text: str, msecs: int) -> bool:
-        if not self.tray:
-            return False
-        self.pending_target, self.pending_conv = target, conv
-        self.tray.showMessage(title, text, app_icon(), msecs)
-        return True
+    @property
+    def notifier(self) -> Notifier:
+        if getattr(self, "_notifier", None) is None or self._notifier.tray is not self.tray:
+            self._notifier = Notifier(self, self.tray, app_icon(), lambda: setting("sound"))
+        return self._notifier
 
     def open_notification(self) -> None:
         self.restore_window()
-        if self.pending_target is MessagesPage:
-            self.navigate("messages", self.pending_conv)
+        target, conv = self.notifier.target or MessagesPage, self.notifier.conv
+        if target is MessagesPage:
+            self.navigate("messages", conv)
         else:
-            self.show_class(self.pending_target)
+            self.show_class(target)
 
     def navigate(self, target, conv: str = "") -> None:
         """Jump from the 通知中心 to an announcement list or a conversation; None just re-checks."""

@@ -27,6 +27,7 @@ import { handleAiRequest, generateClubReport } from './ai-routes.js';
 import { handleMeetingRequest } from './meeting-routes.js';
 import { handleClassRequest } from './class-routes.js';
 import { handleMessageRequest } from './message-routes.js';
+import { handlePushRequest } from './push-routes.js';
 import { handleFileRequest } from './file-routes.js';
 import { handleDriveRequest } from './drive-routes.js';
 import { handleBackupRequest, runBackupRecorded, BACKUP_CRON } from './backup.js';
@@ -91,7 +92,8 @@ const ROUTES = [
     (request, env) => handleAiRequest(request, env, aiDeps),
     (request, env) => handleMeetingRequest(request, env, aiDeps),
     (request, env) => handleClassRequest(request, env, aiDeps),
-    (request, env) => handleMessageRequest(request, env, aiDeps),
+    (request, env, ctx) => handleMessageRequest(request, env, aiDeps, ctx),
+    (request, env, ctx) => handlePushRequest(request, env, ctx, aiDeps),
     (request, env) => handleEventRequest(request, env, aiDeps),
     (request, env) => handleFlightRequest(request, env, aiDeps),
     handleCmsRequest,

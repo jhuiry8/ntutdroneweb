@@ -299,6 +299,7 @@ TRANSLATIONS = {
     '顯示通知（取消勾選即為勿擾模式）': 'Show notifications (unchecking this is Do Not Disturb mode)',
     '新訊息（聊天室、私人訊息）': 'New messages (chat rooms, private messages)',
     '通知時發出提示音': 'Play a sound with notifications',
+    '試聽提示音': 'Preview sound',
     '背景執行': 'Background running',
     '按視窗的 ✕ 時縮小到右下角系統匣，在背景繼續接收通知': "Clicking the window's ✕ minimizes to the system tray at the bottom right and keeps receiving notifications",
     '按「最小化」時也縮小到系統匣（不佔工作列）': 'Clicking "Minimize" also goes to the system tray (stays off the taskbar)',
