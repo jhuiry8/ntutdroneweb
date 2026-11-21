@@ -156,22 +156,32 @@ export async function runCertReminders(env, deps) {
     const due = (await flightStore(env, 'cert-due-reminders', system)).body;
     if (!due.length) return { sent: 0 };
     const active = new Set((await deps.listUsers(env)).filter(user => user.active !== false).map(user => user.username));
+    const mark = items => flightStore(env, 'cert-mark-reminded', { ...system, items: items.map(({ id, threshold }) => ({ id, threshold })) });
+    // A certificate is marked as soon as its owner's message went out (or it has nobody to message),
+    // so a later failure never makes the next run repeat messages that were already delivered.
+    const handled = [];
     for (const cert of due) {
         const username = cert.owner.username;
-        if (!username || username === 'system' || !active.has(username)) continue;
+        if (!username || username === 'system' || !active.has(username)) { handled.push(cert); continue; }
         try {
             await messageStore(env, 'send', {
                 actor: SYSTEM_ACTOR, conv: dmConversation('system', username), people: [username],
                 text: `【證照到期提醒】你的「${cert.category}」（證號 ${cert.certNo}）將於 ${cert.expiryDate} 到期，剩 ${cert.daysLeft} 天（${cert.threshold} 天內提醒）。請及早辦理換發。`
             });
+            await mark([cert]);
+            handled.push(cert);
         } catch (error) { console.error('Certificate DM failed', error?.message || String(error)); }
     }
+    if (!handled.length) return { sent: 0 };
+    // The officer digest is best effort: its failure is logged and never undoes or repeats anything.
     const line = cert => `${cert.owner.name || cert.owner.username}｜${cert.category}｜${cert.certNo}｜${cert.expiryDate}（剩 ${cert.daysLeft} 天）`;
-    await messageStore(env, 'create-announcement', {
-        actor: SYSTEM_ACTOR,
-        fields: { title: `證照到期提醒（${due.length} 件）`, content: due.map(line).join('\n'), audience: 'officers' }
-    });
-    await flightStore(env, 'cert-mark-reminded', { ...system, items: due.map(({ id, threshold }) => ({ id, threshold })) });
-    return { sent: due.length };
+    try {
+        await messageStore(env, 'create-announcement', {
+            actor: SYSTEM_ACTOR,
+            fields: { title: `證照到期提醒（${handled.length} 件）`, content: handled.map(line).join('\n'), audience: 'officers' }
+        });
+    } catch (error) { console.error('Certificate digest failed', error?.message || String(error)); }
+    await mark(handled);
+    return { sent: handled.length };
 }
 

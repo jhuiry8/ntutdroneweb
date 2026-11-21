@@ -202,3 +202,29 @@ test('flight page and pure helpers', async () => {
     assert.equal(certStatus({ expiryDate: '2030-01-31' }, '2030-01-01').status, 'expiring30');
     assert.equal(summarizeFlights([]).hours, 0);
 });
+
+test('an officer logging for the member bound to their own account stays pending', async () => {
+    const { request, store } = fixture();
+    store.set('user:cadre1', JSON.stringify({ username: 'cadre1', role: 'cadre', active: true, version: 'v1', memberId: 'm3' }));
+    const own = await request('/api/flights', 'cadre1', 'POST', flight({ memberId: 'm3' }));
+    assert.equal(own.status, 201);
+    assert.equal(own.body.status, 'pending');
+    assert.equal((await request(`/api/flights/${own.body.id}/confirm`, 'cadre1', 'POST')).status, 403);
+    assert.equal((await request('/api/flights', 'cadre1', 'POST', flight({ memberId: 'm1' }))).body.status, 'confirmed');
+});
+
+test('a failing officer announcement does not make the next run resend private messages', async () => {
+    const { request, env } = fixture();
+    await request('/api/certificates', 'alice', 'POST', cert({ expiryDate: plusDays(80) }));
+    const realMessages = env.MESSAGE_STORE;
+    let failDigest = true;
+    env.MESSAGE_STORE = { idFromName: realMessages.idFromName, get: id => {
+        const stub = realMessages.get(id);
+        return { fetch: (input, init) => failDigest && String(input).endsWith('/create-announcement') ? Promise.resolve(Response.json({ error: 'x' }, { status: 500 })) : stub.fetch(input, init) };
+    } };
+    const run = async () => { const pending = []; await worker.scheduled({ cron: '30 1 * * *' }, env, { waitUntil: p => pending.push(p) }); await Promise.all(pending); };
+    await run();
+    failDigest = false;
+    await run();
+    assert.equal((await request('/api/messages/c/dm~alice~system', 'alice')).body.messages.length, 1);
+});

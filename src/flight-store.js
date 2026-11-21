@@ -155,7 +155,7 @@ export async function flightOp(storage, op, payload, now = Date.now()) {
     if (op === 'log-create') {
         const owner = checkOwner(payload.owner);
         if ((await list('log:')).length >= MAX_FLIGHTS) throw new FlightError('飛行紀錄已達上限', 409);
-        const confirmed = actor.officer && !sameOwner(owner, actor);
+        const confirmed = actor.officer && !ownedBy({ owner }, actor);
         const flight = {
             id: crypto.randomUUID(), owner, ...normalizeFlight(payload.fields, payload.asset, today),
             status: confirmed ? 'confirmed' : 'pending', createdBy: actor.username, createdAt: stamp,
