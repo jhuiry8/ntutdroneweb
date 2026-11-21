@@ -46,6 +46,7 @@
    * 前往 **Workers & Pages** -> **KV** -> 點擊 **Create Namespace**。
    * 命名為 **`DRONE_DB`**，點擊 Add 建立。
    * 建立成功後，複製此 KV 的 **ID**（一串英數字元，例如 `abc123e456...`）。
+   * 另外到 **R2** 建立私有 bucket `ntut-drone-backups`（備份用，詳見「3-3-1. 自動備份」）。
 3. **取得 Cloudflare Account ID**：
    * 在 Cloudflare 控制台右下角（或網址列中）找到並複製您的 **Account ID**。
 4. **建立 API Token (用於部署授權)**：
@@ -194,6 +195,24 @@
 * **社員帳號登入開關**：社長在「帳號與權限」可關閉「開放社員帳號登入」。關閉後社員角色的帳號無法登入（已登入者會被登出），幹部不受影響；社員改用會議連結簽到。
 * 有後台帳號的社員，需在「帳號與權限」綁定社員資料才能在後台簽到與投票。
 * 部署：新增了 `MEETING_STORE` Durable Object（`wrangler.toml` 的 migration `v4`），推送後 GitHub Actions 會自動建立。
+
+### 3-3-1. 自動備份（R2）
+
+每天 03:00（台北時間）Cron 會把資料備份到獨立的 R2 bucket（binding `BACKUPS`），檔名為 `backups/YYYY-MM-DD.json`，只保留最近 30 份（可用變數 `BACKUP_KEEP` 調整），更早的自動刪除。同一天重跑會覆蓋當天檔案。每日排程在 `wrangler.toml` 的 `crons` 第二項（`0 19 * * *`，UTC），週報排程不受影響；`scheduled()` 依 `controller.cron` 分辨要跑哪一個，改動排程字串時請同步修改 `src/backup.js` 的 `BACKUP_CRON`。
+
+**備份內容**：KV 中 `src/kv-keys.js` 列出的資料、`user:*` 帳號、文章與頁面（`posts_list`、`post:*`、`pages_list`、`page:*`、`homepage_content`）、`admin_password_hash`、推播設定；以及 EquipmentStore、FormStore、SiteStore、MeetingStore、MessageStore 五個 Durable Object 的完整儲存內容（各 DO 的內部匯出端點，外部無法呼叫）。**不含** `session:*` 登入狀態，以及 SiteStore 中幾分鐘就過期的驗證碼與登入次數計數。
+
+**建立 bucket**：Cloudflare 控制台 → R2 → Create bucket，名稱 `ntut-drone-backups`（要改名請同步改 `wrangler.toml` 的 `bucket_name`）。部署用的 API Token 需包含 `Workers R2 Storage:Edit`。請與檔案庫等其他功能的 bucket 分開。
+
+> ⚠️ **備份含帳號密碼雜湊、推播權杖等敏感資料。bucket 必須保持私有**：不要開啟 Public access、不要綁定自訂網域、不要建立公開的 r2.dev 網址，也不要把備份檔放進公開場所。
+
+**社長專用 API**（需社長登入）：`POST /api/backup/run` 立即備份；`GET /api/backup/latest` 下載最新備份檔。
+
+**手動還原步驟**（尚無自動還原功能）：
+1. 下載備份檔（`GET /api/backup/latest` 或 R2 控制台），確認 `format` 為 1。
+2. KV：`kv` 欄位是 `{ key: 原始字串值 }`，用 `wrangler kv key put --binding DRONE_DB "<key>" "<value>"` 逐筆寫回（或用 `wrangler kv bulk put` 轉成 `[{key,value}]` 的 JSON）。
+3. Durable Object：`durableObjects.<綁定名稱>` 是 `[key, value]` 陣列，值為結構化資料，需寫回對應 DO 的 storage（key 與值原樣 `storage.put`）。目前沒有匯入端點，需臨時在該 DO 加一個匯入方法、還原後再移除。還原 EquipmentStore 時別漏掉 `equipment:initialized`。
+4. 還原後請所有人重新登入（`session:*` 不在備份內），並檢查帳號、設備、表單與會議資料。
 
 ### 3-4. 社團通訊與外部推播（Durable Object MessageStore）
 後台與桌面版提供專屬「社團通訊 / 訊息中心」（`/api/messages/*`、`/api/announcements/*`），所有訊息資料由 Cloudflare Workers **`MESSAGE_STORE` Durable Object**（原生 SQLite 儲存架構，`wrangler.toml` migration `v5`）集中管理，支援多端同步、未讀狀態追蹤與安全防護：
