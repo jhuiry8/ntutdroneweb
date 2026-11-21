@@ -346,6 +346,62 @@ test('concurrent check-ins are all recorded once', async () => {
     assert.ok(counts.every(count => count === 1), `lost updates: ${counts.join(',')}`);
 });
 
+test('the same trial member checking in to two classes at once cannot go over the free quota', async () => {
+    const { openClass, phone, detail, member } = fixture();
+    // t4 has used 1 of 2 free classes; two classes are open and two phones sign in at the same moment.
+    const a = await openClass({ topic: 'A' }), b = await openClass({ topic: 'B' });
+    const results = await Promise.all([phone('1.1.1.1')(a, { studentId: 'T004', name: '體驗四' }), phone('2.2.2.2')(b, { studentId: 'T004', name: '體驗四' })]);
+    assert.deepEqual(results.map(result => result.status), [200, 200]);
+    const entries = [(await detail(a.id)).attendance[0], (await detail(b.id)).attendance[0]];
+    assert.equal(entries.filter(entry => entry.deducted).length, 1, 'only one of them uses the last free class');
+    assert.equal(entries.filter(entry => entry.overLimit).length, 1);
+    assert.equal(member('t4').trialUses, 2);
+});
+
+test('the class store decides the quota even when both requests read the same stale roster count', async () => {
+    const { openClass, env } = fixture();
+    const a = await openClass({ topic: 'A' }), b = await openClass({ topic: 'B' });
+    const store = env.CLASS_STORE.get(env.CLASS_STORE.idFromName('club-classes'));
+    // Exactly the race: both requests read trialUses = 1 from the roster before either wrote it back.
+    const stale = { kind: 'trial', memberId: 't4', studentId: 'T004', name: '體驗四', level: 'trial', paid: false, priorUses: 1 };
+    const send = (session, phoneHash) => store.fetch(new Request('https://class-store/op', { method: 'POST', body: JSON.stringify({ id: session.id, op: 'checkin', actor: { username: 'guest' }, token: session.token, attendee: { ...stale }, deviceHash: phoneHash }) })).then(response => response.json());
+    const [first, second] = [await send(a, 'p1'), await send(b, 'p2')];
+    assert.deepEqual([first.entry.deducted, first.priorUses], [true, 1]);
+    assert.deepEqual([second.entry.deducted, second.entry.overLimit, second.priorUses], [false, true, 2]);
+});
+
+test('an officer waiving free classes by hand is respected by the next check-in', async () => {
+    const { openClass, phone, detail, admin, member } = fixture();
+    const first = await openClass({ topic: '第一堂' });
+    assert.equal((await phone()(first, { studentId: 'T002', name: '體驗二' })).body.me.overLimit, true);
+    // The officer resets this year's count to 0 (e.g. the first class did not count).
+    assert.equal((await admin('/api/members/t2', 'PATCH', { trialUses: 0 })).status, 200);
+    assert.equal(member('t2').trialUses, 0);
+    const second = await openClass({ topic: '第二堂' });
+    const result = await phone()(second, { studentId: 'T002', name: '體驗二' });
+    assert.equal(result.body.me.overLimit, false);
+    assert.equal(result.body.me.remaining, 1);
+    assert.equal((await detail(second.id)).attendance[0].deducted, true);
+});
+
+test('deleting a class still succeeds when the roster refund cannot be written, and says so', async () => {
+    const { openClass, phone, admin, env, member } = fixture();
+    const created = await openClass();
+    await phone()(created, { studentId: 'T001', name: '體驗一' });
+    assert.equal(member('t1').trialUses, 1);
+    const put = env.DRONE_DB.put;
+    env.DRONE_DB.put = async (key, value) => { if (key === 'members:list') throw new Error('KV down'); return put(key, value); };
+    const response = await admin(`/api/classes/${created.id}`, 'DELETE');
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.refundFailed, ['t1']);
+    assert.match(body.warning, /手動調整/);
+    env.DRONE_DB.put = put;
+    // The class store's own count was refunded, so the next class is free again even though the roster lags.
+    const next = await openClass({ topic: '下一堂' });
+    assert.equal((await phone()(next, { studentId: 'T001', name: '體驗一' })).body.me.remaining, 1);
+});
+
 test('a failed roster write is flagged on the entry and not refunded later', async () => {
     const { openClass, phone, detail, admin, store } = fixture({ failMemberWrites: true });
     const created = await openClass();

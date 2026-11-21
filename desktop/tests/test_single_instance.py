@@ -46,13 +46,52 @@ class SingleInstanceTests(unittest.TestCase):
         self.spin()
         self.assertTrue(shown)  # the first copy was asked to show itself
         self.assertTrue(ask_running_instance(self.name))  # and is still reachable
-        first.server.close()
+        second.release()
+        first.release()
 
     def test_free_name_is_taken(self):
         server = InstanceServer(self.name)
         self.assertTrue(server.listening)
         self.assertFalse(server.already_running)
-        server.server.close()
+        server.release()
+        # Released: the next start takes over.
+        again = InstanceServer(self.name)
+        self.assertTrue(again.listening)
+        again.release()
+
+    def test_a_copy_still_starting_up_is_not_displaced(self):
+        from PySide6.QtCore import QLockFile
+
+        from clubdesk.single_instance import lock_path
+
+        # Another copy holds the lock but is not listening yet (it is still starting).
+        held = QLockFile(lock_path(self.name))
+        self.assertTrue(held.tryLock(0))
+        second = InstanceServer(self.name)
+        self.assertTrue(second.already_running)
+        self.assertFalse(second.listening)  # it must not start listening in the other copy's place
+        held.unlock()
+
+    def test_a_lock_left_by_a_crashed_copy_is_taken_over(self):
+        import os
+        import socket
+
+        from PySide6.QtCore import QSysInfo
+
+        from clubdesk.single_instance import lock_path
+
+        path = lock_path(self.name)
+        # QLockFile's format: pid, application name, host name. PID 2**22 + 12345 is not a running process.
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(f"{2 ** 22 + 12345}\nClubDesk\n{QSysInfo.machineHostName() or socket.gethostname()}\n")
+        try:
+            server = InstanceServer(self.name)
+            self.assertTrue(server.listening)
+            self.assertFalse(server.already_running)
+            server.release()
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
 
 
 if __name__ == "__main__":

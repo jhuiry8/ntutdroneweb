@@ -7,6 +7,7 @@
 //   settings          { certCategories: [..] }
 //   remind:<id>:<d>   reminder marker for certificate <id> at threshold <d> (90 or 30) days
 import { ValidationError, financeDate } from './validation.js';
+import { isExportRequest, exportStorage } from './do-export.js';
 
 export class FlightError extends Error {
     constructor(message, status = 400) { super(message); this.name = 'FlightError'; this.status = status; }
@@ -190,8 +191,15 @@ export async function flightOp(storage, op, payload, now = Date.now()) {
             if (op === 'log-delete') { await storage.delete(`log:${flight.id}`); return { success: true }; }
             const asset = payload.asset === undefined ? (flight.assetId ? { id: flight.assetId, assetNo: flight.assetNo, assetName: flight.assetName } : null) : payload.asset;
             Object.assign(flight, normalizeFlight({ ...flight, ...payload.fields }, asset, today), { updatedBy: actor.username, updatedAt: stamp });
-            // A member's edit never leaves a confirmation the officer did not see.
-            if (!actor.officer) flight.status = 'pending';
+            // An edit never leaves a confirmation nobody else saw: a member's edit, or an officer editing their
+            // own record, goes back to pending; an officer editing someone else's record now vouches for it.
+            if (!actor.officer || ownedBy(flight, actor)) {
+                flight.status = 'pending';
+                delete flight.confirmedBy;
+                delete flight.confirmedAt;
+            } else if (flight.status === 'confirmed') {
+                Object.assign(flight, { confirmedBy: actor.username, confirmedAt: stamp });
+            }
         }
         await storage.put(`log:${flight.id}`, flight);
         return flight;
@@ -277,6 +285,7 @@ export class FlightStore {
 
     async fetch(request) {
         try {
+            if (isExportRequest(request)) return await exportStorage(this.storage);
             const payload = await request.json();
             const op = new URL(request.url).pathname.slice(1);
             const body = await this.storage.transaction(storage => flightOp(storage, op, payload));

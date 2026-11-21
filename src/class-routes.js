@@ -35,6 +35,13 @@ export async function classAttendanceCounts(env, today = new Date()) {
 async function readRoster(env) { return parseStoredList(await env.DRONE_DB.get(MEMBERS_KEY)); }
 
 // adjustments: [{ memberId, delta, year }]. Applied in one read-modify-write.
+// Mirrors a manual change of the roster counter into the class store's ledger (best effort).
+export async function syncTrialLedger(env, memberId, year, value) {
+    if (!env.CLASS_STORE) return;
+    try { await classStore(env, '/trial-set', { memberId, year, value }); }
+    catch (error) { console.error('Trial ledger sync failed', error?.message || String(error)); }
+}
+
 export async function adjustTrialUses(env, adjustments, today = new Date()) {
     const members = await readRoster(env);
     let changed = false;
@@ -159,8 +166,9 @@ async function handlePublicClass(request, env, deps, path, method) {
 
     const { entry, created } = result.body;
     if (created && entry.deducted) await settleTrial(env, id, entry, 1);
-    // priorUses was read before this request, so it already includes the class when the person is only signing back in.
-    const remaining = entry.kind === 'trial' ? Math.max(0, FREE_TRIAL_CLASSES - (attendee.priorUses + (created && entry.deducted ? 1 : 0))) : null;
+    // priorUses is the class store's count before this check-in (it already includes this class when the person is only signing back in).
+    const prior = result.body.priorUses ?? attendee.priorUses;
+    const remaining = entry.kind === 'trial' ? Math.max(0, FREE_TRIAL_CLASSES - (prior + (created && entry.deducted ? 1 : 0))) : null;
     return new Response(JSON.stringify({ ...publicClassView(result.body.session), tokenError: '', me: { ...meSummary(entry), remaining } }), { headers: { 'Content-Type': 'application/json', ...noCache, 'Set-Cookie': `${deviceCookieName(id)}=${newToken}; Path=/; HttpOnly; Max-Age=${COOKIE_SECONDS}; Secure; SameSite=Strict` } });
 }
 
@@ -219,7 +227,15 @@ export async function handleClassRequest(request, env, deps) {
             if (removed.status !== 200) return json(removed.body, removed.status);
             // Attendance goes with the session, so the free classes it used are given back.
             const refunds = removed.body.session.attendance.filter(entry => entry.deducted && entry.memberId && !entry.syncError).map(entry => ({ memberId: entry.memberId, delta: -1, year: entry.trialYear }));
-            if (refunds.length) await adjustTrialUses(env, refunds);
+            // The session is already gone (and the class store's ledger refunded), so a failed roster write must
+            // not turn into an error: report which counters still need fixing by hand instead.
+            if (refunds.length) {
+                try { await adjustTrialUses(env, refunds); }
+                catch (error) {
+                    console.error('Trial refund after class delete failed', error?.message || String(error));
+                    return json({ success: true, refundFailed: refunds.map(item => item.memberId), warning: '場次已刪除，但名冊的體驗次數沒有退回，請到社員管理手動調整這些社員的次數' });
+                }
+            }
             return json({ success: true });
         }
         return json({ error: '方法不允許' }, 405);
