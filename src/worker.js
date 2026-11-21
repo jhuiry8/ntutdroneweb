@@ -24,6 +24,7 @@ import { handleAiRequest, generateClubReport } from './ai-routes.js';
 import { handleMeetingRequest } from './meeting-routes.js';
 import { handleMessageRequest } from './message-routes.js';
 import { equipmentStoreRequest } from './equipment-store.js';
+import { handleLoanRequest, remindOverdueLoans } from './loan-routes.js';
 export { EquipmentStore } from './equipment-store.js';
 export { FormStore } from './form-store.js';
 export { MeetingStore } from './meetings.js';
@@ -76,6 +77,7 @@ const ROUTES = [
     handleCmsRequest,
     handleFinanceRequest,
     handleEquipmentRequest,
+    handleLoanRequest,
     handleMemberRequest,
     handleRegulationRequest,
     handleFormRequest,
@@ -89,6 +91,7 @@ export default {
     },
     // Cron trigger (wrangler.toml): builds the weekly club report and posts it to REPORT_WEBHOOK_URL.
     async scheduled(controller, env, ctx) {
+        ctx.waitUntil(remindOverdueLoans(env));
         ctx.waitUntil(generateClubReport(env, aiDeps, { trigger: 'cron' }).catch(error => console.error('Weekly report failed', error?.message || String(error))));
     }
 };

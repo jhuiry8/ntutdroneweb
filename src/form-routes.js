@@ -23,6 +23,7 @@ import {
 import { readJsonLimited } from './request.js';
 import { sessionUser, captchaStore, verifyTurnstile } from './session.js';
 import { FORM_SETTINGS_KEY } from './kv-keys.js';
+import { carryAssetLinks, linkLoanAssets, assetIdsChanged, loanStateOf } from './loans.js';
 
 const AI_DAILY_LIMIT = 30;
 // The shared per-account daily AI quota; AI_DAILY_LIMIT in the environment overrides the default.
@@ -41,7 +42,7 @@ function canChangeForm(user, record) {
     return Boolean(record.createdBy) && record.createdBy === user.username;
 }
 // The print token of a public slip never leaves the server except to its submitter.
-function formRecordView(record) {
+export function formRecordView(record) {
     const { accessToken, ...rest } = record;
     return rest;
 }
@@ -103,7 +104,8 @@ export async function handleFormRequest(request, env) {
             : await verifyCaptcha(captchaStore(env), String(body?.captchaId || ''), body?.captcha);
         if (!human) return Response.json({ error: '驗證碼錯誤或已過期，請重新輸入' }, { status: 400 });
         const day = taipeiToday();
-        const data = normalizePublicLoan(body?.data, day);
+        // Only assets that can be lent right now may be requested; the lend itself happens when a clerk approves.
+        const data = await linkLoanAssets(env, normalizePublicLoan(body?.data, day), { checkLoanable: true });
         const now = new Date().toISOString();
         const accessToken = Array.from(crypto.getRandomValues(new Uint8Array(24)), value => value.toString(16).padStart(2, '0')).join('');
         // Cloudflare always sends CF-Connecting-IP; without it only the site-wide limit applies.
@@ -184,7 +186,8 @@ export async function handleFormRequest(request, env) {
         const body = await readJsonLimited(request, 64 * 1024);
         const type = String(body?.type || '');
         if (!Object.hasOwn(FORM_TYPES, type)) return Response.json({ error: '表單類型無效' }, { status: 400 });
-        const data = normalizeFormData(type, body.data);
+        let data = normalizeFormData(type, body.data);
+        if (type === 'equipment-loan') data = await linkLoanAssets(env, data, { checkLoanable: true });
         const now = new Date().toISOString();
         const created = await formStore(env, '/create', {
             numberPrefix: formNumberPrefix(type, now),
@@ -204,11 +207,23 @@ export async function handleFormRequest(request, env) {
         if (method === 'GET') return Response.json(formRecordView(record));
         if (!canChangeForm(user, record)) return Response.json({ error: '只有填表人或社長可以修改或刪除此表單' }, { status: 403 });
         if (method === 'DELETE') {
+            if (loanStateOf(record) === 'lent') return Response.json({ error: '設備借出中，請先辦理歸還再刪除借據' }, { status: 409 });
             const deleted = await formStore(env, '/delete', { id });
             return Response.json(deleted.body, { status: deleted.status });
         }
         const body = await readJsonLimited(request, 64 * 1024);
-        const data = normalizeFormData(record.type, body?.data);
+        let data;
+        if (record.type === 'equipment-loan') {
+            // Clients that do not know about assetId (the desktop app) must not unlink equipment by accident.
+            const rawData = body?.data && typeof body.data === 'object' ? { ...body.data, items: carryAssetLinks(record.data.items, body.data.items) } : body?.data;
+            const previousIds = (record.data.items || []).map(item => item.assetId).filter(Boolean);
+            data = await linkLoanAssets(env, normalizeFormData('equipment-loan', rawData), { checkLoanable: true, keep: previousIds });
+            if (loanStateOf(record) === 'lent' && assetIdsChanged(previousIds, data.items.map(item => item.assetId).filter(Boolean))) {
+                return Response.json({ error: '借出中的借據不可更換借用的財產冊設備，請先歸還' }, { status: 409 });
+            }
+        } else {
+            data = normalizeFormData(record.type, body?.data);
+        }
         const updated = await formStore(env, '/update', { id, fields: { data, title: formTitle(record.type, data), updatedBy: user.username, updatedAt: new Date().toISOString() } });
         return Response.json(updated.status === 200 ? formRecordView(updated.body) : updated.body, { status: updated.status });
     }

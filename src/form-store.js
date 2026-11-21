@@ -84,6 +84,17 @@ export class FormStore {
             await storage.put(key, updated);
             return reply(200, updated);
         }
+        // Compare-and-set on the loan state, so two clerks cannot both lend or return the same slip.
+        if (path === '/loan-transition') {
+            const key = RECORD_PREFIX + String(payload.id || '');
+            const record = await storage.get(key);
+            if (!record) return reply(404, { error: '表單不存在' });
+            const current = record.loan?.status || 'pending';
+            if (!Array.isArray(payload.from) || !payload.from.includes(current)) return reply(409, { error: `借據目前狀態為「${current}」，無法執行此操作`, status: current });
+            const updated = { ...record, loan: payload.loan, ...(payload.fields || {}) };
+            await storage.put(key, updated);
+            return reply(200, updated);
+        }
         if (path === '/delete') {
             const key = RECORD_PREFIX + String(payload.id || '');
             const record = await storage.get(key);

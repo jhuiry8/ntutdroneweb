@@ -247,9 +247,10 @@
         var cells = field.columns.map(function (column) {
             var value = item[column.key] !== undefined && item[column.key] !== null ? item[column.key] : (column.defaultValue || '');
             var type = column.type === 'number' ? 'number' : column.type === 'date' ? 'date' : 'text';
-            return '<td><input class="form-control" data-col="' + column.key + '" type="' + type + '"' + (type === 'number' ? ' step="1" min="' + (column.min || 0) + '" inputmode="numeric"' : '') + (column.max ? ' maxlength="' + column.max + '"' : '') + ' value="' + esc(value) + '" aria-label="' + esc(column.label) + '"></td>';
+            var locked = item.assetId && (column.key === 'name' || column.key === 'assetNo') ? ' readonly title="來自設備財產冊"' : '';
+            return '<td><input class="form-control" data-col="' + column.key + '" type="' + type + '"' + locked + (type === 'number' ? ' step="1" min="' + (column.min || 0) + '" inputmode="numeric"' : '') + (column.max ? ' maxlength="' + column.max + '"' : '') + ' value="' + esc(value) + '" aria-label="' + esc(column.label) + '"></td>';
         }).join('');
-        return '<tr>' + cells + (field === expenseItems ? '<td class="forms-subtotal">0</td>' : '') + '<td><button type="button" class="btn btn-danger" data-remove-row aria-label="刪除此列">刪除</button></td></tr>';
+        return '<tr' + (item.assetId ? ' data-asset-id="' + esc(item.assetId) + '"' : '') + '>' + cells + (field === expenseItems ? '<td class="forms-subtotal">0</td>' : '') + '<td><button type="button" class="btn btn-danger" data-remove-row aria-label="刪除此列">刪除</button></td></tr>';
     }
 
     function addRow(fieldKey, item) {
@@ -330,17 +331,20 @@
                 return '<option value="' + esc(member.id) + '">' + esc((member.name || '姓名待查') + '（' + (member.studentId || '無學號') + '）') + '</option>';
             }).join('');
         }
-        if (schema.equipmentPicker && IS_OFFICER && state.equipment === null) {
-            try { state.equipment = await getJson('/api/equipment'); } catch (error) { state.equipment = []; }
+        if (schema.equipmentPicker && state.equipment === null) {
+            try { state.equipment = await getJson(IS_OFFICER ? '/api/equipment' : '/api/equipment/available'); } catch (error) { state.equipment = []; }
         }
         var equipmentSelect = document.getElementById('forms-equipment');
         if (equipmentSelect && state.equipment && state.equipment.length) {
             document.getElementById('forms-equipment-wrap').hidden = false;
-            equipmentSelect.innerHTML = '<option value="">選擇設備…</option>' + state.equipment.filter(function (asset) { return asset.status !== 'retired'; }).map(function (asset) {
+            equipmentSelect.innerHTML = '<option value="">選擇設備…</option>' + state.equipment.filter(isLoanable).map(function (asset) {
                 return '<option value="' + esc(asset.id) + '">' + esc(asset.assetName + '（' + asset.assetNo + '）') + '</option>';
             }).join('');
         }
     }
+
+    // Only assets in storage and not flagged for repair can go on a new slip.
+    function isLoanable(asset) { return asset.status === 'storage' && asset.condition !== 'poor' && !asset.currentLoan; }
 
     function setField(key, value) {
         var input = root.querySelector('#forms-fields [data-key="' + key + '"]');
@@ -396,7 +400,8 @@
         var body = root.querySelector('table.forms-items[data-key="items"] tbody');
         var first = body && body.children.length === 1 ? body.children[0] : null;
         if (first && !first.querySelector('[data-col="name"]').value.trim()) body.innerHTML = '';
-        addRow('items', { name: asset.assetName, assetNo: asset.assetNo, quantity: 1, condition: CONDITION_LABELS[asset.condition] || '' });
+        if (root.querySelector('table.forms-items[data-key="items"] tr[data-asset-id="' + asset.id + '"]')) return toast('這件設備已在借據上', true);
+        addRow('items', { name: asset.assetName, assetNo: asset.assetNo, assetId: asset.id, quantity: 1, condition: CONDITION_LABELS[asset.condition] || '' });
         select.value = '';
     }
 
@@ -426,7 +431,7 @@
         if (!target || !state.equipment) return null;
         return state.equipment.filter(function (asset) {
             var assetName = String(asset.assetName || '').toLowerCase();
-            return asset.status !== 'retired' && assetName && (assetName.indexOf(target) !== -1 || target.indexOf(assetName) !== -1);
+            return isLoanable(asset) && assetName && (assetName.indexOf(target) !== -1 || target.indexOf(assetName) !== -1);
         })[0] || null;
     }
 
@@ -440,7 +445,7 @@
                 if (state.type === 'equipment-loan') {
                     value = value.map(function (item) {
                         var asset = item.assetNo ? null : matchEquipment(item.name);
-                        return asset ? Object.assign({}, item, { name: asset.assetName, assetNo: asset.assetNo, condition: item.condition || CONDITION_LABELS[asset.condition] || '' }) : item;
+                        return asset ? Object.assign({}, item, { name: asset.assetName, assetNo: asset.assetNo, assetId: asset.id, condition: item.condition || CONDITION_LABELS[asset.condition] || '' }) : item;
                     });
                 }
                 replaceItems(field.key, value);
@@ -492,6 +497,7 @@
                         if (raw && column.key !== 'quantity' && column.key !== 'condition') filled = true;
                         item[column.key] = column.type === 'number' ? (raw === '' ? '' : Number(raw)) : raw;
                     });
+                    if (row.dataset.assetId) item.assetId = row.dataset.assetId;
                     if (filled) data[field.key].push(item);
                 });
                 return;
@@ -564,6 +570,34 @@
         loadPickers();
     }
 
+    var LOAN_LABELS = { pending: '待借出', lent: '借出中', returned: '已歸還', rejected: '已退回' };
+
+    // Loan state badge and, for officers, the lend / return / reject buttons.
+    function loanCell(record) {
+        var status = (record.loan && record.loan.status) || 'pending';
+        var late = status === 'lent' && record.data.endDate < today();
+        var badge = '<br><span class="forms-badge">' + LOAN_LABELS[status] + '</span>' + (late ? ' <span class="forms-badge" style="color:#f87171;">逾期未還</span>' : '');
+        var buttons = '';
+        if (IS_OFFICER) {
+            var id = esc(record.id);
+            if (status === 'pending') buttons = '<button type="button" class="btn btn-primary" data-loan="lend" data-id="' + id + '">核准借出</button> <button type="button" class="btn btn-secondary" data-loan="reject" data-id="' + id + '">退回</button> ';
+            else if (status === 'lent') buttons = '<button type="button" class="btn btn-primary" data-loan="return" data-id="' + id + '">辦理歸還</button> ';
+        }
+        return { badge: badge, buttons: buttons };
+    }
+
+    var LOAN_CONFIRM = { lend: '確定核准並借出？設備財產冊中的設備會改為「使用中」。', return: '確定設備已歸還？設備會改回「庫存保管」。', reject: '確定退回這張借據？' };
+    async function loanAction(action, id) {
+        var record = state.records.filter(function (item) { return item.id === id; })[0];
+        if (!record || !window.confirm(record.number + '：' + LOAN_CONFIRM[action])) return;
+        var response = await fetch('/api/loans/' + encodeURIComponent(id) + '/' + action, { method: 'POST' });
+        var data = await response.json().catch(function () { return {}; });
+        toast(response.ok ? '借據已更新' : (data.error || '操作失敗'), !response.ok);
+        state.equipment = null;
+        loadRecords();
+        if (window.loadEquipment && document.getElementById('equipment-list')) window.loadEquipment();
+    }
+
     function renderRecords() {
         var filter = document.getElementById('forms-filter').value;
         var rows = state.records.filter(function (record) { return !filter || record.type === filter; });
@@ -571,7 +605,9 @@
             var external = record.source === 'public';
             var mine = ROLE === 'president' || (external ? IS_OFFICER : record.createdBy === USERNAME);
             var author = external ? '<span class="forms-badge">外部填寫</span><br><small>' + esc(record.data.borrower) + '（' + esc(record.data.studentId) + '）</small>' : esc(record.createdBy);
-            return '<tr><td><b>' + esc(record.number) + '</b></td><td>' + esc(SCHEMAS[record.type] ? SCHEMAS[record.type].label : record.type) + '</td><td>' + esc(record.title) + '</td><td>' + author + '</td><td>' + esc(String(record.updatedAt || record.createdAt).slice(0, 10)) + '</td><td class="forms-actions">' +
+            var loan = record.type === 'equipment-loan' ? loanCell(record) : { badge: '', buttons: '' };
+            return '<tr><td><b>' + esc(record.number) + '</b>' + loan.badge + '</td><td>' + esc(SCHEMAS[record.type] ? SCHEMAS[record.type].label : record.type) + '</td><td>' + esc(record.title) + '</td><td>' + author + '</td><td>' + esc(String(record.updatedAt || record.createdAt).slice(0, 10)) + '</td><td class="forms-actions">' +
+                loan.buttons +
                 '<a class="btn btn-primary" href="/admin/forms/print/' + encodeURIComponent(record.id) + '" target="_blank" rel="noopener">列印</a> ' +
                 '<button type="button" class="btn btn-secondary" data-copy="' + esc(record.id) + '">複製</button> ' +
                 (mine ? '<button type="button" class="btn btn-secondary" data-edit="' + esc(record.id) + '">編輯</button> <button type="button" class="btn btn-danger" data-delete="' + esc(record.id) + '">刪除</button>' : '') +
@@ -650,6 +686,7 @@
         else if (target.dataset.edit) openRecord(target.dataset.edit, false);
         else if (target.dataset.copy) openRecord(target.dataset.copy, true);
         else if (target.dataset.delete) deleteRecord(target.dataset.delete);
+        else if (target.dataset.loan) loanAction(target.dataset.loan, target.dataset.id);
     });
     root.addEventListener('input', function (event) { if (event.target.closest('table.forms-items')) updateTotal(); });
     root.addEventListener('change', function (event) {

@@ -117,6 +117,12 @@ function normalizeExpense(data, kind) {
     };
 }
 
+function assetIdOf(value, index) {
+    const id = String(value ?? '').trim();
+    if (id && !/^[\w-]{1,80}$/.test(id)) throw new FormValidationError(`第 ${index + 1} 項設備連結無效`);
+    return id;
+}
+
 function normalizeLoan(data) {
     const startDate = isoDate(data?.startDate, '借用起日', true);
     const endDate = isoDate(data?.endDate, '借用迄日', true);
@@ -136,6 +142,8 @@ function normalizeLoan(data) {
         items: list(data?.items, '借用設備', 1, MAX_LOAN_ITEMS).map((item, index) => ({
             name: text(item?.name, `第 ${index + 1} 項設備名稱／型號`, 100, true),
             assetNo: text(item?.assetNo, `第 ${index + 1} 項財產編號`, 40),
+            // Link to the equipment register (設備財產冊); free-text name/assetNo stay for older records.
+            assetId: assetIdOf(item?.assetId, index),
             quantity: integer(item?.quantity, `第 ${index + 1} 項數量`, 1, 1000, true),
             accessories: text(item?.accessories, `第 ${index + 1} 項配件`, 100),
             condition: text(item?.condition, `第 ${index + 1} 項借出狀況`, 50)
@@ -811,6 +819,10 @@ export async function requestAiJson(env, systemPrompt, userPrompt, fetchImpl = f
 
 export function taipeiToday(now = new Date()) {
     return new Date(now.getTime() + 8 * 3600000).toISOString().slice(0, 10);
+}
+
+export function taipeiHour(now = new Date()) {
+    return new Date(now.getTime() + 8 * 3600000).getUTCHours();
 }
 
 export function dateContext(now = new Date()) {

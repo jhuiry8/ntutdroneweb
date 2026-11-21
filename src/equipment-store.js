@@ -23,6 +23,13 @@ export function normalizeEquipmentInput(body) {
     return { assetName, category, serialNo, purchaseDate, purchasePrice, condition, status, location, custodian, note };
 }
 
+// An asset can be lent out when it sits in storage and is not flagged for repair.
+export function isLoanable(asset) {
+    return asset?.status === 'storage' && asset.condition !== 'poor' && !asset.currentLoan;
+}
+
+const MAX_HISTORY = 200;
+
 export function createAssetNumber(existing) {
     const year = new Date().getUTCFullYear();
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -95,12 +102,74 @@ export class EquipmentStore {
                         await storage.put(`equipment:asset:${asset.id}`, asset);
                         return { status: 201, body: asset };
                     }
+                    // Lending is decided here, in one transaction, so two slips can never hold the same asset.
+                    // Both /lend and /return are idempotent per form id, so a failed second step can simply be retried.
+                    if (url.pathname === '/lend') {
+                        const formId = String(payload.formId || '');
+                        const ids = [...new Set(Array.isArray(payload.assetIds) ? payload.assetIds.map(String) : [])];
+                        if (!formId || !ids.length) return { status: 400, body: { error: '缺少借據或設備' } };
+                        const assets = [];
+                        for (const id of ids) {
+                            const asset = await storage.get(`equipment:asset:${id}`);
+                            if (!asset) return { status: 409, body: { error: '財產冊中找不到這件設備', assetId: id } };
+                            if (asset.currentLoan?.formId !== formId) {
+                                const label = `${asset.assetName}（${asset.assetNo}）`;
+                                if (asset.currentLoan) return { status: 409, body: { error: `${label} 已借出給 ${asset.currentLoan.borrower}（借據 ${asset.currentLoan.formNumber || '—'}），不可重複借用`, assetId: id } };
+                                if (asset.status !== 'storage') return { status: 409, body: { error: `${label} 目前狀態不是庫存保管，無法借出`, assetId: id } };
+                                if (asset.condition === 'poor') return { status: 409, body: { error: `${label} 待維修，無法借出`, assetId: id } };
+                            }
+                            assets.push(asset);
+                        }
+                        const now = new Date().toISOString();
+                        for (const asset of assets) {
+                            if (asset.currentLoan?.formId === formId) continue;
+                            asset.status = 'in_use';
+                            asset.currentLoan = { formId, formNumber: String(payload.formNumber || ''), borrower: String(payload.borrower || ''), startDate: String(payload.startDate || ''), endDate: String(payload.endDate || ''), since: now };
+                            asset.updatedBy = String(payload.username || '');
+                            asset.updatedAt = now;
+                            await storage.put(`equipment:asset:${asset.id}`, asset);
+                            const history = (await storage.get(`equipment:history:${asset.id}`)) || [];
+                            history.push({ ...asset.currentLoan, lentBy: String(payload.username || ''), returnedAt: '', returnedBy: '' });
+                            await storage.put(`equipment:history:${asset.id}`, history.slice(-MAX_HISTORY));
+                        }
+                        return { status: 200, body: { assets } };
+                    }
+                    if (url.pathname === '/return') {
+                        const formId = String(payload.formId || '');
+                        if (!formId) return { status: 400, body: { error: '缺少借據' } };
+                        const now = new Date().toISOString();
+                        const released = [];
+                        for (const asset of await this.listAssets(storage)) {
+                            if (asset.currentLoan?.formId !== formId) continue;
+                            asset.status = 'storage';
+                            delete asset.currentLoan;
+                            asset.updatedBy = String(payload.username || '');
+                            asset.updatedAt = now;
+                            await storage.put(`equipment:asset:${asset.id}`, asset);
+                            const history = (await storage.get(`equipment:history:${asset.id}`)) || [];
+                            const open = history.findLastIndex(entry => entry.formId === formId && !entry.returnedAt);
+                            // A rollback (the slip could not be saved) leaves no trace; a real return closes the entry.
+                            if (open >= 0 && payload.rollback) history.splice(open, 1);
+                            else if (open >= 0) Object.assign(history[open], { returnedAt: now, returnedBy: String(payload.username || '') });
+                            await storage.put(`equipment:history:${asset.id}`, history);
+                            released.push(asset.id);
+                        }
+                        return { status: 200, body: { released } };
+                    }
+                    const historyMatch = /^\/history\/([\w-]{1,80})$/.exec(url.pathname);
+                    if (historyMatch) {
+                        const asset = await storage.get(`equipment:asset:${historyMatch[1]}`);
+                        if (!asset) return { status: 404, body: { error: '設備不存在' } };
+                        const history = (await storage.get(`equipment:history:${asset.id}`)) || [];
+                        return { status: 200, body: { asset: { id: asset.id, assetNo: asset.assetNo, assetName: asset.assetName, status: asset.status, currentLoan: asset.currentLoan || null }, history: history.slice().reverse() } };
+                    }
                     const updateMatch = /^\/update\/([\w-]{1,80})$/.exec(url.pathname);
                     if (updateMatch) {
                         const id = updateMatch[1];
                         const asset = await storage.get(`equipment:asset:${id}`);
                         if (!asset) return { status: 404, body: { error: '設備不存在' } };
                         const fields = normalizeEquipmentInput({ ...asset, ...(payload.fields || {}) });
+                        if (asset.currentLoan && fields.status !== 'in_use') return { status: 409, body: { error: `此設備借出中（借據 ${asset.currentLoan.formNumber || '—'}），請先在借據歸還` } };
                         const serialNo = fields.serialNo.toUpperCase();
                         const previousSerial = String(asset.serialNo || '').trim().toUpperCase();
                         if (serialNo && serialNo !== previousSerial && (await this.listAssets(storage)).some(item => item.id !== id && String(item.serialNo || '').trim().toUpperCase() === serialNo)) return { status: 409, body: { error: '原廠序號已列管' } };
