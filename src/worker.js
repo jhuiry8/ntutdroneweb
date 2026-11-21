@@ -31,6 +31,8 @@ export { MeetingStore } from './meetings.js';
 export { MessageStore } from './messages.js';
 export { SiteStore } from './site-store.js';
 
+const WEEKLY_REPORT_CRON = '0 1 * * 1';
+
 // The pages still use inline scripts and onclick handlers, so 'unsafe-inline'
 // is needed for scripts. The policy still blocks plugins, <base> hijacking,
 // framing, cross-origin form posts and fetch() to other origins, and only
@@ -89,10 +91,15 @@ export default {
         const response = await handleRequest(request, env, ctx);
         return addSecurityHeaders(response, request);
     },
-    // Cron trigger (wrangler.toml): builds the weekly club report and posts it to REPORT_WEBHOOK_URL.
+    // Cron triggers (wrangler.toml): the daily one (0 18 * * *, 02:00 Taipei) reminds about overdue equipment loans;
+    // the Monday one builds the weekly club report and posts it to REPORT_WEBHOOK_URL.
     async scheduled(controller, env, ctx) {
-        ctx.waitUntil(remindOverdueLoans(env));
-        ctx.waitUntil(generateClubReport(env, aiDeps, { trigger: 'cron' }).catch(error => console.error('Weekly report failed', error?.message || String(error))));
+        const log = label => error => console.error(label, error?.message || String(error));
+        if (controller.cron === WEEKLY_REPORT_CRON) {
+            ctx.waitUntil(generateClubReport(env, aiDeps, { trigger: 'cron' }).catch(log('Weekly report failed')));
+        } else {
+            ctx.waitUntil(remindOverdueLoans(env).catch(log('Overdue loan reminder failed')));
+        }
     }
 };
 

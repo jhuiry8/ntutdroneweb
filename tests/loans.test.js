@@ -284,7 +284,7 @@ test('overdue slips are listed and reminded once a day', async () => {
 
     // The weekly Cron (scheduled) posts an officers-only announcement.
     const pending = [];
-    await worker.scheduled({}, f.env, { waitUntil: promise => pending.push(promise) });
+    await worker.scheduled({ cron: '0 18 * * *' }, f.env, { waitUntil: promise => pending.push(promise) });
     await Promise.all(pending);
     const announcements = (await f.json('/api/announcements', 'cadre')).body;
     assert.equal(announcements.length, 1);
@@ -315,4 +315,15 @@ test('helpers: overdue timing and asset link carry-over', () => {
     assert.equal(isOverdue({ type: 'equipment-loan', data: { endDate: '2026-11-01', endHour: 9 } }, now), false, 'old slips without loan state are not lent');
     const previous = [{ name: 'A', assetId: 'a1' }, { name: 'B', assetId: 'b1' }];
     assert.deepEqual(carryAssetLinks(previous, [{ name: 'A' }, { name: 'C' }, { name: 'B', assetId: '' }]), [{ name: 'A', assetId: 'a1' }, { name: 'C' }, { name: 'B', assetId: '' }]);
+});
+
+test('the Monday cron builds the report and does not send loan reminders', async () => {
+    const f = fixture();
+    const asset = await addAsset(f);
+    const late = await f.json('/api/forms', 'member', 'POST', { type: 'equipment-loan', data: loanData([assetItem(asset)], { startDate: dayOffset(-10), endDate: dayOffset(-3) }) });
+    await f.json(`/api/loans/${late.body.id}/lend`, 'cadre', 'POST');
+    const pending = [];
+    await worker.scheduled({ cron: '0 1 * * 1' }, f.env, { waitUntil: promise => pending.push(promise) });
+    await Promise.all(pending);
+    assert.equal((await f.json('/api/announcements', 'cadre')).body.length, 0);
 });

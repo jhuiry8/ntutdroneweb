@@ -52,4 +52,5 @@ new_sqlite_classes = ["MessageStore"]
 
 # Weekly club report: every Monday 01:00 UTC (09:00 Taipei). See README「AI 功能」.
 [triggers]
-crons = ["0 1 * * 1"]
+# Daily 18:00 UTC (02:00 Taipei): overdue equipment loan reminder.
+crons = ["0 1 * * 1", "0 18 * * *"]
