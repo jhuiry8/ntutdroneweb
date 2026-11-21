@@ -14,7 +14,8 @@
    * 前台頂端導覽列支援「中文 / English」即時切換，並以 Cookie 記憶使用者語言偏好。
    * 後台發佈文章與頁面時，皆可指定專屬語系，實現真正的多語系國際化動態網站。
 3. **🖼️ 文章圖片**
-   * 文章與頁面可用 Markdown 引用 `https://` 圖片網址（例如社群或雲端相簿的公開連結）。基於安全考量，後台不提供直接上傳檔案到網站的功能。
+   * 後台「檔案庫」可直接上傳圖片與檔案（儲存在 Cloudflare R2），按「複製 Markdown」後貼進文章，例如 `![說明](https://您的網站網址/files/…)`；仍可引用外部 `https://` 圖片網址。
+   * **安全措施**：只收 JPG／PNG／WebP／GIF／PDF／DOCX／XLSX／PPTX／ZIP，並檢查檔案內容（魔術位元組）而非只看副檔名，**SVG、HTML、JS 一律拒絕**；圖片上限 10 MB、其他 25 MB，且有上傳頻率限制；儲存路徑為隨機 ID（不使用原始檔名）；下載一律帶 `X-Content-Type-Options: nosniff`、`Content-Security-Policy: default-src 'none'; sandbox`，非圖片強制以附件下載；只有圖片可設為「公開」，其餘檔案每次下載都驗證登入與權限；上傳、修改、刪除皆記錄操作者。詳見「3-5. 檔案庫」。
 4. **📝 動態頁面與文章管理 (CMS Dashboard)**
    * **動態部落格**：支援 Markdown 完整語法，編輯時可即時預覽。
    * **獨立頁面生成器**：免改程式碼！可在後台任意建立如 `/page/info`、`/page/join` 等專屬客製化網頁。
@@ -53,20 +54,23 @@
    * 點擊右上角個人頭像 -> **My Profile** -> **API Tokens** -> **Create Token**。
    * 選擇 **Edit Cloudflare Workers** 模板（或自訂權限包含 `Workers KV Storage:Edit`, `Workers Routes:Edit`, `Workers Scripts:Edit`）。
    * 建立後，複製並妥善保存這組 **API Token**。
+   * 若使用自訂權限，請另外加入 `Workers R2 Storage:Edit`（檔案庫要用到）。
+5. **建立 R2 儲存桶（檔案庫用）**：前往 **R2 Object Storage** -> **Create bucket**，名稱只能用小寫英文、數字與連字號（例如 `ntut-drone-files`），保持預設的**私有**即可，**不要**開啟 Public Access 或自訂網域——檔案一律經過網站的權限檢查才會送出。
 
 ### 第二步：在 GitHub 儲存庫設定環境金鑰 (Repository Secrets)
 為了安全起見，我們不把敏感的 ID 與金鑰直接寫入程式碼，而是設定在 GitHub 的安全機密庫中，由 GitHub Actions 自動注入：
 1. 進入您的 GitHub 儲存庫 (`jhuiry8/ntutdroneweb`) -> 點擊上方 **Settings (設定)**。
 2. 左側選單展開 **Secrets and variables** -> 點擊 **Actions**。
-3. 在 **Repository secrets** 區塊，點擊 **New repository secret**，依序新增以下 3 個安全機密變數：
+3. 在 **Repository secrets** 區塊，點擊 **New repository secret**，依序新增以下 4 個安全機密變數：
 
 | Secret 名稱 | 填入的內容 | 作用說明 |
 | :--- | :--- | :--- |
 | **`CLOUDFLARE_ACCOUNT_ID`** | 您在第一步取得的 Cloudflare 帳戶 ID | 授權 Wrangler 部署到您的帳號 |
 | **`CLOUDFLARE_API_TOKEN`** | 您在第一步建立的 Cloudflare API Token | 執行自動部署的權限憑證 |
 | **`CLOUDFLARE_KV_ID`** | 您在第一步建立的 `DRONE_DB` KV Namespace ID | **安全注入**到 KV 資料庫綁定中 |
+| **`CLOUDFLARE_R2_BUCKET`** | 檔案庫使用的 R2 儲存桶名稱（見「3-5. 檔案庫」） | **安全注入**到 R2 `FILES` 綁定中；未設定時使用預設名稱 `ntut-drone-files`，部署時若不存在會自動建立（私有） |
 
-> 🎉 **自動化驗證與發佈**：設定完成這 3 個 Secrets 後，只要您在專案有任何 Push 行為（或在 Actions 頁面手動觸發），系統便會開始執行 `.github/workflows/deploy.yml`，自動完成打包、金鑰注入與 Cloudflare Workers 發佈！您可以隨時到 GitHub **Actions** 分頁查看綠色的成功打勾圖示。
+> 🎉 **自動化驗證與發佈**：設定完成這 4 個 Secrets 後，只要您在專案有任何 Push 行為（或在 Actions 頁面手動觸發），系統便會開始執行 `.github/workflows/deploy.yml`，自動完成打包、金鑰注入與 Cloudflare Workers 發佈！您可以隨時到 GitHub **Actions** 分頁查看綠色的成功打勾圖示。
 
 ---
 
@@ -244,6 +248,82 @@
    * 桌面版「社務管理系統」支援背景執行、Windows 系統匣氣泡推播通知與側邊功能樹未讀計數。
 * **部署說明**：使用 `MESSAGE_STORE` Durable Object（`wrangler.toml` 的 migration `v5`），推送至 GitHub 後 GitHub Actions 自動部署套用 migration，無須手動設定。
 
+
+### 3-5. 檔案庫（Cloudflare R2）
+後台「檔案庫」讓社員與幹部集中存放活動照片、文章配圖、會議紀錄、收據與文件。檔案內容放在 R2 儲存桶（`wrangler.toml` 的 `FILES` 綁定），中繼資料（原始檔名、類型、大小、上傳者、時間、分類、可見範圍）放在 **`FILE_STORE` Durable Object**（migration `v6`）逐檔儲存、依序處理，不使用整包 JSON，因此多人同時上傳不會互相覆蓋。
+
+**部署設定**（只需做一次）：
+1. 在 Cloudflare 建立 R2 儲存桶（見「第一步」第 5 點），預設私有。
+2. （選用）在 GitHub 儲存庫新增 Actions Secret **`CLOUDFLARE_R2_BUCKET`**，內容為儲存桶名稱；未設定時使用 `ntut-drone-files`。`deploy.yml` 會在部署時把 `wrangler.toml` 裡的占位字串 `your-r2-bucket-name` 換成它（與 KV ID 的作法相同）。本機 `wrangler dev` 則直接把 `bucket_name` 改成自己的桶名即可（本機會模擬 R2）。
+3. API Token 需含 `Workers R2 Storage:Edit` 權限。推送到 `main` 後 GitHub Actions 會自動部署並套用 migration。
+
+**使用方式**：
+* 可上傳者：社長、幹部、財務。可見範圍：**公開**（任何人可讀，只限圖片，適合文章配圖）、**社員**（需登入）、**幹部限定**（社長／幹部／財務）。預設為「幹部限定」。
+* 支援拖放與多檔上傳、縮圖預覽、分類／類型篩選與搜尋、分頁載入；「複製連結」或「複製 Markdown」可貼進文章。已存在的檔案可改名、改說明、分類與可見範圍，只有上傳者與社長可以修改或刪除。
+* 文章編輯、頁面編輯、設備備註、社費簽收備註、社課備忘錄與會議紀錄旁都有「📎 插入檔案連結」，從檔案庫選取後只會把連結貼入該欄位，不改動這些模組本身的資料結構。
+* 文章若引用「社員」或「幹部限定」的檔案，未登入的訪客看不到該圖片；文章配圖請設為「公開」。
+
+**安全設計**：
+* **類型白名單 + 內容檢查**：以檔案開頭的魔術位元組判斷真正類型（DOCX／XLSX／PPTX 另檢查 ZIP 內部結構），副檔名必須與內容一致；SVG、HTML、JS 及其他類型一律拒絕，Content-Type 不採信。
+* **大小與頻率**：圖片 10 MB、其他 25 MB；請求本體讀取時就強制上限（不信任 Content-Length）；每帳號與每 IP 每 10 分鐘有上傳次數限制（`takeAttempt`）；整個檔案庫上限 5,000 個檔案。
+* **隨機物件 key**：R2 key 為 `files/<隨機 UUID>`，原始檔名只存成顯示用標籤（已移除路徑、控制字元與方向覆寫字元）。
+* **安全的下載回應**：`X-Content-Type-Options: nosniff`、依偵測結果設定的 Content-Type、`Content-Security-Policy: default-src 'none'; sandbox`；非圖片（或帶 `?download=1`）加 `Content-Disposition: attachment`，檔名以 RFC 5987 編碼。
+* **權限**：非公開檔案**每次下載都驗證 session**（登出、停用帳號立即失效），無權限時回 404 以免洩漏檔案是否存在；非公開回應為 `private, no-store`；公開圖片使用 5 分鐘快取與 ETag。
+* **稽核**：上傳、修改、刪除都記錄操作者與時間（保留最近 500 筆，社長可由 `GET /api/files/audit` 查看）。
+
+**API**（桌面版與 Android 日後可直接串接；除下載外皆需登入 session，寫入需同源請求）：
+
+| 方法與路徑 | 說明 |
+| :--- | :--- |
+| `GET /files/:id` | 下載／顯示；公開圖片免登入；`?download=1` 強制下載 |
+| `GET /api/files/config` | 分類、可見範圍、類型、大小上限與目前帳號可否上傳 |
+| `GET /api/files` | 列表。參數：`category`、`kind=image\|document`、`q`、`limit`（≤100）、`cursor`；回傳 `{ items, total, nextCursor }` |
+| `POST /api/files` | 上傳（`multipart/form-data`，一次一個檔案）：`file`、`category`、`visibility`、`description`、選填 `name`；成功回傳 201 與含 `url` 的中繼資料 |
+| `GET /api/files/:id` | 單一檔案中繼資料 |
+| `PATCH /api/files/:id` | JSON：`name`、`description`、`category`、`visibility`（需為上傳者或社長） |
+| `DELETE /api/files/:id` | 刪除（需為上傳者或社長） |
+| `GET /api/files/audit` | 操作紀錄（社長） |
+
+錯誤碼：`401` 未登入、`403` 權限不足、`404` 不存在或無權查看、`413` 檔案過大、`415` 類型不支援或副檔名與內容不符、`429` 上傳過於頻繁、`503` 尚未設定 R2／Durable Object。
+
+### 3-6. 連結與瀏覽 Google 雲端硬碟（選用）
+社團原本使用一個社團專用的一般 Google 帳號的雲端硬碟，現在與網站並存：**網站上傳一律放 R2，雲端硬碟只用來「看」，網站絕不寫入 Drive**。
+
+**A. Drive 連結（不需任何設定，部署後即可使用）**
+* 檔案庫「新增 Google 雲端硬碟連結」：貼上網址、填標題，選分類與可見範圍（社員／幹部限定，連結不能設為公開），網站會顯示成卡片；檔案、Google 文件／試算表／簡報可按「預覽」用內嵌視窗查看，也可「在 Google 開啟」。
+* 只接受 `https://drive.google.com` 與 `https://docs.google.com`；網站嚴格解析網址形式與檔案 ID（只允許英數、`-`、`_`），並依 ID 重建連結，不保存使用者貼的其他文字；Drive 圖片網址不會被當成 `<img>` 使用。
+* 連結的檔案要先在 Google 雲端硬碟設好分享權限（例如「知道連結的人可檢視」或指定帳號）；內嵌預覽依瀏覽器登入的 Google 帳號判斷權限。
+* 網站的 CSP `frame-src` 因此加入 `https://drive.google.com` 與 `https://docs.google.com`（只開放這兩個，用於預覽）。
+
+**B. 雲端硬碟分頁（唯讀瀏覽資料夾；設定 secret 之後才會出現）**
+沒有設定 `GOOGLE_SERVICE_ACCOUNT_JSON` 時，這個分頁自動隱藏，也不會出現任何錯誤。設定步驟（全部用社團的 Google 帳號，免費）：
+1. 前往 [Google Cloud Console](https://console.cloud.google.com/)，用社團帳號**建立專案**（例如 `ntut-drone-web`）。
+2. **啟用 API**：API 和服務 → 程式庫 → 搜尋「Google Drive API」→ 啟用。
+3. **建立服務帳號**：IAM 與管理 → 服務帳戶 → 建立（不需要授予任何專案角色）。記下它的 e-mail（`xxx@專案.iam.gserviceaccount.com`）。
+4. **建立金鑰**：進入該服務帳號 → 金鑰 → 新增金鑰 → JSON，下載 JSON 檔。**這個檔案等同密碼，不要放進程式碼或貼到聊天室。**（若組織原則禁止建立金鑰，需先由管理員放行；一般個人帳號沒有此限制。）
+5. **分享資料夾**：在 Google 雲端硬碟把要給網站看的資料夾，用「共用」分享給步驟 3 的服務帳號 e-mail，權限選**檢視者**。
+6. **設定 secret**（二選一）：
+   * GitHub：Settings → Secrets and variables → Actions → 新增 **`GOOGLE_SERVICE_ACCOUNT_JSON`**，內容貼上整份 JSON；下次部署時 `deploy.yml` 會自動用 `wrangler secret put` 寫入 Cloudflare。
+   * 或在 Cloudflare：Workers → 此 Worker → Settings → Variables and Secrets → 新增 Secret，名稱 `GOOGLE_SERVICE_ACCOUNT_JSON`，值為整份 JSON；本機則放在 `.dev.vars`。
+7. 重新部署後，檔案庫會出現「雲端硬碟」分頁。**社長**按「設定資料夾」，每行填 `資料夾網址或 ID, 顯示名稱, member 或 cadre 或 public`，儲存即可（設定存在 `FILE_STORE`）。
+
+**運作與安全**
+* Worker 用金鑰以 RS256（Web Crypto）簽 JWT，向 Google 換 access token（範圍只有 `drive.readonly`，快到期前才重新換），再呼叫 Drive API v3 `files.list`。服務帳號沒有儲存空間，也沒有寫入權限。換取 token 的網址固定寫死，不採用金鑰檔裡的 `token_uri`。
+* 只有已設定的資料夾（及其子資料夾）能被瀏覽；請求其他資料夾一律回 404，即使服務帳號看得到。子資料夾沿用根資料夾的可見範圍，每次請求都驗證 session 與角色。
+* 縮圖由 Worker 代理（`/api/drive/thumb`），只送出 jpeg／png／webp／gif，帶 `nosniff` 與 `private` 快取；因此不需要為 Google 圖片網域放寬 `img-src`。
+* Google API 結果在 Worker 記憶體短暫快取（資料夾列表 60 秒、檔案資訊 5 分鐘），避免每次都打 Google；剛在 Drive 新增的檔案最多約 1 分鐘後才會出現。
+* Google 回傳的錯誤細節只寫入 Worker 日誌，不會顯示給使用者。
+
+**雲端硬碟 API**（需登入；未啟用時除 `status` 外一律回 404）：
+
+| 方法與路徑 | 說明 |
+| :--- | :--- |
+| `POST /api/files/links` | 新增 Drive 連結（JSON：`url`、`name`、`category`、`visibility`＝`member`／`cadre`、`description`；上傳者權限） |
+| `GET /api/drive/status` | `{ enabled, canConfigure }`；未啟用時 `enabled:false` |
+| `GET /api/drive/folders` | 此帳號可開啟的已設定資料夾 |
+| `PUT /api/drive/folders` | 社長：設定 `{ folders: [{ id（或資料夾網址）, name, visibility }] }`，最多 20 個 |
+| `GET /api/drive/list?root=&folder=&pageToken=` | 列出資料夾內容（`folder` 省略時為根資料夾）；回傳 `{ items, nextPageToken }` |
+| `GET /api/drive/thumb?root=&file=` | 縮圖（經 Worker 代理） |
 
 ### 4. 獨立網頁建立 (Custom Pages)
 * 如果您需要為社團迎新、比賽報名或贊助招商建立專屬介紹頁，前往 **「頁面管理」** -> 「新增獨立網頁」。

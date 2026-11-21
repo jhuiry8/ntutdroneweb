@@ -31,6 +31,16 @@ jobs:
           sed -i "s/YOUR_KV_NAMESPACE_ID/$KV_ID/g" wrangler.toml
           echo "KV Namespace ID successfully injected."
 
+      - name: Inject R2 bucket name
+        run: |
+          R2_BUCKET=$(echo "${{ secrets.CLOUDFLARE_R2_BUCKET }}" | tr -d '[:space:]')
+          if [ -z "$R2_BUCKET" ]; then
+            R2_BUCKET="ntut-drone-files"
+            echo "CLOUDFLARE_R2_BUCKET secret is not set; using the default bucket name $R2_BUCKET (created below if missing)."
+          fi
+          sed -i "s/your-r2-bucket-name/$R2_BUCKET/g" wrangler.toml
+          echo "R2 bucket name successfully injected."
+
       # `wrangler deploy` fails when a bound R2 bucket does not exist or the token cannot use R2.
       # Create missing buckets (R2 buckets are private by default) and stop with a clear message otherwise.
       - name: Ensure R2 buckets exist
@@ -76,3 +86,17 @@ jobs:
             exit 0
           fi
           printf '%s' "$DESKTOP_RELEASE_TOKEN" | npx wrangler secret put DESKTOP_RELEASE_TOKEN
+
+      # Optional: lets the file library's 雲端硬碟 tab read the club's Google Drive (read-only).
+      # Skipped when the GitHub secret is not set; the tab then stays hidden. See README「檔案庫」.
+      - name: Sync Google service account key
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "GOOGLE_SERVICE_ACCOUNT_JSON is not set; the Google Drive tab stays hidden."
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" | npx wrangler secret put GOOGLE_SERVICE_ACCOUNT_JSON
