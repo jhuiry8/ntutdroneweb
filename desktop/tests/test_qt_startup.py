@@ -53,6 +53,17 @@ class QtStartupTests(unittest.TestCase):
         QTimer.singleShot(50, close_it)
         show_error(None, ApiError("測試錯誤"))
 
+    def test_every_module_imports(self):
+        """Catches Qt 6 names that PySide2 keeps elsewhere (QActionGroup is in QtWidgets in Qt 5)."""
+        import importlib
+        import pkgutil
+
+        import clubdesk
+        modules = ["main"] + [info.name for info in pkgutil.walk_packages(clubdesk.__path__, "clubdesk.")]
+        for name in modules:
+            with self.subTest(module=name):
+                importlib.import_module(name)
+
     def test_update_check_is_off_in_the_win7_edition(self):
         from clubdesk import WIN7_EDITION, updater
         self.assertEqual(WIN7_EDITION, qtcompat.BINDING == "PySide2")

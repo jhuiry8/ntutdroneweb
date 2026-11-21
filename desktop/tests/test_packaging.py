@@ -42,6 +42,13 @@ class PackagingTests(unittest.TestCase):
                            f"PySide6/libQt6{name}.so.6", f"PySide2/Qt5{name}.dll"):
                 self.assertIsNone(pattern.search("/" + sample), sample)
 
+    def test_spec_keeps_dlls_that_pyside2_links(self):
+        # pyside2.abi3.dll links Qt5Qml.dll; dropping it breaks every PySide2 import on Windows 7.
+        drop = re.compile(r"(?ix)" + re.search(r'DROP = re.compile\(r"""(.*?)"""\)', self.spec, re.S).group(1))
+        keep = re.compile(re.search(r'KEEP = re.compile\(r"(.*?)"\)', self.spec).group(1))
+        name = "PySide2/Qt5Qml.dll"
+        self.assertTrue(keep.search(name) or not drop.search("/" + name), name)
+
     def test_pyside2_edition_bundles_and_aliases_every_used_module(self):
         for module in used_qt_modules():
             self.assertIn(f'"PySide2.{module}"', self.spec, module)

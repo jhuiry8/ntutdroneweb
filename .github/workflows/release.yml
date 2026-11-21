@@ -131,7 +131,7 @@ jobs:
           echo "| :--- | :--- |"
           echo "| \`ClubDesk-Setup-${VERSION}.exe\` | 桌面版，Windows 10 / 11。已安裝的電腦開啟程式時會自動提示更新。 |"
           if [ "$WIN7_OK" = true ]; then
-            echo "| \`ClubDesk-Win7-Setup-${VERSION}.exe\` | 桌面版，**Windows 7 SP1** 以上（獨立版本，不會自動更新）。需先安裝 SP1 與 KB2999226。 |"
+            echo "| \`ClubDesk-Win7-Setup-${VERSION}.exe\` | 桌面版，**Windows 7 SP1** 以上（獨立版本，不會自動更新）。需先安裝 SP1、KB2999226 與 KB3063858。 |"
           fi
           if [ "$APK_SIGNED" = true ]; then
             echo "| \`NTUT-Drone-Club.apk\` | Android App（v${APK_VERSION}），可直接覆蓋安裝舊版。 |"
