@@ -28,12 +28,16 @@ import { handleFileRequest } from './file-routes.js';
 import { handleDriveRequest } from './drive-routes.js';
 import { handleBackupRequest, runBackupRecorded, BACKUP_CRON } from './backup.js';
 import { equipmentStoreRequest } from './equipment-store.js';
+import { handleLoanRequest, remindOverdueLoans } from './loan-routes.js';
 export { EquipmentStore } from './equipment-store.js';
 export { FormStore } from './form-store.js';
 export { MeetingStore } from './meetings.js';
 export { MessageStore } from './messages.js';
 export { SiteStore } from './site-store.js';
 export { FileStore } from './file-store.js';
+
+const WEEKLY_REPORT_CRON = '0 1 * * 1';
+const LOAN_REMINDER_CRON = '0 18 * * *';
 
 // The pages still use inline scripts and onclick handlers, so 'unsafe-inline'
 // is needed for scripts. The policy still blocks plugins, <base> hijacking,
@@ -84,6 +88,7 @@ const ROUTES = [
     handleFileRequest,
     handleDriveRequest,
     handleEquipmentRequest,
+    handleLoanRequest,
     handleMemberRequest,
     handleRegulationRequest,
     handleFormRequest,
@@ -96,14 +101,15 @@ export default {
         const response = await handleRequest(request, env, ctx);
         return addSecurityHeaders(response, request);
     },
-    // Cron triggers (wrangler.toml): the daily one backs up to R2, any other builds the weekly club report
-    // and posts it to REPORT_WEBHOOK_URL.
+    // Cron triggers (wrangler.toml): Monday 01:00 UTC builds the weekly club report and posts it to
+    // REPORT_WEBHOOK_URL; daily 19:00 UTC (03:00 Taipei) backs up to R2; daily 18:00 UTC (02:00 Taipei)
+    // reminds about overdue equipment loans.
     async scheduled(controller, env, ctx) {
-        if (controller.cron === BACKUP_CRON) {
-            ctx.waitUntil(runBackupRecorded(env).catch(error => console.error('Backup failed', error?.message || String(error))));
-            return;
-        }
-        ctx.waitUntil(generateClubReport(env, aiDeps, { trigger: 'cron' }).catch(error => console.error('Weekly report failed', error?.message || String(error))));
+        const log = label => error => console.error(label, error?.message || String(error));
+        if (controller.cron === BACKUP_CRON) ctx.waitUntil(runBackupRecorded(env).catch(log('Backup failed')));
+        else if (controller.cron === WEEKLY_REPORT_CRON) ctx.waitUntil(generateClubReport(env, aiDeps, { trigger: 'cron' }).catch(log('Weekly report failed')));
+        else if (controller.cron === LOAN_REMINDER_CRON) ctx.waitUntil(remindOverdueLoans(env).catch(log('Overdue loan reminder failed')));
+        else console.error('Unknown cron trigger', controller.cron);
     }
 };
 

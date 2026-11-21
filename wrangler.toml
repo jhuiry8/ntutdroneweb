@@ -70,4 +70,6 @@ bucket_name = "ntut-drone-backups"
 
 # Weekly club report: every Monday 01:00 UTC (09:00 Taipei). See README「AI 功能」.
 [triggers]
-crons = ["0 1 * * 1", "0 19 * * *"] # second entry: daily backup 03:00 Taipei (BACKUP_CRON in src/backup.js)
+# Daily 19:00 UTC (03:00 Taipei): R2 backup (BACKUP_CRON in src/backup.js).
+# Daily 18:00 UTC (02:00 Taipei): overdue equipment loan reminder (LOAN_REMINDER_CRON in src/worker.js).
+crons = ["0 1 * * 1", "0 19 * * *", "0 18 * * *"]

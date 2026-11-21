@@ -476,11 +476,45 @@ async function loadEquipment() {
     if(!response.ok)return showToast(data.error||'無法載入設備資料',true);
     equipmentCache=data;
     const body=document.getElementById('equipment-list');
-    body.innerHTML=data.map(item=>'<tr><td><input class="equipment-select" type="checkbox" aria-label="選取 '+escapeText(item.assetNo)+'" data-id="'+escapeText(item.id)+'" onchange="updateEquipmentSelectedCount()"></td><td><strong>'+escapeText(item.assetNo)+'</strong></td><td>'+escapeText(item.assetName)+'<br><small>'+escapeText(item.category||'其他')+(item.serialNo?' · 序號 '+escapeText(item.serialNo):'')+'</small></td><td>'+escapeText(equipmentStatusLabel[item.status]||item.status)+'<br><small>'+escapeText(equipmentConditionLabel[item.condition]||item.condition)+'</small></td><td>'+escapeText(item.location||'—')+'<br><small>'+escapeText(item.custodian||'未指定保管人')+'</small></td><td>'+escapeText(item.purchaseDate||'—')+'<br><small>'+(item.purchasePrice?'NT$ '+new Intl.NumberFormat('zh-TW').format(item.purchasePrice):'未記錄金額')+'</small></td><td><button type="button" class="btn btn-secondary" data-id="'+escapeText(item.id)+'" onclick="editEquipment(this.dataset.id)">編輯</button></td></tr>').join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">查無設備資料。</td></tr>';
+    body.innerHTML=data.map(item=>'<tr><td><input class="equipment-select" type="checkbox" aria-label="選取 '+escapeText(item.assetNo)+'" data-id="'+escapeText(item.id)+'" onchange="updateEquipmentSelectedCount()"></td><td><strong>'+escapeText(item.assetNo)+'</strong></td><td>'+escapeText(item.assetName)+'<br><small>'+escapeText(item.category||'其他')+(item.serialNo?' · 序號 '+escapeText(item.serialNo):'')+'</small></td><td>'+escapeText(equipmentStatusLabel[item.status]||item.status)+'<br><small>'+escapeText(equipmentConditionLabel[item.condition]||item.condition)+'</small>'+equipmentLoanNote(item)+'</td><td>'+escapeText(item.location||'—')+'<br><small>'+escapeText(item.custodian||'未指定保管人')+'</small></td><td>'+escapeText(item.purchaseDate||'—')+'<br><small>'+(item.purchasePrice?'NT$ '+new Intl.NumberFormat('zh-TW').format(item.purchasePrice):'未記錄金額')+'</small></td><td><button type="button" class="btn btn-secondary" data-id="'+escapeText(item.id)+'" onclick="editEquipment(this.dataset.id)">編輯</button> <button type="button" class="btn btn-secondary" data-id="'+escapeText(item.id)+'" onclick="showEquipmentHistory(this.dataset.id)">借用紀錄</button></td></tr>').join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">查無設備資料。</td></tr>';
     const totalValue=equipmentCache.reduce((sum,item)=>sum+(Number(item.purchasePrice)||0),0);
     const summary=document.getElementById('equipment-summary');
     summary.innerHTML='<div class="finance-card"><span>列管設備</span><strong>'+equipmentCache.length+' 件</strong></div><div class="finance-card"><span>使用中</span><strong>'+equipmentCache.filter(item=>item.status==='in_use').length+' 件</strong></div><div class="finance-card"><span>維修中</span><strong>'+equipmentCache.filter(item=>item.status==='repair'||item.condition==='poor').length+' 件</strong></div><div class="finance-card"><span>購入金額合計（目前結果）</span><strong>NT$ '+new Intl.NumberFormat('zh-TW').format(totalValue)+'</strong></div>';
     updateEquipmentSelectedCount();
+    renderLoanPanels();
+}
+// Who has an asset right now (set when its loan slip is approved, cleared when it is returned).
+function equipmentLoanNote(item) {
+    const loan=item.currentLoan;
+    if(!loan)return '';
+    const late=loan.endDate&&loan.endDate<new Date().toISOString().slice(0,10);
+    return '<br><small'+(late?' style="color:#f87171"':'')+'>借用人 '+escapeText(loan.borrower)+' · 借據 '+escapeText(loan.formNumber||'—')+' · 應還 '+escapeText(loan.endDate||'—')+(late?'（逾期）':'')+'</small>';
+}
+// The overdue list and the borrowing history are drawn into containers created here, above and below the register table.
+function loanPanel(id,before) {
+    let box=document.getElementById(id);
+    if(!box){box=document.createElement('div');box.id=id;box.style.margin='0 0 22px';const table=document.getElementById('equipment-list').closest('.table-container');before?table.before(box):table.after(box);}
+    return box;
+}
+async function renderLoanPanels() {
+    const box=loanPanel('equipment-loans',true);
+    try{
+        const response=await fetch('/api/loans');
+        const loans=await response.json();
+        if(!response.ok)throw new Error(loans.error||'無法載入借用中清單');
+        const overdue=loans.filter(loan=>loan.overdue);
+        if(!loans.length){box.innerHTML='';return;}
+        const row=loan=>'<tr><td>'+escapeText(loan.number)+'</td><td>'+escapeText(loan.borrower)+(loan.phone?'<br><small>'+escapeText(loan.phone)+'</small>':'')+'</td><td>'+loan.items.map(escapeText).join('、')+'</td><td>'+escapeText(loan.endDate)+(loan.overdue?'<br><small style="color:#f87171">逾期 '+loan.daysOverdue+' 天</small>':'')+'</td></tr>';
+        box.innerHTML='<h3 style="font-size:1.05rem;margin:0 0 8px;">'+(overdue.length?'⚠️ 逾期未還 '+overdue.length+' 張　':'')+'借用中 '+loans.length+' 張</h3><div class="table-container"><table><thead><tr><th>借據</th><th>借用人</th><th>設備</th><th>應還日</th></tr></thead><tbody>'+loans.slice().sort((a,b)=>Number(b.overdue)-Number(a.overdue)).map(row).join('')+'</tbody></table></div><p style="color:var(--text-muted);font-size:.85rem;margin:6px 0 0;">在「表單申請」的借據紀錄按「辦理歸還」即可歸還並把設備改回庫存。</p>';
+    }catch(error){box.innerHTML='';}
+}
+async function showEquipmentHistory(id) {
+    const box=loanPanel('equipment-history',false);
+    const response=await fetch('/api/equipment/'+encodeURIComponent(id)+'/history');
+    const data=await response.json();
+    if(!response.ok)return showToast(data.error||'無法載入借用紀錄',true);
+    box.innerHTML='<h3 style="font-size:1.05rem;margin:14px 0 8px;">借用紀錄 · '+escapeText(data.asset.assetName)+'（'+escapeText(data.asset.assetNo)+'）</h3>'+(data.history.length?'<div class="table-container"><table><thead><tr><th>借據</th><th>借用人</th><th>借出</th><th>應還</th><th>歸還</th></tr></thead><tbody>'+data.history.map(entry=>'<tr><td>'+escapeText(entry.formNumber||'—')+'</td><td>'+escapeText(entry.borrower)+'</td><td>'+escapeText(String(entry.since||'').slice(0,10))+'</td><td>'+escapeText(entry.endDate||'—')+'</td><td>'+(entry.returnedAt?escapeText(entry.returnedAt.slice(0,10)):'<strong>借出中</strong>')+'</td></tr>').join('')+'</tbody></table></div>':'<p style="color:var(--text-muted)">尚無借用紀錄。</p>');
+    box.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 function resetEquipmentForm() { document.getElementById('equipment-form').reset(); document.getElementById('equipment-edit-id').value=''; document.getElementById('equipment-save-button').textContent='建立列管資料'; document.querySelector('#equipment-form-details summary').textContent='新增設備'; }
 function editEquipment(id) {
