@@ -78,3 +78,24 @@ test('the release token is ignored when it is missing or too short', async () =>
     }), env);
     assert.equal(response.status, 401);
 });
+
+test('the public download page links the Android APK and the announced Windows installer', async () => {
+    const empty = withSiteStore({ DRONE_DB: kv() });
+    let response = await worker.fetch(new Request('https://example.com/download'), empty);
+    assert.equal(response.status, 200);
+    let html = await response.text();
+    assert.match(html, /releases\/latest\/download\/NTUT-Drone-Club\.apk/);
+    assert.match(html, /github\.com\/jhuiry8\/ntutdroneweb\/releases\/latest"/);
+
+    const env = withSiteStore({ DRONE_DB: kv({ 'desktop:release': JSON.stringify(release) }) });
+    response = await worker.fetch(new Request('https://example.com/download?lang=en'), env);
+    html = await response.text();
+    assert.ok(html.includes(release.url));
+    assert.match(html, /Download Android APK/);
+});
+
+test('the site header links to the download page', async () => {
+    const env = withSiteStore({ DRONE_DB: kv() });
+    const html = await (await worker.fetch(new Request('https://example.com/calendar'), env)).text();
+    assert.match(html, /href="\/download\?lang=zh"/);
+});
