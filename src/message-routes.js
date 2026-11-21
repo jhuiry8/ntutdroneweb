@@ -1,6 +1,6 @@
 // HTTP routes for 社團通訊 (chat rooms, private messages, announcements) and
 // the optional external push module. Storage lives in the MessageStore Durable Object.
-import { canViewCms, canManageUsers } from './auth.js';
+import { canViewCms, canManageUsers, hasPermission } from './auth.js';
 import { MessageError, PUSH_SETTINGS_KEY, DEFAULT_PUSH_SETTINGS, normalizePushSettings, publicPushSettings, pushNotice } from './messages.js';
 
 const json = (body, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -53,7 +53,7 @@ export async function handleMessageRequest(request, env, deps) {
     let directoryPromise = null;
     const directory = () => (directoryPromise ||= people(env, deps));
     const usernames = async () => (await directory()).map(entry => entry.username);
-    const actor = { username: user.username, name: user.username, officer: canViewCms(user), president: canManageUsers(user) };
+    const actor = { username: user.username, name: user.username, officer: canViewCms(user), poster: hasPermission(user, 'announce.post'), president: canManageUsers(user) };
     const withName = async () => {
         if (user.memberId) {
             const member = (await deps.readMembers(env)).find(entry => entry.id === user.memberId);
@@ -93,7 +93,7 @@ export async function handleMessageRequest(request, env, deps) {
     }
 
     if (path === '/api/messages/push-settings' && ['GET', 'PUT'].includes(method)) {
-        if (!actor.president) return json({ error: '只有社長可以設定外部推播' }, 403);
+        if (!hasPermission(user, 'site.settings')) return json({ error: '沒有設定外部推播的權限' }, 403);
         const current = await readPushSettings(env);
         if (method === 'GET') return json(publicPushSettings(current));
         const settings = normalizePushSettings(await body(), current);
@@ -101,7 +101,7 @@ export async function handleMessageRequest(request, env, deps) {
         return json(publicPushSettings(settings));
     }
     if (path === '/api/messages/push-test' && method === 'POST') {
-        if (!actor.president) return json({ error: '只有社長可以設定外部推播' }, 403);
+        if (!hasPermission(user, 'site.settings')) return json({ error: '沒有設定外部推播的權限' }, 403);
         const settings = await readPushSettings(env);
         if (!settings.enabled) return json({ error: '請先啟用外部推播' }, 400);
         return json({ results: await pushNotice(settings, { title: '推播測試', body: `這是北科無人機社社務系統的測試訊息（${actor.username}）。`, link: url.origin }) });

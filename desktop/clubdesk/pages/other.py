@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QDialog, QFormLayout, QGroupBox, QLabel, QLineEdit, QListWidget,
                                QListWidgetItem, QMessageBox, QPushButton, QSplitter, QTextBrowser)
 
-from ..api import ROLE_LABELS, ApiError
+from ..api import ApiError, position_text
 from ..docx import Document
 from ..i18n import raw
 from ..widgets import DataTable, Page, busy, button_row, docx_path, export_info, money, save_docx, show_error
@@ -131,7 +131,7 @@ class AccountPage(Page):
 
     def refresh(self) -> None:
         me = self.api.me()
-        self.fill(self.account_form, [("帳號", me.get("username")), ("角色", ROLE_LABELS.get(me.get("role"), me.get("role"))),
+        self.fill(self.account_form, [("帳號", me.get("username")), ("職位", position_text(me)),
                                       ("建立日期", (me.get("createdAt") or "")[:10])])
         member = me.get("member")
         if member:

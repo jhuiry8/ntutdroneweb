@@ -66,11 +66,11 @@ export function newEvent(input, username, now) {
     return { id: newId(), ...normalizeEventFields(input), nextSeq: 1, reminderSentAt: '', createdBy: username, createdAt: now, updatedAt: now };
 }
 
-// Who may see / sign up for an event. actor = { username, officer } (username '' = visitor).
+// Who may see / sign up for an event. actor = { username, officer (may manage events), staff (may see officer-only content) } (username '' = visitor).
 export function canViewEvent(event, actor) {
     if (event.audience === 'public') return true;
     if (event.audience === 'members') return Boolean(actor?.username);
-    return Boolean(actor?.officer);
+    return Boolean(actor?.officer || actor?.staff);
 }
 export const canRegisterEvent = canViewEvent;
 

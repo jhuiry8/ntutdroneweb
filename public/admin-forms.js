@@ -7,7 +7,10 @@
 
     var USERNAME = root.dataset.username || '';
     var ROLE = root.dataset.role || 'member';
-    var IS_OFFICER = ['president', 'finance', 'cadre'].indexOf(ROLE) !== -1;
+    // Permission codes (from the server) decide; the old role is only a fallback for pages without them.
+    var PERMS = (typeof ADMIN !== 'undefined' && ADMIN.permissions) || null;
+    var IS_OFFICER = PERMS ? PERMS.indexOf('forms.manage') !== -1 : ['president', 'finance', 'cadre'].indexOf(ROLE) !== -1;
+    var IS_ADMIN = PERMS ? PERMS.indexOf('users.manage') !== -1 : ROLE === 'president';
     var PROFILE_KEY = 'ntut-forms-profile';
 
     var VIRTUES = ['尊重生命', '孝親尊長', '負責盡責', '誠實信用', '團隊合作', '自主自律', '主動積極', '謙虛有禮', '關懷行善', '賞識感恩'];
@@ -603,7 +606,7 @@
         var rows = state.records.filter(function (record) { return !filter || record.type === filter; });
         document.getElementById('forms-records').innerHTML = rows.map(function (record) {
             var external = record.source === 'public';
-            var mine = ROLE === 'president' || (external ? IS_OFFICER : record.createdBy === USERNAME);
+            var mine = IS_ADMIN || (external ? IS_OFFICER : record.createdBy === USERNAME);
             var author = external ? '<span class="forms-badge">外部填寫</span><br><small>' + esc(record.data.borrower) + '（' + esc(record.data.studentId) + '）</small>' : esc(record.createdBy);
             var loan = record.type === 'equipment-loan' ? loanCell(record) : { badge: '', buttons: '' };
             return '<tr><td><b>' + esc(record.number) + '</b>' + loan.badge + '</td><td>' + esc(SCHEMAS[record.type] ? SCHEMAS[record.type].label : record.type) + '</td><td>' + esc(record.title) + '</td><td>' + author + '</td><td>' + esc(String(record.updatedAt || record.createdAt).slice(0, 10)) + '</td><td class="forms-actions">' +

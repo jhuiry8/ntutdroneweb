@@ -1,6 +1,6 @@
 // HTTP routes for class check-in (社課簽到): the officers' session list and attendance
 // tools, and the public page members open from the QR code (學號＋姓名, like /meeting/<id>).
-import { canViewCms } from './auth.js';
+import { hasPermission, hasAnyPermission } from './auth.js';
 import { FREE_TRIAL_CLASSES, MEMBER_LEVELS, membershipStatus } from './membership.js';
 import { escapeHtml } from './html.js';
 import { findMemberByIdentity } from './meetings.js';
@@ -186,7 +186,11 @@ export async function handleClassRequest(request, env, deps) {
 
     const user = await deps.sessionUser(request, env);
     if (!user) return json({ error: '未授權' }, 401);
-    if (!canViewCms(user)) return json({ error: '只有幹部可以管理社課簽到' }, 403);
+    // classes.checkin (interns and up) runs the check-in; creating, editing, deleting and exporting need classes.manage.
+    if (!hasAnyPermission(user, ['classes.checkin', 'classes.manage'])) return json({ error: '沒有管理社課簽到的權限' }, 403);
+    const canManageClasses = hasPermission(user, 'classes.manage');
+    const canSeeStudentIds = hasAnyPermission(user, ['members.view', 'classes.manage']);
+    const manageOnly = () => json({ error: '沒有管理社課場次的權限' }, 403);
     if (!env.CLASS_STORE) return json({ error: '尚未設定 CLASS_STORE Durable Object' }, 503);
     const actor = { username: user.username, officer: true };
     const view = result => json(result.status === 200 ? classView(result.body.session || result.body) : result.body, result.status);
@@ -198,11 +202,12 @@ export async function handleClassRequest(request, env, deps) {
         const nowMs = Date.now();
         return json({
             classes: list.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)).map(session => classListView(session, nowMs)),
-            roster: roster.map(member => ({ id: member.id, name: member.name, studentId: member.studentId, levelLabel: MEMBER_LEVELS[membershipStatus(member).level], ...trialSummary(member) })),
+            roster: roster.map(member => ({ id: member.id, name: member.name, studentId: canSeeStudentIds ? member.studentId : '', levelLabel: MEMBER_LEVELS[membershipStatus(member).level], ...trialSummary(member) })),
             freeTrialClasses: FREE_TRIAL_CLASSES
         });
     }
     if (path === '/api/classes' && method === 'POST') {
+        if (!canManageClasses) return manageOnly();
         const created = await classStore(env, '/create', { fields: await deps.readJsonLimited(request, 16 * 1024), actor });
         return json(created.status === 201 ? classView(created.body) : created.body, created.status);
     }
@@ -213,6 +218,8 @@ export async function handleClassRequest(request, env, deps) {
 
     if (!action) {
         if (method === 'GET') return view(await classStore(env, '/get', { id }));
+        if (method === 'PATCH' && !canManageClasses) return manageOnly();
+        if (method === 'DELETE' && !canManageClasses) return manageOnly();
         if (method === 'PATCH') return view(await op(id, 'update', { fields: await deps.readJsonLimited(request, 16 * 1024) }));
         if (method === 'DELETE') {
             const removed = await classStore(env, '/delete', { id, actor });
@@ -226,6 +233,7 @@ export async function handleClassRequest(request, env, deps) {
     }
 
     if (action === 'export.csv') {
+        if (!canManageClasses) return manageOnly();
         if (method !== 'GET') return json({ error: '方法不允許' }, 405);
         const found = await classStore(env, '/get', { id });
         if (found.status !== 200) return json(found.body, found.status);

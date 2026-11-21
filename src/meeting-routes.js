@@ -1,7 +1,7 @@
 // HTTP routes for meetings (社員大會、幹部會議、法規監察委員會), including
 // the AI notice and minutes drafts and the printable minutes page.
 import { marked } from 'marked';
-import { canViewCms, canManageUsers } from './auth.js';
+import { canManageUsers, hasPermission } from './auth.js';
 import { membershipStatus } from './membership.js';
 import { sanitizeContent, escapeHtml } from './html.js';
 import { aiProvider } from './forms.js';
@@ -149,9 +149,9 @@ export async function handleMeetingRequest(request, env, deps) {
     if (!user) return printMatch ? Response.redirect(`${url.origin}/admin`, 302) : json({ error: '未授權' }, 401);
     const members = await roster(env);
     const member = user.memberId ? members.find(entry => entry.id === user.memberId) : null;
-    const actor = { username: user.username, officer: canViewCms(user), president: canManageUsers(user), memberId: member?.id || '' };
+    const actor = { username: user.username, officer: hasPermission(user, 'meetings.manage'), president: canManageUsers(user), memberId: member?.id || '' };
     const viewer = { officer: actor.officer, memberId: actor.memberId };
-    const officerOnly = () => json({ error: '只有幹部可以管理會議' }, 403);
+    const officerOnly = () => json({ error: '沒有管理會議的權限' }, 403);
 
     if (printMatch && method === 'GET') {
         const found = await meetingStore(env, '/get', { id: printMatch[1] });

@@ -1,10 +1,10 @@
 // HTTP routes for 活動報名 and 社團行事曆: public calendar page, iCal feeds, event pages and
 // registration API, officer management (名單、CSV、手動加入／移除) and the day-before reminder.
 import { marked } from 'marked';
-import { canViewCms } from './auth.js';
+import { canViewCms, hasPermission } from './auth.js';
 import { sanitizeContent } from './html.js';
 import { parseCookies } from './request.js';
-import { readSiteSettings } from './session.js';
+import { readSiteSettings, withAccess } from './session.js';
 import { captchaStore, verifyTurnstile } from './session.js';
 import { createCaptcha, verifyCaptcha } from './captcha.js';
 import { listMeetings } from './meeting-routes.js';
@@ -93,10 +93,10 @@ export function registrationsCsv(event, regs) {
 
 async function actorFor(request, env, deps) {
     const user = await deps.sessionUser(request, env);
-    if (!user) return { username: '', officer: false, user: null };
+    if (!user) return { username: '', officer: false, staff: false, user: null };
     const members = await deps.readMembers(env);
     const member = user.memberId ? members.find(entry => entry.id === user.memberId) : null;
-    return { username: user.username, officer: canViewCms(user), memberId: member?.id || '', name: member?.name || user.username, studentId: member?.studentId || '', user };
+    return { username: user.username, officer: hasPermission(user, 'events.manage'), staff: canViewCms(user), memberId: member?.id || '', name: member?.name || user.username, studentId: member?.studentId || '', user };
 }
 
 async function visibleEvents(env, actor) {
@@ -111,7 +111,7 @@ async function visibleEvents(env, actor) {
 async function visibleMeetings(env, actor) {
     const meetings = await listMeetings(env);
     return meetings
-        .filter(meeting => meeting.status !== 'draft' && (MEETING_TYPES[meeting.type]?.assembly || actor.officer))
+        .filter(meeting => meeting.status !== 'draft' && (MEETING_TYPES[meeting.type]?.assembly || actor.officer || actor.staff))
         .map(meeting => ({ id: meeting.id, title: meeting.title, typeLabel: MEETING_TYPES[meeting.type]?.label || '', date: meeting.date, time: meeting.time || '', location: meeting.location || '' }));
 }
 
@@ -170,8 +170,9 @@ async function tokenUser(env, token) {
     // The bootstrap account has no user record (see sessionUser).
     const user = raw ? JSON.parse(raw) : (username === 'admin' ? { username: 'admin', role: 'president', active: true } : null);
     if (!user || user.active === false) return null;
-    if (user.role === 'member' && !(await readSiteSettings(env)).memberLogin) return null;
-    return user;
+    const resolved = await withAccess(env, user);
+    if (resolved.role === 'member' && !(await readSiteSettings(env)).memberLogin) return null;
+    return resolved;
 }
 
 // ---------- routes ----------
@@ -200,7 +201,7 @@ export async function handleEventRequest(request, env, deps) {
     if (memberFeed && method === 'GET') {
         const user = await tokenUser(env, memberFeed[1]);
         if (!user) return new Response('找不到行事曆', { status: 404, headers: { 'Cache-Control': 'no-store' } });
-        const actor = { username: user.username, officer: canViewCms(user) };
+        const actor = { username: user.username, officer: hasPermission(user, 'events.manage'), staff: canViewCms(user) };
         const [events, meetings] = await Promise.all([visibleEvents(env, actor), visibleMeetings(env, actor)]);
         const entries = [...events.map(entry => eventIcs(entry.event, url.origin)), ...meetings.map(meetingIcs)];
         return icsResponse(buildIcs(entries, { name: '北科無人機社 社員行事曆' }), 'private, max-age=300');

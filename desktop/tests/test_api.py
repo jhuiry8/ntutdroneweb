@@ -11,8 +11,11 @@ from urllib.parse import parse_qs
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from clubdesk.api import (AI_TIMEOUT, ApiClient, ApiError, ConnectionFailed, Response,  # noqa: E402
-                          can_manage_finance, can_manage_members, normalize_base_url, session_cookie)
+from clubdesk.api import (AI_TIMEOUT, Access, ApiClient, ApiError, ConnectionFailed, Response,  # noqa: E402
+                          access_of, can_approve_finance, can_change_settings, can_edit_cms, can_manage_equipment, can_manage_finance,
+                          can_manage_members, can_manage_receipts, can_manage_users, can_view_cms, can_view_equipment, can_view_finance,
+                          can_view_members, can_view_notes, can_view_reports, has_permission, normalize_base_url, position_text,
+                          session_cookie)
 
 
 def reply(status=200, body=None, text=None, headers=None):
@@ -162,6 +165,66 @@ class HelperTests(unittest.TestCase):
         self.assertTrue(can_manage_members("finance"))
         self.assertFalse(can_manage_members("cadre"))
         self.assertFalse(can_manage_finance("member"))
+
+
+# What each old role could do before permission codes existed (the rules of the old src/auth.js).
+OLD_RULES = {
+    "can_manage_users": ("president",),
+    "can_view_cms": ("president", "finance", "cadre"),
+    "can_edit_cms": ("president", "cadre"),
+    "can_manage_finance": ("president", "finance"),
+    "can_manage_members": ("president", "finance"),
+    "can_manage_equipment": ("president", "finance", "cadre"),
+}
+ROLE_FUNCTIONS = {"can_manage_users": can_manage_users, "can_view_cms": can_view_cms, "can_edit_cms": can_edit_cms,
+                  "can_manage_finance": can_manage_finance, "can_manage_members": can_manage_members,
+                  "can_manage_equipment": can_manage_equipment}
+
+
+class PermissionTests(unittest.TestCase):
+    def test_a_plain_role_name_still_behaves_like_the_old_rules(self):
+        for name, function in ROLE_FUNCTIONS.items():
+            for role in ("president", "finance", "cadre", "member", "", "unknown"):
+                self.assertEqual(function(role), role in OLD_RULES[name], f"{name}({role!r})")
+
+    def test_permissions_from_the_server_win_over_the_role(self):
+        intern = access_of({"role": "cadre", "permissions": ["classes.checkin", "equipment.view", "loans.draft"]})
+        self.assertEqual(intern, "cadre", "still a str: old code comparing the role keeps working")
+        self.assertFalse(can_view_cms(intern))
+        self.assertFalse(can_edit_cms(intern))
+        self.assertFalse(can_view_finance(intern))
+        self.assertFalse(can_view_members(intern))
+        self.assertTrue(can_view_equipment(intern))
+        self.assertFalse(can_manage_equipment(intern))
+        self.assertFalse(can_view_notes(intern))
+        self.assertFalse(can_view_reports(intern))
+        self.assertFalse(can_manage_users(intern))
+
+    def test_each_position_shows_its_own_pages(self):
+        treasurer = access_of({"role": "finance", "permissions": ["cms.view", "finance.view", "finance.edit", "receipts.manage", "members.view"]})
+        self.assertTrue(can_view_finance(treasurer) and can_manage_finance(treasurer) and can_manage_receipts(treasurer) and can_view_members(treasurer))
+        self.assertFalse(can_manage_members(treasurer) or can_approve_finance(treasurer) or can_manage_users(treasurer))
+        committee = access_of({"role": "cadre", "permissions": ["cms.view", "finance.view", "finance.audit"]})
+        self.assertTrue(can_view_finance(committee))
+        self.assertFalse(can_manage_finance(committee) or can_view_members(committee) or can_manage_receipts(committee))
+        president = access_of({"role": "president", "permissions": ["users.manage", "site.settings", "finance.approve"]})
+        self.assertTrue(can_manage_users(president) and can_change_settings(president) and can_approve_finance(president))
+        # an acting 副社長 reports role "cadre" but has every permission
+        acting = Access("cadre", ["users.manage", "cms.view", "cms.edit"])
+        self.assertTrue(can_manage_users(acting) and can_edit_cms(acting))
+        self.assertFalse(can_manage_users(Access("cadre")), "no permissions sent: the old role decides")
+
+    def test_missing_or_bad_permissions_fall_back_to_the_role(self):
+        self.assertTrue(can_manage_members(access_of({"role": "finance"})))
+        self.assertFalse(can_manage_members(access_of({"role": "cadre", "permissions": None})))
+        self.assertFalse(can_manage_members(access_of({"role": "cadre", "permissions": "members.edit"})), "a string is not a list")
+        self.assertFalse(has_permission(access_of({}), "cms.view"))
+        self.assertEqual(access_of(None), "")
+
+    def test_positions_for_the_status_bar(self):
+        self.assertEqual(position_text({"role": "cadre", "positionNames": ["活動公關組", "教學技術組"]}), "活動公關組、教學技術組")
+        self.assertEqual(position_text({"role": "finance"}), "財務")
+        self.assertEqual(position_text({"role": "member", "positionNames": []}), "社員")
 
 
 class SemesterTests(unittest.TestCase):

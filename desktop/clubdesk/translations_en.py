@@ -414,6 +414,7 @@ TRANSLATIONS = {
     '修改帳號 ': 'Edit account ',
     '；留空表示不變更': '; leave empty to keep it unchanged',
     '角色': 'Role',
+    '職位': 'Position',
     '綁定社員': 'Linked member',
     '建立日期': 'Date created',
     'AI 模型：': 'AI model: ',

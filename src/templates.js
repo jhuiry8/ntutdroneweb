@@ -4,4 +4,5 @@ export { renderPublicLoanForm } from './templates/public-loan.js';
 export { renderLandingPage } from './templates/landing.js';
 export { renderBlogList, renderBlogPost, renderCustomPage } from './templates/content.js';
 export { renderLogin } from './templates/login.js';
+export { renderOfficersPage } from './templates/officers.js';
 export { renderAdminDashboard } from './templates/admin.js';

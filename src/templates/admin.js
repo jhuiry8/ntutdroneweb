@@ -1,23 +1,32 @@
 // The dashboard shell. Its styles and behaviour are static files in public/
 // (admin.css, admin-nav.js, admin.js and the admin-*.js modules).
-import { canViewCms, canEditCms, canManageFinance, canManageMembers, canManageEquipment, canUploadFiles } from '../auth.js';
+import { canEditCms, canUploadFiles, hasPermission, hasAnyPermission } from '../auth.js';
 import { escapeHtml } from '../html.js';
 import { PWA_HEAD_TAGS } from './layout.js';
 
 // 6. Render Admin Dashboard Page with i18n Post Creation
 export function renderAdminDashboard(posts = [], pages = [], user = { username: 'admin', role: 'president' }) {
-    const viewCms = canViewCms(user);
-    const manageFinance = canManageFinance(user);
-    const manageMembers = canManageMembers(user);
-    const manageEquipment = canManageEquipment(user);
+    // Which sections show up is decided by permission codes, never by the role name. The server checks again on every API call.
+    const perm = code => hasPermission(user, code);
+    const anyPerm = codes => hasAnyPermission(user, codes);
+    const viewCms = perm('cms.view');
+    const manageFinance = anyPerm(['finance.view', 'finance.edit', 'finance.approve', 'finance.audit']);
+    const manageMembers = anyPerm(['members.view', 'members.edit', 'receipts.manage']);
+    const manageEquipment = anyPerm(['equipment.view', 'equipment.manage']);
+    const showNotes = anyPerm(['cms.view', 'notes.manage']);
+    const editNotes = perm('notes.manage');
+    const isAdmin = perm('users.manage');
+    const showOfficers = isAdmin || anyPerm(['officers.view', 'officers.manage']) || (user?.positions || []).length > 0;
     if (!viewCms) { posts = []; pages = []; }
     // Read by public/admin.js; the server decides what this account may do.
     const adminConfig = {
         username: String(user?.username || ''),
-        isPresident: user?.role === 'president',
+        isPresident: isAdmin,
         viewCms,
         editCms: canEditCms(user),
-        manageMembers
+        manageMembers,
+        // Only present when the server resolved the account's permissions; admin.js falls back to isPresident without them.
+        ...(Array.isArray(user?.permissions) ? { canApprove: perm('finance.approve'), canResolve: perm('regulations.resolve'), permissions: user.permissions, positions: user.positions || [] } : {})
     };
     return `
     <!DOCTYPE html>
@@ -51,18 +60,19 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     </div>` : ''}
                     <div class="nav-group"><p class="nav-group-label">社務管理</p>
                         <button class="nav-item" onclick="showPanel('forms'); loadForms()"><i data-lucide="file-pen-line"></i> 表單申請</button>
-                        ${viewCms ? `<a class="nav-item" href="/admin/events"><i data-lucide="calendar-days"></i> 活動報名</a>` : ''}
+                        ${perm('events.manage') ? `<a class="nav-item" href="/admin/events"><i data-lucide="calendar-days"></i> 活動報名</a>` : ''}
                         <a class="nav-item" href="/admin/flights"><i data-lucide="plane"></i> 飛行紀錄與證照</a>
                         ${manageMembers ? `<button class="nav-item" onclick="showPanel('members'); loadMembers()"><i data-lucide="contact-round"></i> 社員管理</button>` : ''}
                         ${manageFinance ? `<button class="nav-item" onclick="showPanel('finance'); loadFinance()"><i data-lucide="wallet-cards"></i> 財務管理</button>` : ''}
                         ${manageEquipment ? `<button class="nav-item" onclick="showPanel('equipment'); loadEquipment()"><i data-lucide="package-check"></i> 設備管理</button>` : ''}
-                        ${viewCms ? `<button class="nav-item" onclick="showPanel('notes'); loadNotes()"><i data-lucide="sticky-note"></i> 社課備忘錄</button>` : ''}
+                        ${showNotes ? `<button class="nav-item" onclick="showPanel('notes'); loadNotes()"><i data-lucide="sticky-note"></i> 社課備忘錄</button>` : ''}
                         <button class="nav-item" onclick="showPanel('files'); loadFiles()"><i data-lucide="folder-open"></i> 檔案庫</button>
                         <button class="nav-item" onclick="showPanel('regulations'); loadRegulations()"><i data-lucide="scale"></i> 法規查詢</button>
                     </div>
                     <div class="nav-group"><p class="nav-group-label">系統管理</p>
                         <button class="nav-item" onclick="showPanel('settings'); loadMyMember()"><i data-lucide="settings"></i> 系統設定</button>
-                        ${user?.role === 'president' ? `<button class="nav-item" onclick="showPanel('users'); loadUsers()"><i data-lucide="users"></i> 帳號與權限</button>` : ''}
+                        ${isAdmin ? `<button class="nav-item" onclick="showPanel('users'); loadUsers()"><i data-lucide="users"></i> 帳號、職位與權限</button>` : ''}
+                        ${showOfficers ? `<button class="nav-item" onclick="showPanel('officers')"><i data-lucide="id-card"></i> 幹部名冊</button>` : ''}
                     </div>
                 </div>
             </div>
@@ -595,7 +605,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
             </div>` : ''}
             ${viewCms ? `<div id="panel-notes" class="panel">
                 <div class="content-header"><div><h1>社課備忘錄</h1><p style="color:var(--text-muted); margin-top:6px;">記錄每次社課重點，集中保存簡報、教材與相關網址。</p></div></div>
-                ${user?.role === 'president' || user?.role === 'cadre' ? `<form onsubmit="createNote(event)" style="display:grid; gap:12px; max-width:900px; padding:18px; margin-bottom:24px; border:1px solid var(--border-glass); border-radius:12px;">
+                ${editNotes ? `<form onsubmit="createNote(event)" style="display:grid; gap:12px; max-width:900px; padding:18px; margin-bottom:24px; border:1px solid var(--border-glass); border-radius:12px;">
                     <h2 style="font-size:1.1rem;">新增社課紀錄</h2>
                     <div class="responsive-form-grid" style="display:grid; grid-template-columns:2fr 1fr; gap:12px;"><input id="note-title" class="form-control" placeholder="社課名稱，例如：焊接與電路基礎" maxlength="120" required><input id="note-date" class="form-control" type="date" required></div>
                     <textarea id="note-content" class="form-control" rows="4" maxlength="5000" placeholder="課程重點、作業或下次社課提醒"></textarea>
@@ -666,7 +676,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 </form>
                 <div class="forms-editor-head" style="margin-top:28px;"><h2 style="font-size:1.15rem;">${viewCms ? '表單紀錄' : '我的表單'}</h2><select id="forms-filter" class="form-control" style="max-width:220px;" aria-label="依表單類型篩選"><option value="">全部類型</option><option value="expense-request">社費事前申請</option><option value="expense-report">社費事後報銷</option><option value="equipment-loan">設備借據</option><option value="activity-application">學生活動申請表</option><option value="activity-report">學生活動報告表</option><option value="official-letter">公文</option></select></div>
                 <div class="table-container"><table><thead><tr><th>編號</th><th>表單</th><th>內容</th><th>填表人</th><th>更新日期</th><th>操作</th></tr></thead><tbody id="forms-records"><tr><td colspan="6" style="text-align:center; color:var(--text-muted)">載入中…</td></tr></tbody></table></div>
-                ${user?.role === 'president' ? `<details class="forms-card" style="margin-top:24px;"><summary style="cursor:pointer; font-weight:600;">表單設定（列印抬頭與簽核人姓名）</summary><form id="forms-settings" class="forms-grid" style="margin-top:14px;">
+                ${perm('site.settings') ? `<details class="forms-card" style="margin-top:24px;"><summary style="cursor:pointer; font-weight:600;">表單設定（列印抬頭與簽核人姓名）</summary><form id="forms-settings" class="forms-grid" style="margin-top:14px;">
                     <label class="forms-field"><span>表單抬頭</span><input class="form-control" name="clubName" maxlength="50" placeholder="國立臺北科技大學 無人機社"></label>
                     <label class="forms-field"><span>社團簡稱（學校表單用）</span><input class="form-control" name="clubShortName" maxlength="50" placeholder="無人機社"></label>
                     <label class="forms-field"><span>社長姓名（借據、公文署名）</span><input class="form-control" name="presidentName" maxlength="50"></label>
@@ -722,8 +732,9 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 <div id="amendment-list" style="margin-bottom:20px;"></div>
                 <div id="regulation-results" aria-live="polite"></div>
             </div>
-            ${user?.role === 'president' ? `<div id="panel-users" class="panel">
-                <div class="content-header"><h1>帳號與權限</h1></div>
+            ${showOfficers ? `<div id="panel-officers" class="panel"></div>` : ''}
+            ${isAdmin ? `<div id="panel-users" class="panel">
+                <div class="content-header"><h1>帳號、職位與權限</h1></div>
                 <form onsubmit="createUser(event)" style="display:grid; gap:12px; max-width:520px; margin-bottom:24px;">
                     <input id="account-username" class="form-control" placeholder="帳號（英數字，至少 3 位）" required>
                     <input id="account-password" type="password" class="form-control" placeholder="初始密碼（至少 8 位）" minlength="8" required>
@@ -759,6 +770,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
         <script src="/admin-ai.js" defer></script>
         <script src="/admin-messages.js" defer></script>
         <script src="/admin-files.js" defer></script>
+        <script src="/admin-org.js" defer></script>
         <script src="/admin-notifications.js" defer></script>
         <script src="/admin-mobile.js" defer></script>
     </body>

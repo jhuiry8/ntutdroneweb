@@ -1,7 +1,7 @@
 // HTTP routes for regulations (法規查詢) and the amendment procedure (修正案).
 import { DEFAULT_REGULATIONS } from './regulations.js';
 import { REGULATION_KINDS, AMENDMENT_ACTIONS, RegulationRuleError, checkAssembly, checkProposalSource, requirementsFor } from './regulation-rules.js';
-import { canManageUsers, canViewCms } from './auth.js';
+import { hasPermission } from './auth.js';
 import { readJsonObject } from './request.js';
 import { sessionUser } from './session.js';
 import { ValidationError, financeText, financeDate, parseStoredList } from './validation.js';
@@ -114,7 +114,7 @@ export async function handleRegulationRequest(request, env) {
         const amendments = parseStoredList(await env.DRONE_DB.get(REGULATION_AMENDMENTS_KEY));
         if (method === 'GET') return Response.json(amendments.sort((a, b) => b.proposedAt.localeCompare(a.proposedAt)));
         // Officers file proposals on behalf of whoever raised them (committee, petition, officers' meeting).
-        if (!canViewCms(user)) return Response.json({ error: '權限不足：修正案由幹部代為登錄' }, { status: 403 });
+        if (!hasPermission(user, 'regulations.amend')) return Response.json({ error: '權限不足：修正案由幹部或法規監察委員會登錄' }, { status: 403 });
         if (amendments.filter(item => item.status === 'proposed' || item.status === 'awaiting_school').length >= 30) return Response.json({ error: '進行中的修正案最多 30 件，請先處理既有提案' }, { status: 400 });
         const regulations = parseRegulations(await env.DRONE_DB.get(REGULATIONS_KEY));
         const amendment = { id: crypto.randomUUID(), ...normalizeAmendmentInput(await readJsonObject(request, 300_000), regulations), status: 'proposed', proposedBy: user.username, proposedAt: new Date().toISOString() };
@@ -129,6 +129,7 @@ export async function handleRegulationRequest(request, env) {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
         const [, id, action] = amendmentAction;
+        if (action !== 'close' && !hasPermission(user, 'regulations.resolve')) return Response.json({ error: '沒有登錄表決及核備結果的權限' }, { status: 403 });
         const amendments = parseStoredList(await env.DRONE_DB.get(REGULATION_AMENDMENTS_KEY));
         const amendment = amendments.find(item => item.id === decodeURIComponent(id));
         if (!amendment) return Response.json({ error: '修正案不存在' }, { status: 404 });
@@ -138,15 +139,15 @@ export async function handleRegulationRequest(request, env) {
             const outcome = String(body.outcome || '');
             if (!['rejected', 'withdrawn'].includes(outcome)) return Response.json({ error: '結案方式無效' }, { status: 400 });
             if (amendment.status !== 'proposed' && !(amendment.status === 'awaiting_school' && outcome === 'rejected')) return Response.json({ error: '此修正案已結案' }, { status: 409 });
-            if (outcome === 'rejected' && !canManageUsers(user)) return Response.json({ error: '只有社長可以登錄未通過結果' }, { status: 403 });
-            if (outcome === 'withdrawn' && !canManageUsers(user) && amendment.proposedBy !== user.username) return Response.json({ error: '只有登錄者或社長可以撤回' }, { status: 403 });
+            if (outcome === 'rejected' && !hasPermission(user, 'regulations.resolve')) return Response.json({ error: '只有社長可以登錄未通過結果' }, { status: 403 });
+            if (outcome === 'withdrawn' && !hasPermission(user, 'regulations.resolve') && amendment.proposedBy !== user.username) return Response.json({ error: '只有登錄者或社長可以撤回' }, { status: 403 });
             const note = String(body.note || '').trim().slice(0, 500);
             if (outcome === 'rejected' && !note) return Response.json({ error: '請填寫未通過的情形（例如社員大會出席或同意人數未達門檻、學校未核備）' }, { status: 400 });
             Object.assign(amendment, { status: outcome, closedAt: now, closedBy: user.username, closeNote: note });
             await env.DRONE_DB.put(REGULATION_AMENDMENTS_KEY, JSON.stringify(amendments));
             return Response.json(amendment);
         }
-        if (!canManageUsers(user)) return Response.json({ error: '只有社長可以登錄表決及核備結果' }, { status: 403 });
+        if (!hasPermission(user, 'regulations.resolve')) return Response.json({ error: '沒有登錄表決及核備結果的權限' }, { status: 403 });
         const regulations = parseRegulations(await env.DRONE_DB.get(REGULATIONS_KEY));
         const target = amendment.regulationId ? regulations.find(item => item.id === amendment.regulationId) : null;
         if (amendment.regulationId && (!target || (target.revision || 0) !== amendment.baseRevision)) return Response.json({ error: '此法規在提案後已有其他修正生效，請以最新條文重新提案' }, { status: 409 });

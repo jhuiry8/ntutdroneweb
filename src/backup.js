@@ -2,7 +2,7 @@
 // One JSON file per day, backups/YYYY-MM-DD.json; only the newest BACKUP_KEEP are kept.
 // Sessions (session:*) are deliberately left out: they are short-lived login tokens.
 import * as kvKeys from './kv-keys.js';
-import { canManageUsers } from './auth.js';
+import { hasPermission } from './auth.js';
 import { sessionUser } from './session.js';
 import { taipeiToday } from './forms.js';
 import { EXPORT_PATH } from './do-export.js';
@@ -28,7 +28,9 @@ export const DURABLE_OBJECTS = [
     ['FORM_STORE', 'club-forms'],
     ['SITE_STORE', 'site-security'],
     ['MEETING_STORE', 'club-meetings'],
-    ['MESSAGE_STORE', 'club-messages']
+    ['MESSAGE_STORE', 'club-messages'],
+    // 職位、權限設定與幹部名冊（含幹部個人資料）
+    ['ORG_STORE', 'club-org']
 ];
 
 export const backupKey = date => `${BACKUP_PREFIX}${date}.json`;
@@ -161,7 +163,7 @@ export async function handleBackupRequest(request, env) {
     if (request.method !== wanted) return Response.json({ error: '方法不允許' }, { status: 405 });
     const user = await sessionUser(request, env);
     if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-    if (!canManageUsers(user)) return Response.json({ error: '只有社長可以使用備份功能' }, { status: 403 });
+    if (!hasPermission(user, 'site.settings')) return Response.json({ error: '沒有使用備份功能的權限' }, { status: 403 });
     if (pathname === '/api/backup/status') return Response.json({ configured: Boolean(env.BACKUPS), latest: await readBackupStatus(env) }, { headers: { 'Cache-Control': 'no-store' } });
     if (!env.BACKUPS) return Response.json({ error: '尚未設定 BACKUPS R2 bucket' }, { status: 503 });
     if (wanted === 'POST') return Response.json(await runBackupRecorded(env, { trigger: 'manual' }), { status: 201 });

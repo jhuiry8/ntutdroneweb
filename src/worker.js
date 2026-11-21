@@ -3,6 +3,7 @@
 // this file applies the cross-origin check, tries the modules in turn and maps
 // thrown errors to HTTP responses.
 import { PasswordResetRequiredError } from './auth.js';
+import { OrgError } from './org.js';
 import { RegulationRuleError } from './regulation-rules.js';
 import { FormValidationError, FormServiceError } from './forms.js';
 import { MeetingError } from './meetings.js';
@@ -34,6 +35,7 @@ import { handleEventRequest, runEventReminders, EVENT_REMINDER_CRON } from './ev
 import { equipmentStoreRequest } from './equipment-store.js';
 import { handleLoanRequest, remindOverdueLoans } from './loan-routes.js';
 import { handleFlightRequest, runCertReminders } from './flight-routes.js';
+import { handleOrgRequest } from './org-routes.js';
 export { EquipmentStore } from './equipment-store.js';
 export { FormStore } from './form-store.js';
 export { MeetingStore } from './meetings.js';
@@ -43,6 +45,7 @@ export { EventStore } from './events.js';
 export { SiteStore } from './site-store.js';
 export { FlightStore } from './flight-store.js';
 export { FileStore } from './file-store.js';
+export { OrgStore } from './org-store.js';
 
 const WEEKLY_REPORT_CRON = '0 1 * * 1';
 const LOAN_REMINDER_CRON = '0 18 * * *';
@@ -88,6 +91,7 @@ const aiDeps = {
 const ROUTES = [
     handlePageRequest,
     handleAuthRequest,
+    handleOrgRequest,
     (request, env) => handleAiRequest(request, env, aiDeps),
     (request, env) => handleMeetingRequest(request, env, aiDeps),
     (request, env) => handleClassRequest(request, env, aiDeps),
@@ -162,6 +166,7 @@ async function handleRequest(request, env, ctx) {
         if (e instanceof FormServiceError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof MeetingError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof FileError) return Response.json({ error: e.message }, { status: e.status });
+        if (e instanceof OrgError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof FlightError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof MessageError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof EventError) return Response.json({ error: e.message }, { status: e.status });
