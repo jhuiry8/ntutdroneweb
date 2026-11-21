@@ -76,6 +76,8 @@ def main() -> int:
     if ask_running_instance():
         return 0  # already running (maybe hidden in the tray); it was asked to show itself
     instances = InstanceServer(parent=app)
+    if instances.already_running:
+        return 0  # two copies started at the same moment; the other one won and has been asked to show itself
     app.instances = instances  # MainWindow.relogin points it at the new window
     autostarted = "--autostart" in sys.argv
     client, user, notice = auto_login(autostarted)
@@ -95,6 +97,8 @@ def main() -> int:
     window = MainWindow(client, user, LoginDialog)
     if autostarted and window.tray:
         window.hide_to_tray_silently()  # started with Windows: stay in the tray
+        if skipped_login_dialog:  # no popup at boot: look for an update the first time the window is opened
+            window.after_first_restore = lambda: check_and_offer(window, client)
     else:
         window.show()
         if skipped_login_dialog:  # the login dialog normally checks for updates

@@ -89,6 +89,10 @@ class Document:
         self.body: list[str] = []
         self.uses_numbering = False
         self._list_id = 0
+        self._translate = True  # off while adding server Markdown, which must stay exactly as written
+
+    def _tr(self, text, pieces: bool = True):
+        return tr(text, pieces) if self._translate else text
 
     # ------------------------------------------------------------ blocks
     def _paragraph(self, runs: str, style: str = "", align: str = "", spacing_after: int | None = None,
@@ -110,7 +114,7 @@ class Document:
         self.body.append(f"<w:p>{ppr}{runs}</w:p>")
 
     def heading(self, text: str, level: int = 1) -> None:
-        self._paragraph(inline_runs(tr(text)), style=f"Heading{min(max(level, 1), 3)}", keep_next=True)
+        self._paragraph(inline_runs(self._tr(text)), style=f"Heading{min(max(level, 1), 3)}", keep_next=True)
 
     def title_block(self, title: str, subtitle: str = "") -> None:
         self._paragraph(_run(tr(title)), style="Title", align="center")
@@ -118,7 +122,7 @@ class Document:
             self._paragraph(_run(tr(subtitle), size=18, colour="606060"), align="center", spacing_after=240)
 
     def paragraph(self, text: str = "", bold=False, align: str = "", size: int | None = None) -> None:
-        text = tr(text)
+        text = self._tr(text)
         runs = _run(text, bold=True, size=size) if bold else inline_runs(text, size=size)
         self._paragraph(runs, align=align)
 
@@ -153,8 +157,8 @@ class Document:
               align_right: set[int] | None = None, font_size: int = 18) -> None:
         """A bordered table; the shaded header row repeats on every page."""
         align_right = align_right or set()
-        headers = [tr(h) for h in headers]
-        rows = [[tr_exact(v) for v in row] for row in rows]
+        headers = [self._tr(h) for h in headers]
+        rows = [[self._tr(v, False) for v in row] for row in rows]
         columns = max(len(headers), max((len(r) for r in rows), default=0)) or 1
         usable = 14400 if self.landscape else 9600  # twips between margins
         if not widths:
@@ -182,7 +186,17 @@ class Document:
         self._paragraph("", spacing_after=0)  # Word needs a paragraph after a table
 
     def markdown(self, text: str) -> None:
-        """Adds Markdown content (posts, minutes, notices): headings, lists, quotes, tables, code, rules."""
+        """Adds Markdown content (posts, minutes, notices): headings, lists, quotes, tables, code, rules.
+
+        The text comes from the server, so it is never run through tr(), even in English mode.
+        """
+        self._translate = False
+        try:
+            self._markdown(text)
+        finally:
+            self._translate = True
+
+    def _markdown(self, text: str) -> None:
         lines = (text or "").replace("\r\n", "\n").split("\n")
         i = 0
         while i < len(lines):

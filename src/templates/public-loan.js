@@ -29,6 +29,11 @@ export function renderPublicLoanForm(turnstileSiteKey = '', captcha = null) {
         .pl-table td:nth-child(2) { width: 90px; }
         .pl-table td:last-child { width: 44px; }
         .pl-remove { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--border-color); background: transparent; color: var(--text-secondary); cursor: pointer; }
+        .pl-assets { border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px 14px; margin: 0 0 16px; }
+        .pl-assets legend { padding: 0 6px; font-weight: 600; font-size: .95rem; }
+        .pl-asset-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+        .pl-asset-list label { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 10px; cursor: pointer; }
+        .pl-asset-list small { color: var(--text-secondary); }
         .pl-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
         .pl-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid var(--border-color); background: transparent; color: var(--text-primary); font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; }
         .pl-btn.primary { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
@@ -39,7 +44,7 @@ export function renderPublicLoanForm(turnstileSiteKey = '', captcha = null) {
         .pl-error { color: var(--color-danger); min-height: 1.4em; margin: 10px 0 0; }
         .pl-done { border-color: var(--color-success); }
         .pl-done strong { font-size: 1.6rem; color: var(--color-success); letter-spacing: .04em; }
-        @media (max-width: 680px) { .pl-steps, .pl-grid { grid-template-columns: minmax(0, 1fr); } .pl-main { padding-top: 96px; } }
+        @media (max-width: 680px) { .pl-steps, .pl-grid, .pl-asset-list { grid-template-columns: minmax(0, 1fr); } .pl-main { padding-top: 96px; } }
     </style>
     <main class="pl-main">
         <h1>設備借用申請</h1>
@@ -58,7 +63,8 @@ export function renderPublicLoanForm(turnstileSiteKey = '', captcha = null) {
                 <label class="pl-field"><span>歸還日期與時 <b>*</b></span><span class="pl-period"><input class="pl-input" id="pl-endDate" type="date" required><select class="pl-input" id="pl-endHour" aria-label="歸還時"></select></span></label>
             </div></section>
             <section class="pl-card"><h2>借用設備（最多 6 項）</h2>
-                <p class="pl-lead" style="margin-bottom:12px; font-size:.9rem;">財產編號由幹部在簽核時填寫，不清楚型號可寫大概名稱。</p>
+                <fieldset class="pl-assets" id="pl-assets" hidden><legend>從社團設備挑選（目前可借）</legend><div id="pl-asset-list" class="pl-asset-list"></div></fieldset>
+                <p class="pl-lead" style="margin-bottom:12px; font-size:.9rem;">財產編號由幹部在簽核時填寫，不清楚型號可寫大概名稱。上方清單沒有的設備可在下表自行填寫。</p>
                 <div class="pl-table-wrap"><table class="pl-table"><thead><tr><th>設備名稱／型號 *</th><th>數量</th><th>配件</th><th></th></tr></thead><tbody id="pl-items">${row}</tbody></table></div>
                 <div class="pl-actions"><button type="button" class="pl-btn" id="pl-add">新增一項設備</button></div>
                 <template id="pl-row-template">${row}</template>

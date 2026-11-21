@@ -149,6 +149,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                     <a href="#features" class="nav-link">${t.navFeatures}</a>
                     <a href="#instagram" class="nav-link" style="color:#e1306c; font-weight:700;"><i data-lucide="instagram" style="width:14px; height:14px; display:inline; vertical-align:middle; margin-right:2px;"></i> ${lang === 'zh' ? 'IG 動態' : 'IG Feed'}</a>
                     <a href="#dynamic-blog" class="nav-link">${lang === 'zh' ? '最新文章' : 'Latest Posts'}</a>
+                    <a href="/calendar?lang=${lang}" class="nav-link">${t.navCalendar}</a>
                     <a href="#faq" class="nav-link">${t.navFaq}</a>
                 </nav>
 
@@ -186,6 +187,7 @@ export function renderLandingPage(latestPosts = [], lang = 'zh', override = {}) 
                 <a href="#features" class="drawer-link">${t.navFeatures}</a>
                 <a href="#instagram" class="drawer-link" style="color:#e1306c; font-weight:700;">📸 ${lang === 'zh' ? 'IG 實飛動態' : 'IG Feed'}</a>
                 <a href="#dynamic-blog" class="drawer-link">${lang === 'zh' ? '最新文章' : 'Latest Posts'}</a>
+                <a href="/calendar?lang=${lang}" class="drawer-link">${t.navCalendar}</a>
                 <a href="#faq" class="drawer-link">${t.navFaq}</a>
                 <a href="?lang=${t.langToggleQuery}" class="drawer-link" style="color: var(--color-primary);"><span style="margin-right: 6px;">🌐</span> ${t.langToggleText}</a>
                 <hr class="drawer-divider">

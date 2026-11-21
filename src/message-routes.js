@@ -1,6 +1,7 @@
 // HTTP routes for 社團通訊 (chat rooms, private messages, announcements) and
 // the optional external push module. Storage lives in the MessageStore Durable Object.
 import { canViewCms, canManageUsers } from './auth.js';
+import { pushToUsers, usersWithSubscriptions } from './push-routes.js';
 import { MessageError, PUSH_SETTINGS_KEY, DEFAULT_PUSH_SETTINGS, normalizePushSettings, publicPushSettings, pushNotice } from './messages.js';
 
 const json = (body, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -40,7 +41,7 @@ async function people(env, deps) {
 }
 
 // Returns a Response for message routes, or null when the path is not one of them.
-export async function handleMessageRequest(request, env, deps) {
+export async function handleMessageRequest(request, env, deps, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
@@ -66,6 +67,14 @@ export async function handleMessageRequest(request, env, deps) {
         return json(result.body, result.status === 200 ? status : result.status);
     };
     const body = () => deps.readJsonLimited(request, 64 * 1024);
+    // Browser push to subscribed accounts, after the response (never delays or fails the request).
+    const pushLater = work => { const job = work().catch(() => {}); if (ctx?.waitUntil) ctx.waitUntil(job); else return job; };
+    const subscribers = async () => {
+        const subscribed = new Set(await usersWithSubscriptions(env));
+        if (!subscribed.size) return []; // nobody to push to: skip listing the accounts
+        return (await deps.listUsers(env)).filter(entry => entry.active !== false && entry.username !== actor.username && subscribed.has(entry.username))
+            .map(entry => ({ username: entry.username, officer: canViewCms(entry), president: canManageUsers(entry) }));
+    };
 
     if (path === '/api/messages/summary' && method === 'GET') return run('summary');
     if (path === '/api/messages/conversations' && method === 'GET') return run('conversations');
@@ -84,7 +93,21 @@ export async function handleMessageRequest(request, env, deps) {
             const text = (await body())?.text;
             await withName();
             // Only private messages need to know whether the other account is still active.
-            return run('send', { conv, text, ...(conv.startsWith('dm~') ? { people: await usernames() } : {}) }, 201);
+            const response = await run('send', { conv, text, ...(conv.startsWith('dm~') ? { people: await usernames() } : {}) }, 201);
+            if (response.status === 201) {
+                const sent = await response.clone().json();
+                await pushLater(async () => {
+                    const users = await subscribers();
+                    if (!users.length) return;
+                    const { body: who } = await store(env, 'recipients', { actor, conv, users });
+                    await pushToUsers(env, who.usernames, {
+                        kind: 'messages', title: conv.startsWith('dm~') ? `💬 ${actor.name}` : `💬 ${who.name || '聊天室'}`,
+                        body: `${conv.startsWith('dm~') ? '' : `${actor.name}：`}${sent.text.replace(/\s+/g, ' ').slice(0, 100)}`,
+                        tab: conv.startsWith('dm~') ? 'dm' : 'chat', conv, tag: `c:${conv}`
+                    });
+                });
+            }
+            return response;
         }
         if (extra === 'read' && method === 'POST') return run('read', { conv, seq: (await body())?.seq });
         if (extra && extra !== 'read' && method === 'PATCH') return run('edit', { conv, seq: Number(extra), text: (await body())?.text });
@@ -118,6 +141,12 @@ export async function handleMessageRequest(request, env, deps) {
         if (fields?.push !== false && settings.enabled && settings.announcements && result.body.audience === 'all') {
             push = await pushNotice(settings, { title: result.body.title, body: result.body.content, link: `${url.origin}/admin/dashboard` });
         }
+        await pushLater(async () => {
+            const users = (await subscribers()).filter(entry => result.body.audience === 'all' || entry.officer);
+            await pushToUsers(env, users.map(entry => entry.username), {
+                kind: 'announcements', title: `📢 ${actor.name} 發布新公告`, body: result.body.title, tab: 'announcements', conv: '', tag: `a:${result.body.id}`
+            });
+        });
         return json({ ...result.body, push }, 201);
     }
     const annMatch = /^\/api\/announcements\/([\w-]{1,80})(?:\/(read))?$/.exec(path);

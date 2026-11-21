@@ -9,7 +9,10 @@ from .api import ApiClient, ApiError
 
 EXPIRED_NOTICE = "30 天登入期限已到或登入已失效，請重新登入。"
 OFFLINE_NOTICE = "目前無法連線到伺服器，無法自動登入。"
-AUTOSTART_ATTEMPTS = 20
+# Nothing is on screen while this runs (no window, no tray icon yet), so the whole wait is kept
+# to about a minute: AUTOSTART_ATTEMPTS * ATTEMPT_TIMEOUT + (AUTOSTART_ATTEMPTS - 1) * RETRY_SECONDS.
+AUTOSTART_ATTEMPTS = 7
+ATTEMPT_TIMEOUT = 6
 RETRY_SECONDS = 3
 
 
@@ -17,7 +20,7 @@ def auto_login(autostarted: bool, sleep=time.sleep, make_client=ApiClient):
     """Returns (client, user, notice); client is None when the person has to sign in.
 
     Right after Windows starts the network may not be ready yet, so an automatic
-    start retries for about a minute. An expired or rejected session is dropped.
+    start retries for at most about a minute. An expired or rejected session is dropped.
     """
     saved = saved_session.load()
     if not saved:
@@ -27,7 +30,7 @@ def auto_login(autostarted: bool, sleep=time.sleep, make_client=ApiClient):
     attempts = AUTOSTART_ATTEMPTS if autostarted else 1
     for attempt in range(attempts):
         try:
-            return client, client.me(), ""
+            return client, client.me(timeout=ATTEMPT_TIMEOUT), ""
         except ApiError as error:
             if error.status == 401:  # a 403 may come from a proxy or firewall, not from an expired session
                 saved_session.clear()

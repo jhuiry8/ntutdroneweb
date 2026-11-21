@@ -12,11 +12,24 @@ export const MEMBER_LEVELS = {
 };
 export const FEE_STATUSES = {
     unpaid: '未繳費',
-    semester: '學期會籍（500 元）',
-    lifetime: '在學會籍（1,000 元）'
+    semester: '一年會籍',
+    lifetime: '在學會籍'
 };
+// Regular price, and the promotional price charged in PROMO_SEMESTERS (社長決定：
+// 115-1 優惠、115-2 回復原價、116-1 再度優惠). Add a term here to extend the promo.
+// Keep in sync with FEE_PRICES in public/admin.js and desktop/clubdesk/pages/members.py.
 export const SEMESTER_FEE = 500;
 export const LIFETIME_FEE = 1000;
+export const PROMO_SEMESTER_FEE = 300;
+export const PROMO_LIFETIME_FEE = 800;
+export const PROMO_SEMESTERS = ['115-1', '116-1'];
+
+// Suggested price of each plan for a payment made in the given term.
+export function feePrices(semester = semesterOf()) {
+    return PROMO_SEMESTERS.includes(semester)
+        ? { semester: PROMO_SEMESTER_FEE, lifetime: PROMO_LIFETIME_FEE, promo: true }
+        : { semester: SEMESTER_FEE, lifetime: LIFETIME_FEE, promo: false };
+}
 // 四級分級細則第二條：非正式社員每學年最多免費參與二次體驗社課。
 export const FREE_TRIAL_CLASSES = 2;
 
@@ -31,8 +44,26 @@ export function semesterOf(date = new Date()) {
 
 export function validSemester(value) { return /^\d{2,3}-[12]$/.test(value); }
 
+// Previous academic term: 115-1 → 114-2, 115-2 → 115-1. Returns '' for invalid input.
+export function previousSemester(value) {
+    const match = /^(\d{2,3})-([12])$/.exec(value ?? '');
+    if (!match) return '';
+    const year = Number(match[1]);
+    return match[2] === '2' ? `${year}-1` : `${year - 1}-2`;
+}
+
+// Next academic term: 115-1 → 115-2, 115-2 → 116-1. Returns '' for invalid input.
+export function nextSemester(value) {
+    const match = /^(\d{2,3})-([12])$/.exec(value ?? '');
+    if (!match) return '';
+    const year = Number(match[1]);
+    return match[2] === '1' ? `${year}-2` : `${year + 1}-1`;
+}
+
 // Derived status shown in the roster and on the member's own page.
-// 學期會籍 is valid only for the term it was paid in (社費細則第二條第一款);
+// 一年會籍 (key `semester`) is valid for two consecutive terms: the term it was
+// paid in plus the next one (社費細則第二條第一款). feeSemester stores the paid term,
+// so it is valid when feeSemester is the current term or the previous term.
 // 在學會籍 stays valid while the person is a student. Officers may be exempt
 // from fees (第一條第四款) but exemption is not payment, so prep officers who
 // have not paid have no vote (四級分級細則第四條第四款), while formal officers
@@ -41,13 +72,15 @@ export function membershipStatus(member, today = new Date()) {
     const level = MEMBER_LEVELS[member?.level] ? member.level : 'member';
     const feeStatus = FEE_STATUSES[member?.feeStatus] ? member.feeStatus : 'unpaid';
     const current = semesterOf(today);
-    const paid = feeStatus === 'lifetime' || (feeStatus === 'semester' && member?.feeSemester === current);
+    const feeSemester = member?.feeSemester;
+    const termPaid = feeStatus === 'semester' && (feeSemester === current || feeSemester === previousSemester(current));
+    const paid = feeStatus === 'lifetime' || termPaid;
     const exempt = !paid && (level === 'prep' || level === 'officer');
     let feeLabel;
     if (feeStatus === 'lifetime') feeLabel = '在學會籍';
-    else if (paid) feeLabel = `學期會籍（${current}）`;
+    else if (paid) feeLabel = `一年會籍（有效至 ${nextSemester(feeSemester)}）`;
     else if (exempt) feeLabel = '幹部免繳';
-    else if (feeStatus === 'semester' && member?.feeSemester) feeLabel = `未繳費（學期會籍 ${member.feeSemester} 已到期）`;
+    else if (feeStatus === 'semester' && member?.feeSemester) feeLabel = `未繳費（一年會籍 ${member.feeSemester} 已到期）`;
     else feeLabel = '未繳費';
     const voting = level === 'officer' || ((level === 'member' || level === 'prep') && paid);
     const trialUses = Math.max(0, Number(member?.trialUses) || 0);
@@ -58,11 +91,14 @@ export function membershipStatus(member, today = new Date()) {
     };
 }
 
-// Which fee plan a receipt pays for. An explicit choice wins; otherwise the amount decides.
-export function receiptFeeType(feeType, amount) {
+// Which fee plan a receipt pays for. An explicit choice wins; otherwise the amount
+// decides, using the price list of the term the payment date falls in (e.g. 900 is
+// a one-year membership in 115-2 where lifetime costs 1,000, but lifetime in 115-1).
+export function receiptFeeType(feeType, amount, date = new Date()) {
     if (['semester', 'lifetime', 'other'].includes(feeType)) return feeType;
-    if (amount >= LIFETIME_FEE) return 'lifetime';
-    if (amount >= SEMESTER_FEE) return 'semester';
+    const prices = feePrices(semesterOf(date));
+    if (amount >= prices.lifetime) return 'lifetime';
+    if (amount >= prices.semester) return 'semester';
     return 'other';
 }
 
@@ -89,8 +125,8 @@ const LEVEL_ALIASES = {
 };
 const FEE_ALIASES = {
     unpaid: ['unpaid', 'UNPAID', '未繳費', '未繳', '否', ''],
-    semester: ['semester', 'SEMESTER_PAID', '學期會籍', '學期制', '已繳單學期', '500'],
-    lifetime: ['lifetime', 'LIFETIME_PAID', '在學會籍', '終身制', '已繳終身制', '1000', '1,000']
+    semester: ['semester', 'SEMESTER_PAID', '一年會籍', '學期會籍', '學期制', '已繳單學期', '300', '500'],
+    lifetime: ['lifetime', 'LIFETIME_PAID', '在學會籍', '終身制', '已繳終身制', '800', '1000', '1,000']
 };
 function lookup(aliases, value) {
     const text = String(value ?? '').trim().replace(/[（(].*[)）]$/, '').trim();

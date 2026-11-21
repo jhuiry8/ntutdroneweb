@@ -14,6 +14,7 @@ from datetime import datetime
 from PySide6.QtCore import QObject, QSettings, Signal
 from PySide6.QtWidgets import QCheckBox, QDialog, QGroupBox, QLabel, QVBoxLayout
 
+from .sound import play_notification_sound
 from .widgets import DataTable, Page, button_row, confirm, icon_button, show_error
 
 HISTORY_LIMIT = 100
@@ -21,7 +22,7 @@ DEFAULTS = {
     "enabled": True,          # tray pop-ups at all
     "announcements": True,
     "messages": True,
-    "sound": True,            # system beep with the pop-up
+    "sound": True,            # chime (sound.py) with the pop-up
     "close_to_tray": True,    # the window's X hides to the tray and keeps running
     "minimize_to_tray": False,  # the minimise button also hides to the tray
 }
@@ -109,6 +110,9 @@ class NotificationSettingsDialog(QDialog):
         box("announcements", "新公告", popups_layout)
         box("messages", "新訊息（聊天室、私人訊息）", popups_layout)
         box("sound", "通知時發出提示音", popups_layout)
+        test = icon_button("試聽提示音", "bell")
+        test.clicked.connect(play_notification_sound)
+        popups_layout.addWidget(test)
         layout.addWidget(popups)
         tray = QGroupBox("背景執行")
         tray_layout = QVBoxLayout(tray)

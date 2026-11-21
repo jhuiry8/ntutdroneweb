@@ -3,7 +3,9 @@
 The website hands out a session token valid for 30 days when asked to remember
 the login. It is stored in QSettings, encrypted with Windows DPAPI (only this
 Windows user on this computer can decrypt it). The password is never stored.
-After 30 days, or after a password change or sign-out, the person signs in again.
+Only Windows has such protection here: on macOS and Linux nothing is saved (supported()
+is False), so the token is never left on disk unencrypted and the login dialog hides
+the "stay signed in" option. After 30 days, or after a password change or sign-out, the person signs in again.
 """
 
 from __future__ import annotations
@@ -48,17 +50,23 @@ def _dpapi(data: bytes, decrypt: bool) -> bytes:
         kernel32.LocalFree(target.pbData)
 
 
+def supported() -> bool:
+    """Whether the token can be stored encrypted on this system (Windows DPAPI only)."""
+    return sys.platform == "win32"
+
+
 def protect(text: str) -> str:
-    raw = text.encode("utf-8")
-    return base64.b64encode(_dpapi(raw, False) if sys.platform == "win32" else raw).decode("ascii")
+    return base64.b64encode(_dpapi(text.encode("utf-8"), False)).decode("ascii")
 
 
 def unprotect(text: str) -> str:
-    raw = base64.b64decode(text.encode("ascii"))
-    return (_dpapi(raw, True) if sys.platform == "win32" else raw).decode("utf-8")
+    return _dpapi(base64.b64decode(text.encode("ascii")), True).decode("utf-8")
 
 
 def save(server: str, username: str, token: str, seconds: int | None = None, now: float | None = None) -> None:
+    if not supported():  # never write the token unencrypted
+        clear()
+        return
     seconds = seconds or REMEMBER_DAYS * 86400
     expires = int((time.time() if now is None else now) + seconds)
     settings = QSettings()
@@ -70,6 +78,9 @@ def save(server: str, username: str, token: str, seconds: int | None = None, now
 
 def load(now: float | None = None) -> dict | None:
     """The saved session, or None when there is none, it has expired or cannot be decrypted."""
+    if not supported():
+        clear()  # drop anything an older version left in plain base64
+        return None
     settings = QSettings()
     server = settings.value(f"{KEY}/server", "", str)
     encrypted = settings.value(f"{KEY}/token", "", str)

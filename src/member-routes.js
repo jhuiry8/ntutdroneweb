@@ -5,6 +5,8 @@ import { PayloadTooLargeError, readJsonLimited, readJsonObject } from './request
 import { sessionUser, listUsers } from './session.js';
 import { ValidationError, financeAmount, financeText, financeDate, importedDate, parseStoredList } from './validation.js';
 import { MEMBERS_KEY, MEMBERSHIP_RECEIPTS_KEY } from './kv-keys.js';
+import { academicYearOf, trialSummary, trialUsesIn } from './classes.js';
+import { classAttendanceCounts, syncTrialLedger } from './class-routes.js';
 
 export function normalizeMemberInput(body, index = null, defaultJoinedAt = true) {
     const prefix = index === null ? '' : `第 ${index + 1} 筆：`;
@@ -21,7 +23,7 @@ export function normalizeMemberInput(body, index = null, defaultJoinedAt = true)
     const level = body?.level ? parseMemberLevel(body.level) : 'member';
     if (!level) throw new ValidationError(`${prefix}社員身分無效（可填 非正式社員、正式社員、籌備幹部、正式幹部）`);
     const feeStatus = body?.feeStatus ? parseFeeStatus(body.feeStatus) : 'unpaid';
-    if (!feeStatus) throw new ValidationError(`${prefix}社費狀態無效（可填 未繳費、學期會籍、在學會籍）`);
+    if (!feeStatus) throw new ValidationError(`${prefix}社費狀態無效（可填 未繳費、一年會籍、在學會籍）`);
     let feeSemester = String(body?.feeSemester ?? '').trim();
     if (feeStatus === 'semester' && !feeSemester) feeSemester = semesterOf();
     if (feeStatus !== 'semester') feeSemester = '';
@@ -32,8 +34,16 @@ export function normalizeMemberInput(body, index = null, defaultJoinedAt = true)
 }
 
 // Roster entry as shown to officers: stored fields, derived status and the bound login account.
-function memberView(member, accountsByMember) {
-    return { ...member, status: membershipStatus(member), account: accountsByMember?.get(member.id) || '' };
+// Free trial classes are counted per academic year (社課簽到), so the counter shown here is the
+// current year's; the raw stored value may belong to an older year.
+function memberView(member, accountsByMember, attendanceCounts) {
+    const trial = trialSummary(member);
+    return {
+        ...member, trialUses: trial.trialUses,
+        status: { ...membershipStatus(member), trialUses: trial.trialUses, trialRemaining: trial.trialRemaining },
+        account: accountsByMember?.get(member.id) || '',
+        attendance: attendanceCounts?.[member.id] || { total: 0, year: 0 }
+    };
 }
 
 export async function accountsByMemberId(env) {
@@ -84,7 +94,8 @@ export async function handleMemberRequest(request, env) {
             const query = String(url.searchParams.get('q') || '').trim().toLowerCase();
             const filter = String(url.searchParams.get('filter') || '');
             const accounts = await accountsByMemberId(env);
-            let list = members.map(member => memberView(member, accounts));
+            const attendance = await classAttendanceCounts(env);
+            let list = members.map(member => memberView(member, accounts, attendance));
             if (query) list = list.filter(member => [member.name, member.studentId, member.email, member.phone, member.note, member.position, member.account].some(value => String(value || '').toLowerCase().includes(query)));
             if (filter === 'unpaid') list = list.filter(member => member.status.unpaid);
             else if (filter === 'paid') list = list.filter(member => member.status.paid);
@@ -144,12 +155,17 @@ export async function handleMemberRequest(request, env) {
         const member = members.find(item => item.id === id);
         if (!member) return Response.json({ error: '社員不存在' }, { status: 404 });
         const body = await readJsonObject(request);
-        const fields = normalizeMemberInput({ ...member, ...body }, null, false);
+        const fields = normalizeMemberInput({ ...member, trialUses: trialUsesIn(member, academicYearOf()), ...body }, null, false);
         const studentId = fields.studentId;
         if (studentId && members.some(item => item.id !== id && String(item.studentId || '').trim().toUpperCase() === studentId)) return Response.json({ error: '學號已存在' }, { status: 409 });
+        // An officer changing the free-class counter means "this year's count", so it is stamped with the current year.
+        const trialChanged = fields.trialUses !== trialUsesIn(member, academicYearOf());
+        if (trialChanged) fields.trialYear = academicYearOf();
         Object.assign(member, fields, { updatedAt: new Date().toISOString() });
         await env.DRONE_DB.put(MEMBERS_KEY, JSON.stringify(members));
-        return Response.json(memberView(member, await accountsByMemberId(env)));
+        // Class check-ins count free classes in the class store; keep it in step with the officer's correction.
+        if (trialChanged) await syncTrialLedger(env, member.id, academicYearOf(), fields.trialUses);
+        return Response.json(memberView(member, await accountsByMemberId(env), await classAttendanceCounts(env)));
     }
 
     if (path === '/api/member-fee-receipts' && ['GET', 'POST'].includes(method)) {
@@ -172,7 +188,7 @@ export async function handleMemberRequest(request, env) {
         const date = financeDate(body.date || new Date().toISOString().slice(0, 10));
         const receiptNumber = String(body.receiptNumber || '').trim().slice(0, 80);
         const note = String(body.note || '').trim().slice(0, 500);
-        const feeType = receiptFeeType(body.feeType, amount);
+        const feeType = receiptFeeType(body.feeType, amount, date);
         // A receipt for a roster entry (chosen, or matched by student ID) updates that
         // member's fee status, like Django's FeeRecord does for User.fee_status.
         if (!member && studentId) {

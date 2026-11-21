@@ -11,6 +11,8 @@
 //
 // Conversations are "ch~<channelId>" or "dm~<user a>~<user b>" (names sorted).
 
+import { isExportRequest, exportStorage } from './do-export.js';
+
 export class MessageError extends Error {
     constructor(message, status = 400) { super(message); this.name = 'MessageError'; this.status = status; }
 }
@@ -176,6 +178,17 @@ export async function messageOp(storage, op, payload, now = new Date().toISOStri
     }
     if (op === 'conversations') return conversations(storage, actor, read);
 
+    // Who (among payload.users, each { username, officer, president }) should be pushed about a new item in conv.
+    if (op === 'recipients') {
+        const conv = String(payload.conv || '');
+        const users = (Array.isArray(payload.users) ? payload.users : []).filter(user => user.username !== actor.username);
+        const pair = dmParticipants(conv);
+        if (pair) return { usernames: users.filter(user => pair.includes(user.username)).map(user => user.username) };
+        const channel = CONVERSATION.test(conv) ? await storage.get(`channel:${conv.slice(3)}`) : null;
+        if (!channel || channel.archived) return { usernames: [] };
+        return { name: channel.name, usernames: users.filter(user => canSeeChannel(channel, user)).map(user => user.username) };
+    }
+
     if (op === 'messages') {
         const conv = String(payload.conv || '');
         await access(storage, conv, actor, null);
@@ -333,6 +346,7 @@ export class MessageStore {
 
     async fetch(request) {
         try {
+            if (isExportRequest(request)) return await exportStorage(this.storage);
             const payload = await request.json();
             const op = new URL(request.url).pathname.slice(1);
             const body = await this.storage.transaction(storage => messageOp(storage, op, payload));

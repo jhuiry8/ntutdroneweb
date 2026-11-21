@@ -30,6 +30,22 @@ class_name = "MeetingStore"
 name = "MESSAGE_STORE"
 class_name = "MessageStore"
 
+[[durable_objects.bindings]]
+name = "FILE_STORE"
+class_name = "FileStore"
+
+[[durable_objects.bindings]]
+name = "CLASS_STORE"
+class_name = "ClassStore"
+
+[[durable_objects.bindings]]
+name = "EVENT_STORE"
+class_name = "EventStore"
+
+[[durable_objects.bindings]]
+name = "FLIGHT_STORE"
+class_name = "FlightStore"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["EquipmentStore"]
@@ -50,6 +66,35 @@ new_sqlite_classes = ["MeetingStore"]
 tag = "v5"
 new_sqlite_classes = ["MessageStore"]
 
+[[migrations]]
+tag = "v6"
+new_sqlite_classes = ["FileStore"]
+
+[[migrations]]
+tag = "v7"
+new_sqlite_classes = ["ClassStore"]
+
+[[migrations]]
+tag = "v8"
+new_sqlite_classes = ["EventStore"]
+
+[[migrations]]
+tag = "v9"
+new_sqlite_classes = ["FlightStore"]
+
+# File library (檔案庫): photos and documents are stored in this R2 bucket. See README「檔案庫」.
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "your-r2-bucket-name" # Replaced from the CLOUDFLARE_R2_BUCKET GitHub secret by deploy.yml
+
+# Private R2 bucket for daily backups (see README 「自動備份」). Keep it private: it holds password hashes.
+[[r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "ntut-drone-backups"
+
 # Weekly club report: every Monday 01:00 UTC (09:00 Taipei). See README「AI 功能」.
 [triggers]
-crons = ["0 1 * * 1"]
+# Daily 19:00 UTC (03:00 Taipei): R2 backup (BACKUP_CRON in src/backup.js).
+# Daily 18:00 UTC (02:00 Taipei): overdue equipment loan reminder (LOAN_REMINDER_CRON in src/worker.js).
+# Daily 12:00 UTC (20:00 Taipei): day-before event reminders and certificate-expiry reminders (EVENT_REMINDER_CRON in src/event-routes.js).
+crons = ["0 1 * * 1", "0 19 * * *", "0 18 * * *", "0 12 * * *"]
