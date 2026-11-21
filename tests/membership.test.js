@@ -38,11 +38,18 @@ test('fee prices follow the promo schedule and amounts map to plans', () => {
     assert.deepEqual(feePrices('115-1'), { semester: 300, lifetime: 800, promo: true });
     assert.deepEqual(feePrices('115-2'), { semester: 500, lifetime: 1000, promo: false });
     assert.deepEqual(feePrices('116-1'), { semester: 300, lifetime: 800, promo: true });
-    assert.equal(receiptFeeType('', 300), 'semester');
-    assert.equal(receiptFeeType('', 500), 'semester');
-    assert.equal(receiptFeeType('', 800), 'lifetime');
-    assert.equal(receiptFeeType('', 1000), 'lifetime');
-    assert.equal(receiptFeeType('', 200), 'other');
+    const plan = (amount, date) => receiptFeeType('', amount, new Date(`${date}T00:00:00Z`));
+    // 115-1 (promo): 300 / 800
+    assert.equal(plan(300, '2026-11-15'), 'semester');
+    assert.equal(plan(800, '2026-11-15'), 'lifetime');
+    assert.equal(plan(200, '2026-11-15'), 'other');
+    // 115-2 (regular): 500 / 1,000 — 900 is not lifetime, 300 is not a membership
+    assert.equal(plan(500, '2027-03-01'), 'semester');
+    assert.equal(plan(900, '2027-03-01'), 'semester');
+    assert.equal(plan(1000, '2027-03-01'), 'lifetime');
+    assert.equal(plan(300, '2027-03-01'), 'other');
+    // 116-1 (promo again)
+    assert.equal(plan(800, '2027-09-01'), 'lifetime');
     assert.equal(receiptFeeType('semester', 800), 'semester', 'an explicit plan choice wins');
     assert.equal(parseFeeStatus('300'), 'semester');
     assert.equal(parseFeeStatus('800'), 'lifetime');
@@ -134,6 +141,10 @@ test('officers add unpaid members, filter them, and receipts mark them paid', as
     const record = await receipt.json();
     assert.equal(record.memberId, member.id, 'receipt is matched to the roster by student ID');
     assert.equal(record.feeType, 'semester');
+    const regular = await (await request('/api/member-fee-receipts', 'finance', 'POST', { payerName: '外部', amount: 900, date: '2027-03-01', receiver: '總務' })).json();
+    assert.equal(regular.feeType, 'semester', '900 in a regular-price term is not a lifetime membership');
+    const promo = await (await request('/api/member-fee-receipts', 'finance', 'POST', { payerName: '外部', amount: 800, date: '2026-11-15', receiver: '總務' })).json();
+    assert.equal(promo.feeType, 'lifetime');
     assert.equal(record.memberStatus.paid, true);
     await request('/api/member-fee-receipts', 'finance', 'POST', { memberId: trial.id, amount: 1000, date: today, receiver: '總務' });
     unpaid = await (await request('/api/members?filter=unpaid', 'finance')).json();

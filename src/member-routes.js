@@ -172,7 +172,7 @@ export async function handleMemberRequest(request, env) {
         const date = financeDate(body.date || new Date().toISOString().slice(0, 10));
         const receiptNumber = String(body.receiptNumber || '').trim().slice(0, 80);
         const note = String(body.note || '').trim().slice(0, 500);
-        const feeType = receiptFeeType(body.feeType, amount);
+        const feeType = receiptFeeType(body.feeType, amount, date);
         // A receipt for a roster entry (chosen, or matched by student ID) updates that
         // member's fee status, like Django's FeeRecord does for User.fee_status.
         if (!member && studentId) {

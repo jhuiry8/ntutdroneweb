@@ -91,12 +91,14 @@ export function membershipStatus(member, today = new Date()) {
     };
 }
 
-// Which fee plan a receipt pays for. An explicit choice wins; otherwise the amount decides.
-export function receiptFeeType(feeType, amount) {
+// Which fee plan a receipt pays for. An explicit choice wins; otherwise the amount
+// decides, using the price list of the term the payment date falls in (e.g. 900 is
+// a one-year membership in 115-2 where lifetime costs 1,000, but lifetime in 115-1).
+export function receiptFeeType(feeType, amount, date = new Date()) {
     if (['semester', 'lifetime', 'other'].includes(feeType)) return feeType;
-    // Either the regular or the promo price counts, whichever term it is paid in.
-    if (amount >= PROMO_LIFETIME_FEE) return 'lifetime';
-    if (amount >= PROMO_SEMESTER_FEE) return 'semester';
+    const prices = feePrices(semesterOf(date));
+    if (amount >= prices.lifetime) return 'lifetime';
+    if (amount >= prices.semester) return 'semester';
     return 'other';
 }
 

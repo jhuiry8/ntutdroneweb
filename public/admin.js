@@ -564,7 +564,7 @@ function previewMemberImport() {
                 const feeDate=dateMatch?dateMatch[1]+'-'+dateMatch[2].padStart(2,'0')+'-'+dateMatch[3].padStart(2,'0'):'';
                 const paidAmount=Number(String(row[incomeColumn]||'').replace(/[,$\s]/g,''));
                 const semester=dateMatch?(Number(dateMatch[2])>=8?(Number(dateMatch[1])-1911)+'-1':(Number(dateMatch[1])-1912)+'-'+(Number(dateMatch[2])===1?1:2)):'';
-                const feeStatus=paidAmount>=800?'在學會籍':paidAmount>=300?'一年會籍':'未繳費';
+                const prices=feePrices(feeDate); const feeStatus=paidAmount>=prices.lifetime?'在學會籍':paidAmount>=prices.semester?'一年會籍':'未繳費';
                 return {name:studentId?'':raw,studentId,level:'正式社員',feeStatus,feeSemester:feeStatus==='一年會籍'?semester:'',email:'',phone:'',position:'',joinedAt:'',note:feeDate?'社費紀錄日期：'+feeDate:''};
             }).filter(item=>item.name||item.studentId);
         } else {
