@@ -16,7 +16,7 @@ import sys
 import tempfile
 import urllib.request
 
-from PySide6.QtCore import QProcess, Qt, QUrl
+from PySide6.QtCore import QProcess, Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QApplication, QCheckBox, QDialog, QFormLayout, QLabel, QLineEdit,
                                QMessageBox, QPlainTextEdit, QProgressDialog, QPushButton, QVBoxLayout)
@@ -117,11 +117,34 @@ def offer_update(parent, release: dict) -> bool:
         return False
     if not path:
         return False
-    if not QProcess.startDetached(path, []):
-        show_error(parent, ApiError(f"無法啟動安裝程式，請手動執行：\n{path}"), "軟體更新")
+    if not launch_installer(path):
+        show_error(parent, ApiError(f"無法自動啟動安裝程式，請手動執行：\n{path}"), "軟體更新")
+        QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))  # show the file
         return False
+    # The installer closes this program (if still open), upgrades it silently and starts the new
+    # version again. Quit right away so no file is locked; the hard exit is a fallback in case
+    # the Qt event loop does not end (tray icon, open dialogs).
     QApplication.quit()
+    QTimer.singleShot(2000, lambda: os._exit(0))
     return True
+
+
+# Silent, no prompts, close the running program, never reboot. The installer's [Run] entry
+# restarts ClubDesk when finished (it is not skipped for silent installs).
+SILENT_ARGS = ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/FORCECLOSEAPPLICATIONS"]
+
+
+def launch_installer(path: str) -> bool:
+    """Starts the downloaded installer detached, so it survives this program quitting."""
+    if os.name == "nt":
+        import subprocess
+        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+        try:
+            subprocess.Popen([path, *SILENT_ARGS], creationflags=flags, close_fds=True)
+            return True
+        except OSError:
+            pass
+    return QProcess.startDetached(path, SILENT_ARGS)
 
 
 def check_and_offer(parent, api: ApiClient, quiet: bool = True) -> bool:

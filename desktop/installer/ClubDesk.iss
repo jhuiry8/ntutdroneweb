@@ -74,4 +74,4 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\ClubDesk.exe"; Tasks: desktop
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "ClubDesk"; Flags: uninsdeletevalue
 
 [Run]
-Filename: "{app}\ClubDesk.exe"; Description: "立即執行 {#AppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\ClubDesk.exe"; Description: "立即執行 {#AppName}"; Flags: nowait postinstall
