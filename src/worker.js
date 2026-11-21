@@ -113,7 +113,6 @@ export default {
         return addSecurityHeaders(response, request);
     },
     // Cron triggers (wrangler.toml): Monday 01:00 UTC builds the weekly club report and posts it to
-    // Cron triggers (wrangler.toml): Monday 01:00 UTC builds the weekly club report and posts it to
     // REPORT_WEBHOOK_URL; daily 19:00 UTC (03:00 Taipei) backs up to R2; daily 18:00 UTC (02:00 Taipei)
     // reminds about overdue equipment loans; daily 12:00 UTC (20:00 Taipei) sends day-before event
     // reminders and certificate-expiry reminders (they share one trigger to stay within the free plan's

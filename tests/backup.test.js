@@ -199,3 +199,20 @@ test('president can read backup status', async () => {
     assert.equal((await (await status()).json()).latest.trigger, 'manual');
     assert.equal((await worker.fetch(new Request('https://example.com/api/backup/status'), env)).status, 401);
 });
+
+test('every Durable Object in wrangler.toml is backed up and answers the export request', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { DURABLE_OBJECTS } = await import('../src/backup.js');
+    const { EXPORT_PATH } = await import('../src/do-export.js');
+    const workerModule = await import('../src/worker.js');
+    const toml = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8');
+    const bindings = [...toml.matchAll(/\[\[durable_objects\.bindings\]\]\s*name\s*=\s*"([A-Z_]+)"\s*class_name\s*=\s*"(\w+)"/g)].map(match => [match[1], match[2]]);
+    assert.ok(bindings.length >= 9);
+    const listed = new Set(DURABLE_OBJECTS.map(([binding]) => binding));
+    for (const [binding, className] of bindings) {
+        assert.ok(listed.has(binding), `${binding} is missing from DURABLE_OBJECTS in src/backup.js`);
+        const store = new workerModule[className]({ storage: { list: async () => new Map([['k', 'v']]), transaction: async fn => fn({}) } }, {});
+        const response = await store.fetch(new Request(`https://do${EXPORT_PATH}`, { method: 'POST', body: '{}' }));
+        assert.deepEqual((await response.json()).entries, [['k', 'v']], `${className} does not answer the backup export`);
+    }
+});

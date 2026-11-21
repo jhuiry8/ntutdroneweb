@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject
+import getpass
+import hashlib
+import os
+import time
+
+from PySide6.QtCore import QDir, QLockFile, QObject
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 SERVER_NAME = "NTUTDroneClub.ClubDesk"
@@ -20,27 +25,52 @@ def ask_running_instance(name: str = SERVER_NAME) -> bool:
     return True
 
 
-class InstanceServer(QObject):
-    """Listens for later starts; `handler` is called (once set) for each of them."""
+def lock_path(name: str = SERVER_NAME) -> str:
+    """Per-user lock file in the temp folder (%TEMP% is per user on Windows; /tmp is shared on Unix)."""
+    try:
+        user = getpass.getuser()
+    except Exception:  # noqa: BLE001 - no user name available: one lock for the machine
+        user = ""
+    suffix = hashlib.sha256(f"{name}|{user}".encode("utf-8")).hexdigest()[:16]
+    return os.path.join(QDir.tempPath(), f"{name}.{suffix}.lock")
 
-    def __init__(self, name: str = SERVER_NAME, parent=None):
+
+class InstanceServer(QObject):
+    """Listens for later starts; `handler` is called (once set) for each of them.
+
+    Ownership is decided by a lock file, not by asking first: two copies started at the same
+    moment cannot both take the lock, while asking-then-listening leaves a window in which both
+    find nobody and both listen (Windows even lets two servers share one pipe name).
+    """
+
+    def __init__(self, name: str = SERVER_NAME, parent=None, lock_file: str | None = None):
         super().__init__(parent)
         self.handler = None
         self.pending = False
         self.already_running = False  # another copy owns the name: the caller should exit
         self.server = QLocalServer(self)
         self.listening = False
-        # Ask first: on Windows several servers may listen on the same pipe name, so a failed
-        # listen() cannot be relied on to detect a running copy (it only fails on Unix).
-        if ask_running_instance(name):
-            self.already_running = True  # the running copy has just been asked to show itself
+        self.lock = QLockFile(lock_file or lock_path(name))
+        # A lock left by a crashed copy is stale because its process is gone; never by age alone,
+        # since the running copy holds it for days.
+        self.lock.setStaleLockTime(0)
+        if not self.lock.tryLock(0):
+            self.already_running = True
+            # The owner may still be starting up and not listening yet: ask it to show itself for a moment.
+            for _ in range(10):
+                if ask_running_instance(name):
+                    break
+                time.sleep(0.2)
         else:
+            # This copy owns the name, so any server socket left behind is stale (Unix): take it over.
+            QLocalServer.removeServer(name)
             self.listening = self.server.listen(name)
-            if not self.listening:
-                # Nobody answered, so this is a stale socket left by a crashed copy (Unix): take it over.
-                QLocalServer.removeServer(name)
-                self.listening = self.server.listen(name)
         self.server.newConnection.connect(self._connection)
+
+    def release(self) -> None:
+        """Stop listening and drop the lock (also happens when the process exits)."""
+        self.server.close()
+        self.lock.unlock()
 
     def _connection(self) -> None:
         while self.server.hasPendingConnections():

@@ -8,6 +8,7 @@
 // `trialUses` counter in the roster is kept in step by class-routes.js.
 import { FREE_TRIAL_CLASSES, MEMBER_LEVELS, membershipStatus, semesterOf } from './membership.js';
 import { MeetingError } from './meetings.js';
+import { isExportRequest, exportStorage } from './do-export.js';
 
 // Same status mapping as meetings (worker.js turns a MeetingError into its HTTP status).
 export class ClassError extends MeetingError {}
@@ -311,11 +312,21 @@ export function classCsv(session) {
 
 // ---- Durable Object ---------------------------------------------------------
 
+// Free classes used per member per academic year, kept inside ClassStore so the quota check is atomic.
+const trialLedgerKey = (year, memberId) => `trial:${year}:${memberId}`;
+async function moveTrialLedger(storage, year, memberId, delta) {
+    if (!year) return;
+    const current = await storage.get(trialLedgerKey(year, memberId));
+    if (current === undefined) return; // never seeded: the roster counter is still the only record
+    await storage.put(trialLedgerKey(year, memberId), Math.min(99, Math.max(0, current + delta)));
+}
+
 export class ClassStore {
     constructor(ctx) { this.storage = ctx.storage; }
 
     async fetch(request) {
         try {
+            if (isExportRequest(request)) return await exportStorage(this.storage);
             const url = new URL(request.url);
             const payload = await request.json();
             const now = new Date().toISOString();
@@ -328,19 +339,42 @@ export class ClassStore {
                     await storage.put(`class:${session.id}`, session);
                     return { status: 201, body: session };
                 }
+                // An officer set the roster's free-class counter by hand (e.g. waived a class): the ledger follows.
+                if (url.pathname === '/trial-set') {
+                    const value = Number(payload.value);
+                    if (!/^[\w-]{1,80}$/.test(String(payload.memberId || '')) || !/^\d{2,3}$/.test(String(payload.year || '')) || !Number.isInteger(value) || value < 0 || value > 99) return { status: 400, body: { error: '體驗次數資料無效' } };
+                    await storage.put(trialLedgerKey(payload.year, payload.memberId), value);
+                    return { status: 200, body: { success: true } };
+                }
                 const id = String(payload.id || '');
                 const session = /^[\w-]{1,80}$/.test(id) ? await storage.get(`class:${id}`) : null;
                 if (!session) return { status: 404, body: { error: '找不到社課場次' } };
                 if (url.pathname === '/get') return { status: 200, body: session };
                 if (url.pathname === '/delete') {
                     await storage.delete(`class:${id}`);
+                    // The free classes this session used are given back in the ledger too.
+                    for (const entry of session.attendance) if (entry.deducted && entry.memberId) await moveTrialLedger(storage, entry.trialYear, entry.memberId, -1);
                     return { status: 200, body: { success: true, session } };
                 }
                 if (url.pathname === '/op') {
+                    // The free-class quota is decided here, inside this Durable Object's serialized transaction,
+                    // so two check-ins at the same moment (two classes, two phones) cannot both use the last
+                    // free class. The roster's counter (read by the caller before this request) only seeds the
+                    // ledger the first time a member is seen in that academic year.
+                    const attendee = payload.attendee;
+                    const year = academicYearOf(session.date);
+                    let ledger;
+                    if ((payload.op === 'checkin' || payload.op === 'add') && attendee?.kind === 'trial' && attendee.memberId) {
+                        ledger = await storage.get(trialLedgerKey(year, attendee.memberId));
+                        if (ledger === undefined) ledger = Math.max(0, Number(attendee.priorUses) || 0);
+                        attendee.priorUses = ledger;
+                    }
                     const outcome = applyClassOp(session, payload.op, payload, payload.actor || {}, now);
+                    if (outcome.created && outcome.entry?.deducted) await storage.put(trialLedgerKey(year, attendee.memberId), ledger + 1);
+                    if (outcome.removed && outcome.entry?.deducted && outcome.entry.memberId) await moveTrialLedger(storage, outcome.entry.trialYear, outcome.entry.memberId, -1);
                     session.updatedAt = now;
                     await storage.put(`class:${id}`, session);
-                    return { status: 200, body: { session, ...outcome } };
+                    return { status: 200, body: { session, ...outcome, ...(ledger !== undefined ? { priorUses: ledger } : {}) } };
                 }
                 return { status: 404, body: { error: '社課操作不存在' } };
             });
