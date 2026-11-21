@@ -53,7 +53,8 @@ async function formRecords(env, deps) {
 // Loan slips whose borrowing period covers today or ended in the last 30 days.
 // The system has no "returned" flag, so ended loans are only "please check".
 function loanStatus(records, today) {
-    return records.filter(record => record.type === 'equipment-loan' && record.data?.endDate >= dayOffset(today, -30) && record.data?.startDate <= dayOffset(today, 7))
+    // Slips marked returned or rejected are finished; a slip still marked lent past its end date is overdue.
+    return records.filter(record => record.type === 'equipment-loan' && !['returned', 'rejected'].includes(record.loan?.status) && (record.loan?.status === 'lent' || (record.data?.endDate >= dayOffset(today, -30))) && record.data?.startDate <= dayOffset(today, 7))
         .map(record => ({
             number: record.number || '', borrower: record.data.borrower, items: (record.data.items || []).map(item => `${item.name}×${item.quantity}`).join('、'),
             startDate: record.data.startDate, endDate: record.data.endDate,

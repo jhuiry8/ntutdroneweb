@@ -55,12 +55,47 @@
         }
     });
 
+    // Assets from the equipment register that can be lent right now.
+    async function loadAssets() {
+        var box = $('pl-assets');
+        var list = $('pl-asset-list');
+        try {
+            var response = await fetch('/api/public/equipment-available', { cache: 'no-store' });
+            var assets = response.ok ? await response.json() : [];
+            list.innerHTML = '';
+            assets.forEach(function (asset) {
+                var label = document.createElement('label');
+                var input = document.createElement('input');
+                input.type = 'checkbox';
+                input.value = asset.id;
+                input.dataset.name = asset.assetName;
+                label.appendChild(input);
+                var text = document.createElement('span');
+                text.textContent = asset.assetName;
+                if (asset.category) {
+                    var small = document.createElement('small');
+                    small.textContent = '（' + asset.category + '）';
+                    text.appendChild(small);
+                }
+                label.appendChild(text);
+                list.appendChild(label);
+            });
+            box.hidden = !assets.length;
+        } catch (error) {
+            box.hidden = true;
+        }
+    }
+    loadAssets();
+
     function showError(message) {
         errorBox.textContent = message;
         if (message) errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     function collect() {
+        var picked = Array.prototype.map.call($('pl-asset-list').querySelectorAll('input:checked'), function (input) {
+            return { name: input.dataset.name, quantity: 1, accessories: '', assetNo: '', condition: '', assetId: input.value };
+        });
         var rows = Array.prototype.map.call(items.querySelectorAll('tr'), function (row) {
             var value = function (col) { return row.querySelector('[data-col="' + col + '"]').value.trim(); };
             return { name: value('name'), quantity: Number(value('quantity') || 1), accessories: value('accessories'), assetNo: '', condition: '' };
@@ -76,7 +111,7 @@
             startHour: Number($('pl-startHour').value),
             endDate: $('pl-endDate').value,
             endHour: Number($('pl-endHour').value),
-            items: rows
+            items: picked.concat(rows)
         };
     }
 
@@ -85,7 +120,8 @@
         showError('');
         if (!form.reportValidity()) return;
         var data = collect();
-        if (!data.items.length) return showError('請至少填寫一項要借用的設備。');
+        if (!data.items.length) return showError('請至少選擇或填寫一項要借用的設備。');
+        if (data.items.length > MAX_ITEMS) return showError('最多借用 ' + MAX_ITEMS + ' 項設備，超過請分開填寫。');
         if (data.endDate < data.startDate) return showError('歸還日期不可早於借用日期。');
         var tokenInput = form.querySelector('[name="cf-turnstile-response"]');
         if (document.querySelector('.cf-turnstile') && !(tokenInput && tokenInput.value)) return showError('請先完成驗證碼。');
@@ -115,6 +151,7 @@
             $('pl-done').scrollIntoView({ behavior: 'smooth', block: 'start' });
         } catch (error) {
             showError(error.message);
+            loadAssets();
         } finally {
             submit.disabled = false;
             submit.textContent = '送出並取得借據';
@@ -149,6 +186,7 @@
         items.appendChild($('pl-row-template').content.cloneNode(true));
         $('pl-done').hidden = true;
         form.hidden = false;
+        loadAssets();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 })();
