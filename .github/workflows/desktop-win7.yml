@@ -70,6 +70,13 @@ jobs:
     - name: Build program folder
       run: pyinstaller --noconfirm ClubDesk.spec
 
+    - name: Check bundled DLLs
+      # The build machine has the VC++ runtime and more in System32, so a DLL missing from the
+      # bundle only shows up on users' computers (Windows 7 first); catch it here instead.
+      run: |
+        python tools/check_bundle.py dist\ClubDesk
+        if ($LASTEXITCODE -ne 0) { throw "the program folder is missing DLLs" }
+
     - name: Smoke test the built program
       run: |
         # The frozen program must start and stay up; the login window needs no server to open.
