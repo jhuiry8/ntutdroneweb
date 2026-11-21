@@ -268,7 +268,10 @@ test('listing is filtered by what the viewer may see, with categories and paging
     assert.equal((await api('/api/files', 'alice')).body.items.length, 2);
     const all = (await api('/api/files', 'cadre1')).body;
     assert.equal(all.items.length, 3);
-    assert.equal(all.items[0].name, 'c.pdf');
+    // Newest first; uploads in the same millisecond share a timestamp and are ordered by id instead.
+    const times = all.items.map(item => item.createdAt);
+    assert.deepEqual(times, [...times].sort().reverse());
+    assert.deepEqual(all.items.map(item => item.name).sort(), ['c.pdf', 'm.png', 'p.png']);
     assert.deepEqual((await api('/api/files?category=photo', 'cadre1')).body.items.map(item => item.name), ['m.png']);
     assert.deepEqual((await api('/api/files?kind=document', 'cadre1')).body.items.map(item => item.name), ['c.pdf']);
     assert.deepEqual((await api('/api/files?q=%E4%B8%89%E6%9C%88', 'cadre1')).body.items.map(item => item.name), ['c.pdf']);
@@ -278,6 +281,7 @@ test('listing is filtered by what the viewer may see, with categories and paging
     const page2 = (await api(`/api/files?limit=2&cursor=${encodeURIComponent(page1.nextCursor)}`, 'cadre1')).body;
     assert.equal(page2.items.length, 1);
     assert.equal(page2.nextCursor, null);
+    assert.deepEqual([...page1.items, ...page2.items].map(item => item.id), all.items.map(item => item.id));
 });
 
 test('only the uploader or the president can edit or delete; both are logged', async () => {
