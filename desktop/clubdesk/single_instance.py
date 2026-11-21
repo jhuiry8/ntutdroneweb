@@ -27,9 +27,19 @@ class InstanceServer(QObject):
         super().__init__(parent)
         self.handler = None
         self.pending = False
+        self.already_running = False  # another copy owns the name: the caller should exit
         self.server = QLocalServer(self)
-        QLocalServer.removeServer(name)  # stale socket left by a crashed copy
-        self.listening = self.server.listen(name)
+        self.listening = False
+        # Ask first: on Windows several servers may listen on the same pipe name, so a failed
+        # listen() cannot be relied on to detect a running copy (it only fails on Unix).
+        if ask_running_instance(name):
+            self.already_running = True  # the running copy has just been asked to show itself
+        else:
+            self.listening = self.server.listen(name)
+            if not self.listening:
+                # Nobody answered, so this is a stale socket left by a crashed copy (Unix): take it over.
+                QLocalServer.removeServer(name)
+                self.listening = self.server.listen(name)
         self.server.newConnection.connect(self._connection)
 
     def _connection(self) -> None:

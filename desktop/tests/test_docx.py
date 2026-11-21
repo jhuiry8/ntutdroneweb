@@ -79,6 +79,25 @@ class DocxTests(unittest.TestCase):
         self.assertIn("［圖片：空拍］", body)
         self.assertIn('w:numId="101"', numbering)  # each numbered list restarts at 1
 
+    def test_markdown_from_server_is_not_translated_in_english_mode(self):
+        from clubdesk import i18n
+
+        previous = i18n.language()
+        i18n.set_language("en")
+        try:
+            program_text = i18n.tr("會議紀錄")
+            self.assertNotEqual(program_text, "會議紀錄")  # program text is translated ...
+            doc = Document("x")
+            doc.markdown("# 會議紀錄\n\n會議紀錄 與 簽到\n\n| 會議紀錄 | 簽到 |\n| --- | --- |\n| 會議紀錄 | 簽到 |")
+            doc.paragraph("會議紀錄")
+            doc.save(self.path("en.docx"))
+        finally:
+            i18n.set_language(previous)
+        with zipfile.ZipFile(self.path("en.docx")) as archive:
+            body = archive.read("word/document.xml").decode("utf-8")
+        self.assertEqual(body.count("會議紀錄"), 4)  # ... but the 4 server strings from markdown() stay Chinese
+        self.assertIn(program_text, body)  # the direct paragraph() call was still translated
+
     def test_column_widths_fill_the_page_and_favour_long_columns(self):
         widths = column_widths(["學號", "姓名", "備註"], [["111360001", "王小明", "很長很長很長很長很長很長的備註"]], 3, 9600)
         self.assertLessEqual(sum(widths), 9600 + 3)

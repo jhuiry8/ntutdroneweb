@@ -70,6 +70,7 @@ class MainWindow(QMainWindow):
         self.first_check = True
         self.quitting = False
         self.successor = None
+        self.after_first_restore = None  # callable run (delayed) the first time the window is shown again
         self.center = NotificationCenter(user.get("username", ""))
         self.setWindowTitle(f"{APP_TITLE} - [{user.get('username')}]")
         self.setWindowIcon(app_icon())
@@ -355,6 +356,9 @@ class MainWindow(QMainWindow):
                 self.restore_window()
 
     def restore_window(self) -> None:
+        if self.after_first_restore:  # e.g. the update check that a tray-only start skipped
+            callback, self.after_first_restore = self.after_first_restore, None
+            QTimer.singleShot(3000, callback)
         self.show()
         self.setWindowState((self.windowState() & ~Qt.WindowMinimized) | Qt.WindowActive)
         self.raise_()
@@ -490,11 +494,13 @@ class MainWindow(QMainWindow):
             self.close()
             return
         self.hide()
+        instances = getattr(QApplication.instance(), "instances", None)
+        if instances:  # this window is signed out: a second start meanwhile must not bring it back
+            instances.set_handler(lambda: None)
         dialog = run_login(self.login_factory)
         if dialog is not None:
             window = MainWindow(dialog.client, dialog.user, self.login_factory)
             window.show()
-            instances = getattr(QApplication.instance(), "instances", None)
             if instances:  # a later second start must open this window, not the closed one
                 instances.set_handler(window.restore_window)
             # Keep a reference so the new window is not garbage-collected.
@@ -511,6 +517,11 @@ class MainWindow(QMainWindow):
     def save_geometry(self) -> None:
         QSettings().setValue("window/geometry", self.saveGeometry())
 
+    def session_is_saved(self) -> bool:
+        """True when this window's login is the saved "stay signed in" session."""
+        token = (saved_session.load() or {}).get("token")
+        return bool(token) and token == self.api.token
+
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
         if self.tray and not self.quitting and setting("close_to_tray"):
             # Keep running in the system tray so notifications still arrive.
@@ -522,7 +533,8 @@ class MainWindow(QMainWindow):
         self.save_geometry()
         if self.tray:
             self.tray.hide()
-        self.api.logout()  # end the server session when the program closes
+        if not self.session_is_saved():  # a saved 30-day login must outlive the program: keep its server session
+            self.api.logout()
         super().closeEvent(event)
         if self.successor is None:
             QApplication.quit()

@@ -18,7 +18,7 @@ BINDING = "PySide6"
 
 def _install_pyside2() -> None:
     sys.modules["PySide6"] = importlib.import_module("PySide2")
-    for name in ("QtCore", "QtGui", "QtWidgets", "QtSvg"):
+    for name in ("QtCore", "QtGui", "QtWidgets", "QtSvg", "QtNetwork"):
         sys.modules["PySide6." + name] = importlib.import_module("PySide2." + name)
 
     from PySide2 import QtCore, QtGui, QtWidgets
