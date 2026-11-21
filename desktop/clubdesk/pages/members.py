@@ -15,7 +15,7 @@ from ..icons import icon
 from ..widgets import DataTable, Page, busy, button_row, confirm, money, show_error
 
 LEVELS = [("trial", "非正式社員"), ("member", "正式社員"), ("prep", "籌備幹部"), ("officer", "正式幹部")]
-FEES = [("unpaid", "未繳費"), ("semester", "一年會籍（500 元）"), ("lifetime", "在學會籍（1,000 元）")]
+FEES = [("unpaid", "未繳費"), ("semester", "一年會籍"), ("lifetime", "在學會籍")]
 FILTERS = [("", "（全部）"), ("unpaid", "未繳社費"), ("paid", "已繳社費"), ("voting", "具表決權"),
            ("unbound", "未綁定帳號"), ("trial", "非正式社員"), ("member", "正式社員"),
            ("prep", "籌備幹部"), ("officer", "正式幹部")]
@@ -35,6 +35,16 @@ def semester_of(day: date) -> str:
     if day.month >= 8:
         return f"{day.year - 1911}-1"
     return f"{day.year - 1912}-{1 if day.month == 1 else 2}"
+
+
+# Keep in sync with feePrices() in src/membership.js: 115-1 and 116-1 are promo terms.
+PROMO_SEMESTERS = ("115-1", "116-1")
+
+
+def fee_prices(day: date) -> dict:
+    if semester_of(day) in PROMO_SEMESTERS:
+        return {"semester": 300, "lifetime": 800}
+    return {"semester": 500, "lifetime": 1000}
 
 
 def combo(items, current="") -> QComboBox:
@@ -369,7 +379,7 @@ class ReceiptDialog(QDialog):
         self.student_id = QLineEdit()
         self.amount = QSpinBox()
         self.amount.setRange(1, 1_000_000)
-        self.amount.setValue(500)
+        self.amount.setValue(fee_prices(date.today())["semester"])
         self.amount.setSuffix(" 元")
         self.fee_type = combo(FEE_TYPES)
         self.day = date_edit()
@@ -377,6 +387,8 @@ class ReceiptDialog(QDialog):
         self.number = QLineEdit()
         self.note = QLineEdit()
         self.member.currentIndexChanged.connect(self.member_changed)
+        self.fee_type.currentIndexChanged.connect(self.fill_amount)
+        self.day.dateChanged.connect(self.fill_amount)
         form = QFormLayout()
         form.addRow("社員：", self.member)
         form.addRow("繳費者姓名：", self.payer)
@@ -392,6 +404,13 @@ class ReceiptDialog(QDialog):
         layout.addWidget(QLabel("指定社員後，系統會依金額自動更新該社員的社費狀態。"))
         layout.addWidget(dialog_buttons(self))
         self.setMinimumWidth(380)
+
+    def fill_amount(self) -> None:
+        """Suggest the plan price (promo or regular) for the payment date's term."""
+        kind = self.fee_type.currentData()
+        day = self.day.date().toPython()
+        if kind in ("semester", "lifetime"):
+            self.amount.setValue(fee_prices(day)[kind])
 
     def member_changed(self) -> None:
         manual = not self.member.currentData()

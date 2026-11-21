@@ -843,8 +843,6 @@ TRANSLATIONS = {
     '籌備幹部': 'Preparatory officer',
     '正式幹部': 'Formal officer',
     '未繳費': 'Unpaid',
-    '一年會籍（500 元）': 'One-year membership (NT$500)',
-    '在學會籍（1,000 元）': 'Enrolled-period membership (NT$1,000)',
     '（全部）': '(All)',
     '未繳社費': 'Fees unpaid',
     '已繳社費': 'Fees paid',

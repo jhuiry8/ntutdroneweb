@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../src/worker.js';
-import { semesterOf, previousSemester, nextSemester, membershipStatus, receiptFeeType, parseMemberLevel, parseFeeStatus } from '../src/membership.js';
+import { semesterOf, previousSemester, nextSemester, membershipStatus, receiptFeeType, feePrices, parseMemberLevel, parseFeeStatus } from '../src/membership.js';
 import { DEFAULT_REGULATIONS } from '../src/regulations.js';
 import { assemblyThresholds, checkAssembly, checkProposalSource } from '../src/regulation-rules.js';
 
@@ -32,6 +32,20 @@ test('academic terms follow the August and February start dates', () => {
     assert.equal(semesterOf('2027-01-20'), '115-1');
     assert.equal(semesterOf('2027-02-01'), '115-2');
     assert.equal(semesterOf('2027-07-31'), '115-2');
+});
+
+test('fee prices follow the promo schedule and amounts map to plans', () => {
+    assert.deepEqual(feePrices('115-1'), { semester: 300, lifetime: 800, promo: true });
+    assert.deepEqual(feePrices('115-2'), { semester: 500, lifetime: 1000, promo: false });
+    assert.deepEqual(feePrices('116-1'), { semester: 300, lifetime: 800, promo: true });
+    assert.equal(receiptFeeType('', 300), 'semester');
+    assert.equal(receiptFeeType('', 500), 'semester');
+    assert.equal(receiptFeeType('', 800), 'lifetime');
+    assert.equal(receiptFeeType('', 1000), 'lifetime');
+    assert.equal(receiptFeeType('', 200), 'other');
+    assert.equal(receiptFeeType('semester', 800), 'semester', 'an explicit plan choice wins');
+    assert.equal(parseFeeStatus('300'), 'semester');
+    assert.equal(parseFeeStatus('800'), 'lifetime');
 });
 
 test('previous and next semester helpers cross academic years', () => {
@@ -87,7 +101,7 @@ test('membership status follows the four-level and fee rules', () => {
     assert.equal(membershipStatus({}, today).level, 'member', 'legacy roster entries default to formal members');
     assert.equal(receiptFeeType('', 500), 'semester');
     assert.equal(receiptFeeType('', 1000), 'lifetime');
-    assert.equal(receiptFeeType('', 300), 'other');
+    assert.equal(receiptFeeType('', 200), 'other');
     assert.equal(receiptFeeType('semester', 1000), 'semester');
     assert.equal(parseMemberLevel('PREP_OFFICER'), 'prep');
     assert.equal(parseMemberLevel('非正式社員/體驗學員'), 'trial');

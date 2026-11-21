@@ -12,11 +12,24 @@ export const MEMBER_LEVELS = {
 };
 export const FEE_STATUSES = {
     unpaid: '未繳費',
-    semester: '一年會籍（500 元）',
-    lifetime: '在學會籍（1,000 元）'
+    semester: '一年會籍',
+    lifetime: '在學會籍'
 };
+// Regular price, and the promotional price charged in PROMO_SEMESTERS (社長決定：
+// 115-1 優惠、115-2 回復原價、116-1 再度優惠). Add a term here to extend the promo.
+// Keep in sync with FEE_PRICES in public/admin.js and desktop/clubdesk/pages/members.py.
 export const SEMESTER_FEE = 500;
 export const LIFETIME_FEE = 1000;
+export const PROMO_SEMESTER_FEE = 300;
+export const PROMO_LIFETIME_FEE = 800;
+export const PROMO_SEMESTERS = ['115-1', '116-1'];
+
+// Suggested price of each plan for a payment made in the given term.
+export function feePrices(semester = semesterOf()) {
+    return PROMO_SEMESTERS.includes(semester)
+        ? { semester: PROMO_SEMESTER_FEE, lifetime: PROMO_LIFETIME_FEE, promo: true }
+        : { semester: SEMESTER_FEE, lifetime: LIFETIME_FEE, promo: false };
+}
 // 四級分級細則第二條：非正式社員每學年最多免費參與二次體驗社課。
 export const FREE_TRIAL_CLASSES = 2;
 
@@ -81,8 +94,9 @@ export function membershipStatus(member, today = new Date()) {
 // Which fee plan a receipt pays for. An explicit choice wins; otherwise the amount decides.
 export function receiptFeeType(feeType, amount) {
     if (['semester', 'lifetime', 'other'].includes(feeType)) return feeType;
-    if (amount >= LIFETIME_FEE) return 'lifetime';
-    if (amount >= SEMESTER_FEE) return 'semester';
+    // Either the regular or the promo price counts, whichever term it is paid in.
+    if (amount >= PROMO_LIFETIME_FEE) return 'lifetime';
+    if (amount >= PROMO_SEMESTER_FEE) return 'semester';
     return 'other';
 }
 
@@ -109,8 +123,8 @@ const LEVEL_ALIASES = {
 };
 const FEE_ALIASES = {
     unpaid: ['unpaid', 'UNPAID', '未繳費', '未繳', '否', ''],
-    semester: ['semester', 'SEMESTER_PAID', '一年會籍', '學期會籍', '學期制', '已繳單學期', '500'],
-    lifetime: ['lifetime', 'LIFETIME_PAID', '在學會籍', '終身制', '已繳終身制', '1000', '1,000']
+    semester: ['semester', 'SEMESTER_PAID', '一年會籍', '學期會籍', '學期制', '已繳單學期', '300', '500'],
+    lifetime: ['lifetime', 'LIFETIME_PAID', '在學會籍', '終身制', '已繳終身制', '800', '1000', '1,000']
 };
 function lookup(aliases, value) {
     const text = String(value ?? '').trim().replace(/[（(].*[)）]$/, '').trim();
