@@ -9,6 +9,7 @@ import { MeetingError } from './meetings.js';
 import { MessageError } from './messages.js';
 import { FileError } from './files.js';
 import { EventError } from './events.js';
+import { FlightError } from './flight-store.js';
 import { PayloadTooLargeError, readJsonLimited } from './request.js';
 import { ValidationError, parseStoredList } from './validation.js';
 import { takeAttempt, giveBackAttempt, sessionUser, listUsers } from './session.js';
@@ -32,6 +33,7 @@ import { handleBackupRequest, runBackupRecorded, BACKUP_CRON } from './backup.js
 import { handleEventRequest, runEventReminders, EVENT_REMINDER_CRON } from './event-routes.js';
 import { equipmentStoreRequest } from './equipment-store.js';
 import { handleLoanRequest, remindOverdueLoans } from './loan-routes.js';
+import { handleFlightRequest, runCertReminders } from './flight-routes.js';
 export { EquipmentStore } from './equipment-store.js';
 export { FormStore } from './form-store.js';
 export { MeetingStore } from './meetings.js';
@@ -39,6 +41,7 @@ export { ClassStore } from './classes.js';
 export { MessageStore } from './messages.js';
 export { EventStore } from './events.js';
 export { SiteStore } from './site-store.js';
+export { FlightStore } from './flight-store.js';
 export { FileStore } from './file-store.js';
 
 const WEEKLY_REPORT_CRON = '0 1 * * 1';
@@ -90,6 +93,7 @@ const ROUTES = [
     (request, env) => handleClassRequest(request, env, aiDeps),
     (request, env) => handleMessageRequest(request, env, aiDeps),
     (request, env) => handleEventRequest(request, env, aiDeps),
+    (request, env) => handleFlightRequest(request, env, aiDeps),
     handleCmsRequest,
     handleFinanceRequest,
     handleFileRequest,
@@ -109,15 +113,21 @@ export default {
         return addSecurityHeaders(response, request);
     },
     // Cron triggers (wrangler.toml): Monday 01:00 UTC builds the weekly club report and posts it to
+    // Cron triggers (wrangler.toml): Monday 01:00 UTC builds the weekly club report and posts it to
     // REPORT_WEBHOOK_URL; daily 19:00 UTC (03:00 Taipei) backs up to R2; daily 18:00 UTC (02:00 Taipei)
-    // reminds about overdue equipment loans; daily 12:00 UTC (20:00 Taipei) sends day-before event reminders.
+    // reminds about overdue equipment loans; daily 12:00 UTC (20:00 Taipei) sends day-before event
+    // reminders and certificate-expiry reminders (they share one trigger to stay within the free plan's
+    // cron limit).
     async scheduled(controller, env, ctx) {
         const log = label => error => console.error(label, error?.message || String(error));
-        if (controller.cron === BACKUP_CRON) ctx.waitUntil(runBackupRecorded(env).catch(log('Backup failed')));
-        else if (controller.cron === WEEKLY_REPORT_CRON) ctx.waitUntil(generateClubReport(env, aiDeps, { trigger: 'cron' }).catch(log('Weekly report failed')));
-        else if (controller.cron === LOAN_REMINDER_CRON) ctx.waitUntil(remindOverdueLoans(env).catch(log('Overdue loan reminder failed')));
-        else if (controller.cron === EVENT_REMINDER_CRON) ctx.waitUntil(runEventReminders(env).catch(log('Event reminders failed')));
-        else console.error('Unknown cron trigger', controller.cron);
+        const cron = controller?.cron;
+        if (cron === BACKUP_CRON) ctx.waitUntil(runBackupRecorded(env).catch(log('Backup failed')));
+        else if (cron === WEEKLY_REPORT_CRON) ctx.waitUntil(generateClubReport(env, aiDeps, { trigger: 'cron' }).catch(log('Weekly report failed')));
+        else if (cron === LOAN_REMINDER_CRON) ctx.waitUntil(remindOverdueLoans(env).catch(log('Overdue loan reminder failed')));
+        else if (cron === EVENT_REMINDER_CRON) {
+            ctx.waitUntil(runEventReminders(env).catch(log('Event reminders failed')));
+            ctx.waitUntil(runCertReminders(env, aiDeps).catch(log('Certificate reminders failed')));
+        } else console.error('Unknown cron trigger', cron);
     }
 };
 
@@ -152,6 +162,7 @@ async function handleRequest(request, env, ctx) {
         if (e instanceof FormServiceError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof MeetingError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof FileError) return Response.json({ error: e.message }, { status: e.status });
+        if (e instanceof FlightError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof MessageError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof EventError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof PasswordResetRequiredError) {
