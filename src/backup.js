@@ -12,6 +12,10 @@ export const BACKUP_PREFIX = 'backups/';
 export const BACKUP_KEEP = 30;
 export const BACKUP_CRON = '0 19 * * *'; // 03:00 Taipei every day
 export const BACKUP_FORMAT = 1;
+// Result of the latest run (success or failure), so a broken nightly job is visible. Not part of the backup itself.
+export const BACKUP_STATUS_KEY = 'backup:status';
+// KV bulk get reads up to 100 keys in one subrequest; Workers allow few subrequests per invocation (50 on the free plan).
+const KV_BULK_SIZE = 100;
 
 // Fixed KV keys: everything in kv-keys.js plus the CMS/login keys defined elsewhere.
 const EXTRA_KEYS = ['posts_list', 'pages_list', 'homepage_content', 'admin_password_hash', PUSH_SETTINGS_KEY];
@@ -42,13 +46,29 @@ async function listKvKeys(kv, prefix) {
     return names;
 }
 
+async function readKvValues(kv, names) {
+    const values = new Map();
+    for (let i = 0; i < names.length; i += KV_BULK_SIZE) {
+        const chunk = names.slice(i, i + KV_BULK_SIZE);
+        const bulk = await kv.get(chunk);
+        if (bulk instanceof Map) {
+            for (const [name, value] of bulk) values.set(name, value);
+        } else {
+            // A KV without bulk get: one read per key.
+            for (const name of chunk) values.set(name, await kv.get(name));
+        }
+    }
+    return values;
+}
+
 export async function exportKv(kv) {
     const names = new Set(Object.values(kvKeys).concat(EXTRA_KEYS));
     for (const prefix of KV_PREFIXES) for (const name of await listKvKeys(kv, prefix)) names.add(name);
+    const wanted = [...names].filter(name => !name.startsWith('session:')).sort();
+    const values = await readKvValues(kv, wanted);
     const data = {};
-    for (const name of [...names].sort()) {
-        if (name.startsWith('session:')) continue;
-        const value = await kv.get(name);
+    for (const name of wanted) {
+        const value = values.get(name);
         if (value !== null && value !== undefined) data[name] = value;
     }
     return data;
@@ -97,23 +117,50 @@ export async function runBackup(env, now = new Date()) {
     if (!env.BACKUPS) throw new Error('BACKUPS R2 binding is not configured');
     const backup = await collectBackup(env, now);
     const key = backupKey(taipeiToday(now));
-    const body = JSON.stringify(backup);
+    const body = new TextEncoder().encode(JSON.stringify(backup));
     await env.BACKUPS.put(key, body, { httpMetadata: { contentType: 'application/json' } });
     const pruned = await pruneBackups(env.BACKUPS, Number(env.BACKUP_KEEP) >= 1 ? Math.floor(Number(env.BACKUP_KEEP)) : BACKUP_KEEP);
-    return { key, bytes: body.length, kvKeys: Object.keys(backup.kv).length, pruned };
+    return { key, bytes: body.byteLength, kvKeys: Object.keys(backup.kv).length, pruned };
 }
 
-// President-only: POST /api/backup/run (back up now), GET /api/backup/latest (download the newest file).
+export async function readBackupStatus(env) {
+    try { return JSON.parse(await env.DRONE_DB.get(BACKUP_STATUS_KEY)) || null; } catch { return null; }
+}
+
+// Tells the club's webhook (REPORT_WEBHOOK_URL, same one as the weekly report) that a backup failed. Never throws.
+async function notifyFailure(env, message) {
+    const url = String(env.REPORT_WEBHOOK_URL || '');
+    if (!/^https:\/\//.test(url)) return;
+    const text = `⚠️ 網站自動備份失敗：${message}`;
+    try { await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: text, text }), signal: AbortSignal.timeout(15000) }); } catch { /* the status record below still shows the failure */ }
+}
+
+// runBackup plus a status record in KV and a webhook alert on failure. The error is rethrown for the caller.
+export async function runBackupRecorded(env, { trigger = 'cron', now = new Date() } = {}) {
+    try {
+        const result = await runBackup(env, now);
+        await env.DRONE_DB.put(BACKUP_STATUS_KEY, JSON.stringify({ ok: true, at: now.toISOString(), trigger, key: result.key, bytes: result.bytes, kvKeys: result.kvKeys }));
+        return result;
+    } catch (error) {
+        const message = String(error?.message || error).slice(0, 300);
+        try { await env.DRONE_DB.put(BACKUP_STATUS_KEY, JSON.stringify({ ok: false, at: now.toISOString(), trigger, error: message })); } catch { /* KV itself may be what failed */ }
+        await notifyFailure(env, message);
+        throw error;
+    }
+}
+
+// President-only: POST /api/backup/run (back up now), GET /api/backup/latest (download the newest file), GET /api/backup/status (result of the latest run).
 export async function handleBackupRequest(request, env) {
     const { pathname } = new URL(request.url);
-    if (pathname !== '/api/backup/run' && pathname !== '/api/backup/latest') return null;
+    if (!['/api/backup/run', '/api/backup/latest', '/api/backup/status'].includes(pathname)) return null;
     const wanted = pathname === '/api/backup/run' ? 'POST' : 'GET';
     if (request.method !== wanted) return Response.json({ error: '方法不允許' }, { status: 405 });
     const user = await sessionUser(request, env);
     if (!user) return Response.json({ error: '未授權' }, { status: 401 });
     if (!canManageUsers(user)) return Response.json({ error: '只有社長可以使用備份功能' }, { status: 403 });
+    if (pathname === '/api/backup/status') return Response.json({ configured: Boolean(env.BACKUPS), latest: await readBackupStatus(env) }, { headers: { 'Cache-Control': 'no-store' } });
     if (!env.BACKUPS) return Response.json({ error: '尚未設定 BACKUPS R2 bucket' }, { status: 503 });
-    if (wanted === 'POST') return Response.json(await runBackup(env), { status: 201 });
+    if (wanted === 'POST') return Response.json(await runBackupRecorded(env, { trigger: 'manual' }), { status: 201 });
     const key = await latestBackupKey(env.BACKUPS);
     const object = key && await env.BACKUPS.get(key);
     if (!object) return Response.json({ error: '尚無備份' }, { status: 404 });

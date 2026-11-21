@@ -202,17 +202,24 @@
 
 **備份內容**：KV 中 `src/kv-keys.js` 列出的資料、`user:*` 帳號、文章與頁面（`posts_list`、`post:*`、`pages_list`、`page:*`、`homepage_content`）、`admin_password_hash`、推播設定；以及 EquipmentStore、FormStore、SiteStore、MeetingStore、MessageStore 五個 Durable Object 的完整儲存內容（各 DO 的內部匯出端點，外部無法呼叫）。**不含** `session:*` 登入狀態，以及 SiteStore 中幾分鐘就過期的驗證碼與登入次數計數。
 
-**建立 bucket**：Cloudflare 控制台 → R2 → Create bucket，名稱 `ntut-drone-backups`（要改名請同步改 `wrangler.toml` 的 `bucket_name`）。部署用的 API Token 需包含 `Workers R2 Storage:Edit`。請與檔案庫等其他功能的 bucket 分開。
+**自動建立 bucket**：部署流程（`deploy.yml` 的「Ensure R2 buckets exist」）會檢查 `wrangler.toml` 裡的 R2 bucket，不存在就自動建立（預設私有）；若 API Token 沒有 R2 權限，會停在這一步並顯示清楚的錯誤訊息，而不是讓 `wrangler deploy` 失敗。
+
+**手動建立 bucket**：Cloudflare 控制台 → R2 → Create bucket，名稱 `ntut-drone-backups`（要改名請同步改 `wrangler.toml` 的 `bucket_name`）。部署用的 API Token 需包含 `Workers R2 Storage:Edit`。請與檔案庫等其他功能的 bucket 分開。
 
 > ⚠️ **備份含帳號密碼雜湊、推播權杖等敏感資料。bucket 必須保持私有**：不要開啟 Public access、不要綁定自訂網域、不要建立公開的 r2.dev 網址，也不要把備份檔放進公開場所。
 
-**社長專用 API**（需社長登入）：`POST /api/backup/run` 立即備份；`GET /api/backup/latest` 下載最新備份檔。
+**社長專用 API**（需社長登入）：`POST /api/backup/run` 立即備份；`GET /api/backup/latest` 下載最新備份檔；`GET /api/backup/status` 查看最近一次備份的結果（成功時間與檔名，或失敗原因）。
+
+**失敗通知**：排程備份失敗時會記錄失敗原因（`GET /api/backup/status` 可查），並且若已設定 `REPORT_WEBHOOK_URL`，會往同一個群組發送「網站自動備份失敗」。建議設定該變數，並偶爾看一下 `status`，不要等到要還原時才發現備份早已中斷。
+
+**Cloudflare 子請求上限**：KV 已用批次讀取（每 100 個 key 算 1 次），一次備份約需 `3 + ⌈key 數 ÷ 100⌉ + 5 + 3` 次子請求（KV 列表、KV 讀取、5 個 DO、R2 寫入與整理）。免費方案上限 50 次，約可支撐 3,000 個 KV key；帳號、文章、頁面特別多時請升級付費方案（上限 1,000 次）。
 
 **手動還原步驟**（尚無自動還原功能）：
 1. 下載備份檔（`GET /api/backup/latest` 或 R2 控制台），確認 `format` 為 1。
 2. KV：`kv` 欄位是 `{ key: 原始字串值 }`，用 `wrangler kv key put --binding DRONE_DB "<key>" "<value>"` 逐筆寫回（或用 `wrangler kv bulk put` 轉成 `[{key,value}]` 的 JSON）。
 3. Durable Object：`durableObjects.<綁定名稱>` 是 `[key, value]` 陣列，值為結構化資料，需寫回對應 DO 的 storage（key 與值原樣 `storage.put`）。目前沒有匯入端點，需臨時在該 DO 加一個匯入方法、還原後再移除。還原 EquipmentStore 時別漏掉 `equipment:initialized`。
-4. 還原後請所有人重新登入（`session:*` 不在備份內），並檢查帳號、設備、表單與會議資料。
+4. **一致性限制**：備份是依序讀取各 Durable Object 與 KV，不是同一時間點的快照。讀取的幾秒內若有人新增或刪除資料，KV 與 DO 之間可能對不上（例如某位社員剛被刪除，但他的會議紀錄還在）。還原後請檢查這類關聯；備份檔的 `createdAt` 是開始備份的時間。
+5. 還原後請所有人重新登入（`session:*` 不在備份內），並檢查帳號、設備、表單與會議資料。
 
 ### 3-4. 社團通訊與外部推播（Durable Object MessageStore）
 後台與桌面版提供專屬「社團通訊 / 訊息中心」（`/api/messages/*`、`/api/announcements/*`），所有訊息資料由 Cloudflare Workers **`MESSAGE_STORE` Durable Object**（原生 SQLite 儲存架構，`wrangler.toml` migration `v5`）集中管理，支援多端同步、未讀狀態追蹤與安全防護：

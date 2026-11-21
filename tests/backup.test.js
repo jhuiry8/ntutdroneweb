@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../src/worker.js';
-import { runBackup, pruneBackups, backupKey, exportKv, BACKUP_KEEP, BACKUP_CRON } from '../src/backup.js';
+import { runBackup, runBackupRecorded, BACKUP_STATUS_KEY, pruneBackups, backupKey, exportKv, BACKUP_KEEP, BACKUP_CRON } from '../src/backup.js';
 import { EquipmentStore } from '../src/equipment-store.js';
 import { FormStore } from '../src/form-store.js';
 import { SiteStore } from '../src/site-store.js';
@@ -12,7 +12,12 @@ import { withSiteStore } from './helpers/site-store.js';
 function kv(initial = {}) {
     const store = new Map(Object.entries(initial));
     return {
-        async get(key) { return store.has(key) ? store.get(key) : null; },
+        gets: 0,
+        async get(key) {
+            this.gets++;
+            if (Array.isArray(key)) return new Map(key.filter(name => store.has(name)).map(name => [name, store.get(name)]));
+            return store.has(key) ? store.get(key) : null;
+        },
         async put(key, value) { store.set(key, value); },
         async delete(key) { store.delete(key); },
         async list({ prefix }) { return { keys: [...store.keys()].filter(name => name.startsWith(prefix)).map(name => ({ name })) }; },
@@ -70,7 +75,7 @@ test('runBackup writes one dated JSON with KV and every Durable Object', async (
     const env = fullEnv();
     const result = await runBackup(env, new Date('2026-11-21T03:00:00Z'));
     assert.equal(result.key, 'backups/2026-11-21.json');
-    const backup = JSON.parse(env.BACKUPS.objects.get('backups/2026-11-21.json'));
+    const backup = JSON.parse(new TextDecoder().decode(env.BACKUPS.objects.get('backups/2026-11-21.json')));
     assert.equal(backup.createdAt, '2026-11-21T03:00:00.000Z');
     assert.equal(backup.kv['members:list'], '[1]');
     assert.deepEqual(Object.keys(backup.durableObjects).sort(), ['EQUIPMENT_STORE', 'FORM_STORE', 'MEETING_STORE', 'MESSAGE_STORE', 'SITE_STORE']);
@@ -139,4 +144,55 @@ test('backup API is president-only', async () => {
     assert.equal(JSON.parse(await download.text()).format, 1);
     delete env.BACKUPS;
     assert.equal((await call('POST', '/api/backup/run', 'session=boss')).status, 503);
+});
+
+test('size is reported in bytes, not characters', async () => {
+    const env = fullEnv();
+    env.DRONE_DB._store.set('posts_list', '"社團公告測試"');
+    const result = await runBackup(env, new Date('2026-11-21T03:00:00Z'));
+    assert.equal(result.bytes, env.BACKUPS.objects.get(result.key).byteLength);
+    assert.ok(result.bytes > new TextDecoder().decode(env.BACKUPS.objects.get(result.key)).length);
+});
+
+test('KV is read in bulk: many keys cost few subrequests', async () => {
+    const env = fullEnv();
+    for (let i = 0; i < 250; i++) env.DRONE_DB._store.set(`user:u${i}`, `{"username":"u${i}"}`);
+    env.DRONE_DB.gets = 0;
+    const data = await exportKv(env.DRONE_DB);
+    assert.equal(Object.keys(data).filter(key => key.startsWith('user:')).length, 252);
+    assert.ok(env.DRONE_DB.gets <= 4, `expected bulk reads, got ${env.DRONE_DB.gets} gets`);
+    // A KV without bulk get still works, one read per key.
+    const plain = { ...env.DRONE_DB, async get(key) { return Array.isArray(key) ? null : env.DRONE_DB._store.get(key) ?? null; } };
+    assert.equal(Object.keys(await exportKv(plain)).length, Object.keys(data).length);
+});
+
+test('backup status is recorded, and a failure alerts the webhook and is rethrown', async t => {
+    const env = fullEnv();
+    const posts = [];
+    t.mock.method(globalThis, 'fetch', async (url, init) => { posts.push({ url, body: JSON.parse(init.body) }); return new Response('ok'); });
+    await runBackupRecorded(env, { trigger: 'cron', now: new Date('2026-11-21T03:00:00Z') });
+    const ok = JSON.parse(env.DRONE_DB._store.get(BACKUP_STATUS_KEY));
+    assert.deepEqual([ok.ok, ok.trigger, ok.key], [true, 'cron', 'backups/2026-11-21.json']);
+    assert.equal(posts.length, 0);
+
+    env.REPORT_WEBHOOK_URL = 'https://hooks.example.com/x';
+    env.FORM_STORE = { idFromName: n => n, get: () => ({ fetch: async () => new Response('x', { status: 500 }) }) };
+    await assert.rejects(runBackupRecorded(env, { trigger: 'cron', now: new Date('2026-11-22T03:00:00Z') }), /export failed/);
+    const failed = JSON.parse(env.DRONE_DB._store.get(BACKUP_STATUS_KEY));
+    assert.equal(failed.ok, false);
+    assert.match(failed.error, /export failed/);
+    assert.equal(posts.length, 1);
+    assert.match(posts[0].body.text, /備份失敗/);
+    assert.equal(env.BACKUPS.objects.size, 1, 'the earlier backup is untouched');
+});
+
+test('president can read backup status', async () => {
+    const env = withSiteStore(fullEnv());
+    env.DRONE_DB._store.set('session:boss', 'admin');
+    env.DRONE_DB._store.delete('user:admin');
+    const status = () => worker.fetch(new Request('https://example.com/api/backup/status', { headers: { Cookie: 'session=boss' } }), env);
+    assert.deepEqual(await (await status()).json(), { configured: true, latest: null });
+    await worker.fetch(new Request('https://example.com/api/backup/run', { method: 'POST', headers: { Cookie: 'session=boss' } }), env);
+    assert.equal((await (await status()).json()).latest.trigger, 'manual');
+    assert.equal((await worker.fetch(new Request('https://example.com/api/backup/status'), env)).status, 401);
 });
