@@ -55,7 +55,7 @@ tag = "v5"
 new_sqlite_classes = ["MessageStore"]
 
 [[migrations]]
-tag = "v6"
+tag = "v7"
 new_sqlite_classes = ["ClassStore"]
 
 # Weekly club report: every Monday 01:00 UTC (09:00 Taipei). See README「AI 功能」.

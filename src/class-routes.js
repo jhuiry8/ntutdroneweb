@@ -22,7 +22,9 @@ export async function classStore(env, path, payload) {
 // Per member: { total, year } attendance counts, or {} when the binding is missing (older deployments, unit tests).
 export async function classAttendanceCounts(env, today = new Date()) {
     if (!env.CLASS_STORE) return {};
-    return (await classStore(env, '/summary', { year: academicYearOf(today) })).body || {};
+    // The roster and /api/me must keep working when the class store is down.
+    try { return (await classStore(env, '/summary', { year: academicYearOf(today) })).body || {}; }
+    catch (error) { console.error('Class attendance counts failed', error?.message || String(error)); return {}; }
 }
 
 // ---- Roster (KV) ---------------------------------------------------------
@@ -152,7 +154,8 @@ async function handlePublicClass(request, env, deps, path, method) {
 
     const result = await classStore(env, '/op', { id, op: 'checkin', actor: { username: 'guest' }, token: body?.t, attendee, deviceHash: newDeviceHash });
     if (result.status !== 200) return json(result.body, result.status);
-    if (member) await deps.giveBackAttempt(env, [attemptKey]);
+    // Any successful check-in (visitors and new joiners too) hands its attempt back, so a crowd of newcomers on one campus IP is not throttled.
+    await deps.giveBackAttempt(env, [attemptKey]);
 
     const { entry, created } = result.body;
     if (created && entry.deducted) await settleTrial(env, id, entry, 1);

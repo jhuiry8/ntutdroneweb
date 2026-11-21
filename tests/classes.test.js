@@ -46,9 +46,9 @@ function fixture({ members: initial = roster(), failMemberWrites = false } = {})
     }
     store.set('members:list', JSON.stringify(initial));
     const env = withSiteStore({ DRONE_DB: db, FORM_STORE: durableObject(FormStore), MEETING_STORE: durableObject(MeetingStore), EQUIPMENT_STORE: durableObject(EquipmentStore), CLASS_STORE: durableObject(ClassStore) });
-    const send = (path, { who, method = 'GET', body, cookie } = {}) => worker.fetch(new Request(`https://example.com${path}`, {
+    const send = (path, { who, method = 'GET', body, cookie, ip } = {}) => worker.fetch(new Request(`https://example.com${path}`, {
         method,
-        headers: { ...(who || cookie ? { Cookie: [who && `session=${who}`, cookie].filter(Boolean).join('; ') } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+        headers: { ...(ip ? { 'CF-Connecting-IP': ip } : {}), ...(who || cookie ? { Cookie: [who && `session=${who}`, cookie].filter(Boolean).join('; ') } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
     }), env);
     const admin = (path, method = 'GET', body, who = 'president') => send(path, { who, method, body });
@@ -56,10 +56,10 @@ function fixture({ members: initial = roster(), failMemberWrites = false } = {})
     const member = id => members().find(item => item.id === id);
 
     // A phone: keeps its own cookie, like a browser.
-    function phone() {
+    function phone(ip) {
         let cookie = '';
         return async function checkin(created, body, token = created.token) {
-            const response = await send(`/api/public/classes/${created.id}/checkin`, { method: 'POST', body: { t: token, ...body }, cookie });
+            const response = await send(`/api/public/classes/${created.id}/checkin`, { method: 'POST', body: { t: token, ...body }, cookie, ip });
             const set = response.headers.get('Set-Cookie');
             if (set) cookie = set.split(';')[0];
             return { status: response.status, body: await response.json() };
@@ -416,4 +416,34 @@ test('pure rules: a closed or expired class and the attendee cap', () => {
     assert.equal(session.attendance.length, 1);
     assert.throws(() => applyClassOp(session, 'checkin', { token: session.token, attendee: { ...guest, name: '乙' }, deviceHash: 'd' }, {}, now, Date.parse(now) + 6 * 60000), /過期/);
     assert.throws(() => applyClassOp(session, 'remove', { entryId: session.attendance[0].id }, { officer: false }, now), /只有幹部/);
+});
+
+test('a crowd of newcomers on one campus IP is not throttled; only failures count', async () => {
+    const { openClass, phone } = fixture();
+    const created = await openClass();
+    for (let index = 0; index < 35; index++) {
+        const result = await phone('10.0.0.1')(created, { studentId: `N${index}`, name: `新生${index}`, asGuest: true, join: index % 2 === 0 });
+        assert.equal(result.status, 200, `check-in ${index + 1}`);
+    }
+    // Wrong names do count: after 30 failures the IP is held back.
+    let last;
+    for (let index = 0; index < 31; index++) last = await phone('10.0.0.2')(created, { studentId: 'A100', name: '錯' });
+    assert.equal(last.status, 429);
+});
+
+test('a failing class store does not break the roster or my-member views', async () => {
+    const { admin, env, store, send } = fixture();
+    env.CLASS_STORE = { idFromName: name => name, get: () => ({ fetch: async () => Response.json({ error: 'boom' }, { status: 500 }) }) };
+    const errors = [];
+    const original = console.error;
+    console.error = (...args) => errors.push(args);
+    try {
+        const list = await admin('/api/members');
+        assert.equal(list.status, 200);
+        assert.deepEqual((await list.json()).find(item => item.id === 'f1').attendance, { total: 0, year: 0 });
+        assert.equal((await admin('/api/members/t1', 'PATCH', { note: 'x' })).status, 200);
+        store.set('user:u1', JSON.stringify({ username: 'u1', role: 'member', active: true, version: 'v1', memberId: 't1' }));
+        assert.equal((await send('/api/me', { who: 'u1' })).status, 200);
+    } finally { console.error = original; }
+    assert.ok(errors.length >= 3, 'each failure is logged');
 });
