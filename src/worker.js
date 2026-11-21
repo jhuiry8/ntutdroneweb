@@ -7,6 +7,7 @@ import { RegulationRuleError } from './regulation-rules.js';
 import { FormValidationError, FormServiceError } from './forms.js';
 import { MeetingError } from './meetings.js';
 import { MessageError } from './messages.js';
+import { FlightError } from './flight-store.js';
 import { PayloadTooLargeError, readJsonLimited } from './request.js';
 import { ValidationError, parseStoredList } from './validation.js';
 import { takeAttempt, giveBackAttempt, sessionUser, listUsers } from './session.js';
@@ -24,11 +25,13 @@ import { handleAiRequest, generateClubReport } from './ai-routes.js';
 import { handleMeetingRequest } from './meeting-routes.js';
 import { handleMessageRequest } from './message-routes.js';
 import { equipmentStoreRequest } from './equipment-store.js';
+import { handleFlightRequest, runCertReminders } from './flight-routes.js';
 export { EquipmentStore } from './equipment-store.js';
 export { FormStore } from './form-store.js';
 export { MeetingStore } from './meetings.js';
 export { MessageStore } from './messages.js';
 export { SiteStore } from './site-store.js';
+export { FlightStore } from './flight-store.js';
 
 // The pages still use inline scripts and onclick handlers, so 'unsafe-inline'
 // is needed for scripts. The policy still blocks plugins, <base> hijacking,
@@ -73,6 +76,7 @@ const ROUTES = [
     (request, env) => handleAiRequest(request, env, aiDeps),
     (request, env) => handleMeetingRequest(request, env, aiDeps),
     (request, env) => handleMessageRequest(request, env, aiDeps),
+    (request, env) => handleFlightRequest(request, env, aiDeps),
     handleCmsRequest,
     handleFinanceRequest,
     handleEquipmentRequest,
@@ -82,13 +86,21 @@ const ROUTES = [
     handleDesktopRequest
 ];
 
+// Must match the second entry of [triggers].crons in wrangler.toml.
+const FLIGHT_REMINDER_CRON = '30 1 * * *';
+
 export default {
     async fetch(request, env, ctx) {
         const response = await handleRequest(request, env, ctx);
         return addSecurityHeaders(response, request);
     },
-    // Cron trigger (wrangler.toml): builds the weekly club report and posts it to REPORT_WEBHOOK_URL.
+    // Cron triggers (wrangler.toml): Monday 01:00 UTC builds the weekly club report and posts it to
+    // REPORT_WEBHOOK_URL; the daily FLIGHT_REMINDER_CRON run sends certificate-expiry reminders.
     async scheduled(controller, env, ctx) {
+        if (controller?.cron === FLIGHT_REMINDER_CRON) {
+            ctx.waitUntil(runCertReminders(env, aiDeps).catch(error => console.error('Certificate reminders failed', error?.message || String(error))));
+            return;
+        }
         ctx.waitUntil(generateClubReport(env, aiDeps, { trigger: 'cron' }).catch(error => console.error('Weekly report failed', error?.message || String(error))));
     }
 };
@@ -123,6 +135,7 @@ async function handleRequest(request, env, ctx) {
         if (e instanceof ValidationError || e instanceof FormValidationError || e instanceof RegulationRuleError) return Response.json({ error: e.message }, { status: 400 });
         if (e instanceof FormServiceError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof MeetingError) return Response.json({ error: e.message }, { status: e.status });
+        if (e instanceof FlightError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof MessageError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof PasswordResetRequiredError) {
             if (path === '/api/login') {
