@@ -412,6 +412,11 @@ def pick_font() -> QFont:
 
 
 def apply_classic_style(app: QApplication) -> None:
+    import os
+    if os.environ.get("CLUBDESK_THEME", "").lower() == "fluent":
+        from .style_fluent import apply_fluent_style
+        apply_fluent_style(app)
+        return
     if "Windows" in QStyleFactory.keys():
         app.setStyle(QStyleFactory.create("Windows"))
     palette = QPalette()
