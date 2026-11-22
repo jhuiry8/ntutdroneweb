@@ -1266,6 +1266,7 @@ TRANSLATIONS = {
     '已發布 ': 'Published ',
     '下載失敗：': 'Download failed: ',
     '無法啟動安裝程式，請手動執行：\n': 'Could not start the installer; please run it manually:\n',
+    '無法自動啟動安裝程式，請手動執行：\n': 'Could not start the installer automatically; please run it manually:\n',
     '目前使用的 ': 'Currently using ',
     ' 已是最新版本。': '  is already the latest version.',
     '無法讀取 GitHub Release：': 'Cannot read the GitHub release: ',
