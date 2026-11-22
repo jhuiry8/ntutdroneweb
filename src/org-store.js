@@ -144,6 +144,16 @@ export class OrgStore {
             case 'account-from-role': return this.accountFromRole(storage, actor, payload);
             case 'acting-set': return this.actingSet(storage, actor, payload);
             case 'settings-set': return this.settingsSet(storage, actor, payload);
+            case 'position-holders': {
+                // Who holds one of these positions today: standing positions plus active roster assignments.
+                const ctx = await this.context(storage, today);
+                const wanted = new Set((payload.positions || []).map(String));
+                const found = new Map();
+                const add = (username, position) => { if (wanted.has(position)) found.set(username, [...(found.get(username) || []), position]); };
+                for (const [key, value] of (await storage.list({ prefix: 'acct:' })).entries()) for (const id of value.positions) add(key.slice(5), id);
+                for (const term of ctx.terms) for (const a of term.assignments) if (assignmentActive(a, today)) add(a.username, a.position);
+                return { body: { holders: [...found.entries()].map(([username, positions]) => ({ username, positions: unique(positions) })) } };
+            }
             case 'terms': {
                 const terms = await this.terms(storage);
                 return { body: terms.map(term => ({ year: term.year, start: term.start, end: term.end, count: term.assignments.length, current: term.start <= today && today <= term.end })) };

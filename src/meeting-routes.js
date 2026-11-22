@@ -1,13 +1,15 @@
 // HTTP routes for meetings (社員大會、幹部會議、法規監察委員會), including
 // the AI notice and minutes drafts and the printable minutes page.
 import { marked } from 'marked';
-import { canManageUsers, hasPermission } from './auth.js';
+import { canManageUsers, hasPermission, hasAnyPermission } from './auth.js';
+import { currentCommittee, isCommitteeMember } from './org-access.js';
+import { readReport, listReports, ledgerChanged, syncReportDecisions, REPORT_STATUSES } from './finance-reports.js';
 import { membershipStatus } from './membership.js';
 import { sanitizeContent, escapeHtml } from './html.js';
 import { aiProvider } from './forms.js';
 import { draftMeetingNotice, draftMinutes } from './ai.js';
 import { MEMBERS_KEY } from './kv-keys.js';
-import { MEETING_TYPES, AGENDA_KINDS, THRESHOLDS, MEETING_STATUSES, meetingView, canSeeMeeting, minutesFacts, publicMeetingView, findMemberByIdentity } from './meetings.js';
+import { MeetingError, MEETING_TYPES, AGENDA_KINDS, THRESHOLDS, MEETING_STATUSES, meetingView, canSeeMeeting, minutesFacts, publicMeetingView, findMemberByIdentity } from './meetings.js';
 
 
 // All meetings, or [] when the binding is missing (older deployments, unit tests).
@@ -37,9 +39,10 @@ function attendeeFor(member) {
 }
 
 // Electorate snapshot when the meeting opens (章程第十條「社員總額」= members with voting rights).
-async function defaultTotal(env, type) {
+async function defaultTotal(env, type, committee = null) {
     const statuses = (await roster(env)).map(member => membershipStatus(member));
-    if (type === 'committee') return 5;
+    // The committee's size is the number of 本屆委員 (the list comes from the positions and the roster); 5 only without an OrgStore.
+    if (type === 'committee') return committee ? committee.length : 5;
     if (type === 'officers') return statuses.filter(status => status.level === 'officer' || status.level === 'prep').length;
     return statuses.filter(status => status.voting).length;
 }
@@ -151,6 +154,42 @@ export async function handleMeetingRequest(request, env, deps) {
     const member = user.memberId ? members.find(entry => entry.id === user.memberId) : null;
     const actor = { username: user.username, officer: hasPermission(user, 'meetings.manage'), president: canManageUsers(user), memberId: member?.id || '' };
     const viewer = { officer: actor.officer, memberId: actor.memberId };
+    // 本屆委員: after the meeting opened, the list frozen then; before that, whoever holds a committee position today.
+    const committeeOf = meeting => meeting.type === 'committee' && (Array.isArray(meeting.committeeRoster) ? meeting.committeeRoster.some(entry => entry.username === user.username) : isCommitteeMember(user));
+    const financeViewer = hasAnyPermission(user, ['finance.view', 'finance.edit', 'finance.approve', 'finance.audit']);
+    // The meeting as one viewer sees it. A finance report attached to an agenda item shows its full content only to people who may
+    // read it: finance viewers, and (committee meetings) the 本屆委員 — they need no finance.view of their own.
+    const present = async meeting => {
+        const committee = committeeOf(meeting);
+        const view = meetingView(meeting, { ...viewer, committee });
+        const mayRead = financeViewer || (committee && meeting.status !== 'draft');
+        for (const item of view.agenda) {
+            if (!item.financeReport) continue;
+            const report = await readReport(env, item.financeReport.id);
+            if (!report) { item.financeReport = { ...item.financeReport, missing: true }; continue; }
+            item.financeReport = { ...item.financeReport, status: report.status, statusLabel: REPORT_STATUSES[report.status], review: report.review ? { result: report.review.result, decidedAt: report.review.decidedAt } : null };
+            if (mayRead) item.financeReport.detail = { snapshot: report.snapshot, comments: report.comments, changed: await ledgerChanged(env, report), canReply: hasPermission(user, 'finance.edit'), canComment: hasPermission(user, 'finance.audit') || committee };
+        }
+        return view;
+    };
+    // The agenda's finance attachments are looked up here, never taken from the browser.
+    const withAttachments = async (fields, existing = []) => {
+        if (!Array.isArray(fields?.agenda)) return fields;
+        const agenda = [];
+        for (const item of fields.agenda) {
+            const { financeReport: ignored, financeReportId, ...rest } = item || {};
+            const wanted = String(financeReportId || ignored?.id || '');
+            if (rest.kind !== 'finance' || !wanted) { agenda.push(rest); continue; }
+            const report = await readReport(env, wanted);
+            if (!report || report.status === 'draft') throw new MeetingError('附件必須是已送審的財務報告', 400);
+            const keeps = existing.some(entry => entry.id === rest.id && entry.financeReport?.id === report.id);
+            if (report.status === 'superseded' && !keeps) throw new MeetingError('這個版本已被新版取代，請附上最新版本的報告', 400);
+            agenda.push({ ...rest, financeReport: { id: report.id, version: report.version, semester: report.semester, kind: report.kind, title: `${report.semester} 學期${report.kind === 'budget' ? '預算書' : '決算書'}`, contentHash: report.contentHash, handlers: report.handlers } });
+        }
+        return { ...fields, agenda };
+    };
+    // Before a committee meeting opens, check-ins are checked against today's 本屆委員.
+    const liveCommittee = async id => { const found = await meetingStore(env, '/get', { id }); return found.body?.type === 'committee' ? await currentCommittee(env) : undefined; };
     const officerOnly = () => json({ error: '沒有管理會議的權限' }, 403);
 
     if (printMatch && method === 'GET') {
@@ -162,24 +201,31 @@ export async function handleMeetingRequest(request, env, deps) {
     if (path === '/api/meetings' && method === 'GET') {
         const list = (await meetingStore(env, '/list', {})).body.filter(meeting => canSeeMeeting(meeting, viewer));
         return json({
-            meetings: list.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)).map(meeting => meetingView(meeting, viewer)),
+            meetings: await Promise.all(list.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)).map(present)),
             me: { officer: actor.officer, president: actor.president, memberId: actor.memberId, voting: member ? membershipStatus(member).voting : false, name: member?.name || '' },
             options: { types: Object.fromEntries(Object.entries(MEETING_TYPES).map(([key, value]) => [key, value.label])), kinds: AGENDA_KINDS, thresholds: Object.fromEntries(Object.entries(THRESHOLDS).map(([key, value]) => [key, value.label])), statuses: MEETING_STATUSES },
             roster: actor.officer ? members.map(entry => ({ id: entry.id, name: entry.name, studentId: entry.studentId, voting: membershipStatus(entry).voting })) : [],
+            // Titles only (no figures): what the agenda editor needs to attach a submitted report.
+            financeReports: actor.officer ? (await listReports(env)).filter(item => item.status !== 'draft').map(item => ({ id: item.id, title: item.title, version: item.version, status: item.status, statusLabel: REPORT_STATUSES[item.status] })) : [],
             ai: Boolean(aiProvider(env))
         });
     }
     if (path === '/api/meetings' && method === 'POST') {
         if (!actor.officer) return officerOnly();
         const body = await deps.readJsonLimited(request, 128 * 1024);
-        const created = await meetingStore(env, '/create', { fields: body, actor });
-        return json(created.status === 201 ? meetingView(created.body, viewer) : created.body, created.status);
+        const created = await meetingStore(env, '/create', { fields: await withAttachments(body), actor });
+        return json(created.status === 201 ? await present(created.body) : created.body, created.status);
     }
 
     const match = /^\/api\/meetings\/([\w-]{1,80})(?:\/(status|attendance|minutes|ai-notice|ai-minutes)|\/agenda\/([\w-]{1,80})\/(notes|vote|ballot))?$/.exec(path);
     if (!match) return json({ error: 'Not Found' }, 404);
     const [, id, action, itemId, itemAction] = match;
-    const reply = result => json(result.status === 200 ? meetingView(result.body, viewer) : result.body, result.status);
+    // A vote that has just closed on an attached report decides that report (idempotent; also retried when the meeting is read).
+    const reply = async result => {
+        if (result.status !== 200) return json(result.body, result.status);
+        try { await syncReportDecisions(env, result.body); } catch (error) { console.error('Report decision sync failed', error?.message || String(error)); }
+        return json(await present(result.body), 200);
+    };
     const op = (name, payload) => meetingStore(env, '/op', { id, op: name, actor, ...payload });
 
     if (!action && !itemAction) {
@@ -189,7 +235,10 @@ export async function handleMeetingRequest(request, env, deps) {
             return reply(found);
         }
         if (!actor.officer) return officerOnly();
-        if (method === 'PATCH') return reply(await op('update', { fields: await deps.readJsonLimited(request, 128 * 1024) }));
+        if (method === 'PATCH') {
+            const existing = await meetingStore(env, '/get', { id });
+            return reply(await op('update', { fields: await withAttachments(await deps.readJsonLimited(request, 128 * 1024), existing.body?.agenda || []) }));
+        }
         if (method === 'DELETE') { const result = await meetingStore(env, '/delete', { id, actor }); return json(result.body, result.status); }
         return json({ error: '方法不允許' }, 405);
     }
@@ -205,7 +254,7 @@ export async function handleMeetingRequest(request, env, deps) {
             if (body.remove) return reply(await op('attend', { remove: true, memberId: String(body.memberId) }));
             const target = members.find(entry => entry.id === body.memberId);
             if (!target) return json({ error: '找不到社員' }, 404);
-            return reply(await op('attend', { attendee: attendeeFor(target), byOfficer: true }));
+            return reply(await op('attend', { attendee: attendeeFor(target), byOfficer: true, committeeRoster: await liveCommittee(id) }));
         }
         return reply(await op('attend', { attendee: member ? attendeeFor(member) : null, code: body?.code }));
     }
@@ -214,8 +263,10 @@ export async function handleMeetingRequest(request, env, deps) {
     if (action === 'status') {
         const found = await meetingStore(env, '/get', { id });
         if (found.status !== 200) return json(found.body, found.status);
-        const total = body?.totalMembers !== undefined && body.totalMembers !== '' ? body.totalMembers : await defaultTotal(env, found.body.type);
-        return reply(await op('status', { status: String(body?.status || ''), totalMembers: total }));
+        const opening = String(body?.status || '') === 'open' && found.body.type === 'committee' && !Array.isArray(found.body.committeeRoster);
+        const committee = opening || found.body.type === 'committee' ? await currentCommittee(env) : null;
+        const total = body?.totalMembers !== undefined && body.totalMembers !== '' ? body.totalMembers : await defaultTotal(env, found.body.type, committee);
+        return reply(await op('status', { status: String(body?.status || ''), totalMembers: total, ...(opening && committee ? { committeeRoster: committee } : {}) }));
     }
     if (itemAction === 'notes') return reply(await op('notes', { itemId, notes: body?.notes, resolution: body?.resolution }));
     if (itemAction === 'vote') return reply(await op('vote', { itemId, action: body?.action, agree: body?.agree, oppose: body?.oppose, abstain: body?.abstain, attendance: body?.attendance }));

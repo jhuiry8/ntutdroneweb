@@ -764,6 +764,8 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
 
         <script src="/admin.js"></script>
         <script src="/admin-forms.js" defer></script>
+        <script src="/finance-report-view.js" defer></script>
+        <script src="/admin-reports.js" defer></script>
         <script src="/admin-meetings.js" defer></script>
         <script src="/vendor/qrcode-generator-1.4.4.js" defer></script>
         <script src="/admin-classes.js" defer></script>

@@ -20,7 +20,7 @@ const KV_BULK_SIZE = 100;
 // Fixed KV keys: everything in kv-keys.js plus the CMS/login keys defined elsewhere.
 const EXTRA_KEYS = ['posts_list', 'pages_list', 'homepage_content', 'admin_password_hash', PUSH_SETTINGS_KEY];
 // KV prefixes copied whole (accounts, posts, custom pages). session:* is not among them.
-const KV_PREFIXES = ['user:', 'post:', 'page:'];
+const KV_PREFIXES = ['user:', 'post:', 'page:', 'finance:report:'];
 
 // [binding, Durable Object name used by its routes]
 export const DURABLE_OBJECTS = [

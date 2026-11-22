@@ -36,3 +36,23 @@ export async function otherPresidents(env, except) {
     return users.filter(item => access[item.username]?.realPresident || (item.username === 'admin'));
 }
 export { positionCatalog, LEGACY_ROLE_PERMISSIONS };
+
+// 本屆法規監察委員（含主任委員）from the positions and the roster, as the committee meeting needs them:
+// who may attend and vote, and who is also 總務 (章程第十二條第四款: cannot vote on the books they handle).
+export async function currentCommittee(env) {
+    if (!env.ORG_STORE) return null;
+    const { body } = await orgStoreRequest(env, 'position-holders', { positions: ['committee', 'committee_chair', 'treasurer'] });
+    const accounts = new Map((await listUsers(env)).filter(item => item.active !== false).map(item => [item.username, item]));
+    let members = [];
+    try { members = JSON.parse((await env.DRONE_DB.get('members:list')) || '[]'); } catch { /* no roster yet */ }
+    const names = new Map(members.map(item => [item.id, item.name]));
+    return body.holders.filter(holder => accounts.has(holder.username) && holder.positions.some(id => id === 'committee' || id === 'committee_chair')).map(holder => {
+        const account = accounts.get(holder.username);
+        return {
+            username: holder.username, memberId: account.memberId || '', name: names.get(account.memberId) || holder.username,
+            position: holder.positions.includes('committee_chair') ? 'committee_chair' : 'committee', treasurer: holder.positions.includes('treasurer')
+        };
+    }).sort((a, b) => a.username.localeCompare(b.username));
+}
+export const COMMITTEE_POSITIONS = ['committee', 'committee_chair'];
+export const isCommitteeMember = user => Boolean(user) && (user.positions || []).some(id => COMMITTEE_POSITIONS.includes(id));

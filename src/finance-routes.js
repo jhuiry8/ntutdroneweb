@@ -7,6 +7,7 @@ import { FINANCE_BUDGETS_KEY, FINANCE_TRANSACTIONS_KEY } from './kv-keys.js';
 
 // Everyone who touched an entry: whoever entered, reviewed or categorised it.
 export const handledBy = (transaction, username) => [transaction.createdBy, transaction.reviewedBy, transaction.budgetSetBy].includes(username);
+const receiptId = value => (/^[0-9a-f-]{36}$/.test(String(value ?? '')) ? String(value) : '');
 const FINANCE_VIEW = ['finance.view', 'finance.edit', 'finance.approve', 'finance.audit'];
 
 function transactionTotals(transactions) {
@@ -62,6 +63,7 @@ export async function handleFinanceRequest(request, env) {
             cashDelta: kind === 'transfer' ? (account === 'cash' ? -amount : amount) : (account === 'cash' ? (kind === 'income' ? amount : -amount) : 0),
             postalDelta: kind === 'transfer' ? (account === 'cash' ? amount : -amount) : (account === 'postal' ? (kind === 'income' ? amount : -amount) : 0),
             budgetId: typeof body.budgetId === 'string' ? body.budgetId : '', status: 'pending',
+            ...(receiptId(body.receiptFileId) ? { receiptFileId: receiptId(body.receiptFileId) } : {}),
             createdBy: user.username, createdAt: new Date().toISOString(), source: 'manual'
         };
         const transactions = parseStoredList(await env.DRONE_DB.get(FINANCE_TRANSACTIONS_KEY));
@@ -86,6 +88,22 @@ export async function handleFinanceRequest(request, env) {
         transaction.reviewedBy = user.username;
         transaction.reviewedAt = new Date().toISOString();
         transaction.reviewNote = status === 'rejected' ? financeText(body.note, '退回原因', 200) : '';
+        await env.DRONE_DB.put(FINANCE_TRANSACTIONS_KEY, JSON.stringify(transactions));
+        return Response.json(transaction);
+    }
+
+    // The receipt (收據) of an entry is a file in the file library; reports link to it.
+    if (/^\/api\/finance\/transactions\/[^/]+\/receipt$/.test(path) && method === 'PATCH') {
+        const user = await sessionUser(request, env);
+        if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+        if (!hasPermission(user, 'finance.edit')) return Response.json({ error: '權限不足' }, { status: 403 });
+        const body = await readJsonObject(request);
+        const fileId = receiptId(body.receiptFileId);
+        if (body.receiptFileId && !fileId) return Response.json({ error: '收據檔案編號無效' }, { status: 400 });
+        const transactions = parseStoredList(await env.DRONE_DB.get(FINANCE_TRANSACTIONS_KEY));
+        const transaction = transactions.find(item => item.id === path.split('/')[4]);
+        if (!transaction) return Response.json({ error: '帳目不存在' }, { status: 404 });
+        if (fileId) transaction.receiptFileId = fileId; else delete transaction.receiptFileId;
         await env.DRONE_DB.put(FINANCE_TRANSACTIONS_KEY, JSON.stringify(transactions));
         return Response.json(transaction);
     }

@@ -12,3 +12,6 @@ export const FORM_SETTINGS_KEY = 'forms:settings';
 export const DESKTOP_RELEASE_KEY = 'desktop:release';
 export const SITE_SETTINGS_KEY = 'site:settings';
 export const AI_REPORTS_KEY = 'ai:reports';
+// 學期財務報告（預算書、決算書）: the index lists every version; each version is its own `finance:report:<id>` record.
+export const FINANCE_REPORTS_KEY = 'finance:reports';
+export const FINANCE_REPORT_PREFIX = 'finance:report:';

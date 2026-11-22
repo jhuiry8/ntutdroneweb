@@ -4,6 +4,7 @@
 // thrown errors to HTTP responses.
 import { PasswordResetRequiredError } from './auth.js';
 import { OrgError } from './org.js';
+import { ReportError } from './finance-reports.js';
 import { RegulationRuleError } from './regulation-rules.js';
 import { FormValidationError, FormServiceError } from './forms.js';
 import { MeetingError } from './meetings.js';
@@ -36,6 +37,7 @@ import { equipmentStoreRequest } from './equipment-store.js';
 import { handleLoanRequest, remindOverdueLoans } from './loan-routes.js';
 import { handleFlightRequest, runCertReminders } from './flight-routes.js';
 import { handleOrgRequest } from './org-routes.js';
+import { handleFinanceReportRequest } from './finance-report-routes.js';
 export { EquipmentStore } from './equipment-store.js';
 export { FormStore } from './form-store.js';
 export { MeetingStore } from './meetings.js';
@@ -100,6 +102,7 @@ const ROUTES = [
     (request, env) => handleFlightRequest(request, env, aiDeps),
     handleCmsRequest,
     handleFinanceRequest,
+    handleFinanceReportRequest,
     handleFileRequest,
     handleDriveRequest,
     handleEquipmentRequest,
@@ -166,6 +169,7 @@ async function handleRequest(request, env, ctx) {
         if (e instanceof FormServiceError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof MeetingError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof FileError) return Response.json({ error: e.message }, { status: e.status });
+        if (e instanceof ReportError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof OrgError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof FlightError) return Response.json({ error: e.message }, { status: e.status });
         if (e instanceof MessageError) return Response.json({ error: e.message }, { status: e.status });
