@@ -336,9 +336,18 @@ async function changePassword(e) {
 
 let pendingAccountMember = '';
 async function loadUsers() {
-    const [res, membersRes] = await Promise.all([fetch('/api/users'), fetch('/api/members')]);
+    const [res, membersRes, orgRes] = await Promise.all([fetch('/api/users'), fetch('/api/members'), fetch('/api/org/overview').catch(() => null)]);
     if (!res.ok) return showToast('無法載入帳號', true);
     const users = await res.json();
+    // With the OrgStore, accounts have positions (職位) and individual permissions; the old four roles are only the fallback.
+    const positionList = orgRes && orgRes.ok ? ((await orgRes.json()).positions || []).filter(item => item.id !== 'member') : null;
+    const positionNames = Object.fromEntries((positionList || []).map(item => [item.id, item.name]));
+    const roleSelect = document.getElementById('account-role');
+    if (positionList && roleSelect && roleSelect.dataset.mode !== 'positions') {
+        roleSelect.dataset.mode = 'positions';
+        roleSelect.replaceChildren(new Option('社員（無職位）', ''), ...positionList.map(item => new Option(item.name + '（' + item.group + '）', item.id)));
+        const header = document.getElementById('users-role-header'); if (header) header.textContent = '職位';
+    }
     const members = membersRes.ok ? await membersRes.json() : [];
     const memberLabel = item => (item.name || '姓名待查') + '（' + (item.studentId || '無學號') + '）';
     const memberOptions = (select, current, owner) => {
@@ -356,7 +365,8 @@ async function loadUsers() {
     for (const user of users) {
         const tr = document.createElement('tr');
         const bound = user.member ? memberLabel(user.member) + '・' + user.member.status.levelLabel + '・' + user.member.status.feeLabel : '未綁定';
-        for (const value of [user.username, {president:'社長',finance:'財務',cadre:'一般幹部',member:'社員'}[user.role], user.active ? '啟用' : '停用', bound]) {
+        const positionText = (user.positions || []).map(id => positionNames[id] || id).join('、') || '社員';
+        for (const value of [user.username, positionList ? positionText : {president:'社長',finance:'財務',cadre:'一般幹部',member:'社員'}[user.role], user.active ? '啟用' : '停用', bound]) {
             const td = document.createElement('td'); td.textContent = value; tr.appendChild(td);
         }
         const td = document.createElement('td');
@@ -378,7 +388,9 @@ async function loadUsers() {
         toggle.onclick = () => { if (!user.active || confirm('確定停用帳號 ' + user.username + '？停用後對方會立即被登出。')) updateUser(user.username, { active: !user.active }); };
         const reset = document.createElement('button'); reset.className = 'btn btn-secondary'; reset.textContent = '重設密碼';
         reset.onclick = () => { const password = prompt('輸入新密碼（至少 8 位）'); if (password) updateUser(user.username, { password }); };
-        const roleLine = line(); role.style.flex = '1 1 120px'; roleLine.append(role, save, toggle, reset);
+        // Positions are edited in the cards below the table; the old role dropdown would overwrite them.
+        const roleLine = line(); role.style.flex = '1 1 120px';
+        if (positionList) roleLine.append(toggle, reset); else roleLine.append(role, save, toggle, reset);
         td.append(roleLine); tr.appendChild(td); tbody.appendChild(tr);
     }
 }
@@ -389,7 +401,10 @@ async function updateUser(username, changes) {
 }
 async function createUser(event) {
     event.preventDefault();
-    const body = { username: document.getElementById('account-username').value, password: document.getElementById('account-password').value, role: document.getElementById('account-role').value, memberId: document.getElementById('account-member')?.value || '' };
+    const roleSelect = document.getElementById('account-role');
+    const body = { username: document.getElementById('account-username').value, password: document.getElementById('account-password').value, memberId: document.getElementById('account-member')?.value || '' };
+    if (roleSelect.dataset.mode === 'positions') body.positions = roleSelect.value ? [roleSelect.value] : [];
+    else body.role = roleSelect.value;
     const res = await fetch('/api/users', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const data = await res.json(); showToast(res.ok ? '帳號已新增' : data.error, !res.ok);
     if (res.ok) { event.target.reset(); loadUsers(); }

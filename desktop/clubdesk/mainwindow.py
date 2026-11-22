@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QApplication, QDialog, QLabel, QMainWindow, QMenu
                                QStackedWidget, QSystemTrayIcon, QTreeWidget, QTreeWidgetItem)
 
 from . import __version__, autostart, saved_session
-from .api import (ApiClient, ApiError, access_of, can_manage_receipts, can_manage_users, can_view_cms,
+from .api import (ApiClient, ApiError, access_of, can_manage_events, can_manage_receipts, can_manage_users, can_view_cms,
                   can_view_equipment, can_view_finance, can_view_members, can_view_notes, can_view_reports, position_text)
 from . import i18n
 from .help import HelpWindow, WelcomeDialog
@@ -27,6 +27,7 @@ from .login import run_login, switch_language
 from .notifications import NotificationCenter, NotificationSettingsDialog, NotificationsPage, set_setting, setting
 from .pages.admin import AssistantPage, NotesPage, ReportsPage, UsersPage
 from .pages.equipment import EquipmentPage
+from .pages.events import EventsPage
 from .pages.finance import FinancePage
 from .pages.forms import FormsPage
 from .pages.meetings import MeetingsPage
@@ -48,7 +49,7 @@ def navigation(role) -> list:
         ("社團通訊", "messages", [(NotificationsPage, True), (AnnouncementsPage, True), (MessagesPage, True)]),
         ("網站管理", "site", [(PostsPage, cms), (PagesPage, cms), (HomepagePage, cms)]),
         ("社務管理", "members", [(MembersPage, can_view_members(role)), (FeeReceiptsPage, can_manage_receipts(role)),
-                             (MeetingsPage, True), (NotesPage, can_view_notes(role))]),
+                             (EventsPage, can_manage_events(role)), (MeetingsPage, True), (NotesPage, can_view_notes(role))]),
         ("文書作業", "forms", [(FormsPage, True)]),
         ("財務管理", "finance", [(FinancePage, can_view_finance(role))]),
         ("器材管理", "equipment", [(EquipmentPage, can_view_equipment(role))]),

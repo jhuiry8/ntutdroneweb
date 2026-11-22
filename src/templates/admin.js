@@ -745,8 +745,8 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     <select id="account-member" class="form-control" aria-label="綁定社員"><option value="">不綁定社員（之後可再綁定）</option></select>
                     <button class="btn btn-primary" type="submit">新增帳號</button>
                 </form>
-                <p style="color:var(--text-muted); font-size:.88rem; margin-bottom:12px;">每個帳號可綁定一位社員名冊資料，綁定後該帳號可在「系統設定」查看自己的身分、社費與表決權狀態。一位社員只能綁定一個帳號；刪除社員會自動解除綁定。變更綁定不會讓對方登出。</p>
-                <div class="table-container"><table><thead><tr><th>帳號</th><th>角色</th><th>狀態</th><th>綁定社員</th><th>操作</th></tr></thead><tbody id="users-list"></tbody></table></div>
+                <p style="color:var(--text-muted); font-size:.88rem; margin-bottom:12px;">每個帳號可綁定一位社員名冊資料，綁定後該帳號可在「系統設定」查看自己的身分、社費與表決權狀態。一位社員只能綁定一個帳號；刪除社員會自動解除綁定。變更綁定不會讓對方登出。要修改帳號的職位與細部權限，或新增、調整職位（身份組）的預設權限，請往下捲到「帳號的職位與個別權限」與「職位與預設權限」。</p>
+                <div class="table-container"><table><thead><tr><th>帳號</th><th id="users-role-header">角色</th><th>狀態</th><th>綁定社員</th><th>操作</th></tr></thead><tbody id="users-list"></tbody></table></div>
             </div>` : ''}
         </div>
 

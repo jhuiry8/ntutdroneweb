@@ -130,6 +130,10 @@ def can_view_equipment(role) -> bool:
     return has_any_permission(role, "equipment.view", "equipment.manage")
 
 
+def can_manage_events(role) -> bool:
+    return has_permission(role, "events.manage")
+
+
 def can_edit_notes(role) -> bool:
     return has_permission(role, "notes.manage")
 
@@ -394,6 +398,31 @@ class ApiClient:
 
     def update_equipment(self, asset_id: str, fields: dict) -> dict:
         return self.patch(f"/api/equipment/{quote(asset_id, safe='')}", fields)
+
+    # ---------------------------------------------------------------- events (活動報名)
+    def events(self) -> list:
+        return self.get("/api/events").get("events", [])
+
+    def create_event(self, fields: dict) -> dict:
+        return self.post("/api/events", fields)
+
+    def update_event(self, event_id: str, fields: dict) -> dict:
+        return self.patch(f"/api/events/{quote(event_id, safe='')}", fields)
+
+    def delete_event(self, event_id: str) -> dict:
+        return self.request("DELETE", f"/api/events/{quote(event_id, safe='')}")
+
+    def event_registrations(self, event_id: str) -> dict:
+        return self.get(f"/api/events/{quote(event_id, safe='')}/registrations")
+
+    def add_event_registration(self, event_id: str, person: dict) -> dict:
+        return self.post(f"/api/events/{quote(event_id, safe='')}/registrations", person)
+
+    def remove_event_registration(self, event_id: str, reg_id: str) -> dict:
+        return self.request("DELETE", f"/api/events/{quote(event_id, safe='')}/registrations/{quote(reg_id, safe='')}")
+
+    def set_event_registration_paid(self, event_id: str, reg_id: str, paid: bool) -> dict:
+        return self.patch(f"/api/events/{quote(event_id, safe='')}/registrations/{quote(reg_id, safe='')}", {"paid": paid})
 
     # ---------------------------------------------------------------- forms
     def forms(self, form_type: str = "") -> list:

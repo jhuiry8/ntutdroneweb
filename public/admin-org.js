@@ -301,6 +301,45 @@
             h('div', { class: 'org-group', text: '前台公開幹部頁面時，只會顯示您勾選公開的項目（姓名、職位、大頭照、自我介紹）；電話、學號、Email 等不會公開。' }), checks, save);
     }
 
+    // 社長／幹部名冊管理者 edit another officer's profile (same fields the officer sees under 「我的幹部資料」).
+    async function openProfileEditor(row, year) {
+        var data = await attempt(function () { return api('/api/officers/profile/' + encodeURIComponent(row.username)); });
+        if (!data) return;
+        var profile = data.profile || { fields: {}, visibility: {} };
+        var inputs = {};
+        var grid = h('div', { class: 'org-grid' });
+        Object.keys(data.fields).forEach(function (key) {
+            var multi = key === 'bio' || key === 'duties' || key === 'handover';
+            var input = multi
+                ? h('textarea', { class: 'form-control', rows: '3', maxlength: String(data.fields[key].max) })
+                : h('input', { class: 'form-control', maxlength: String(data.fields[key].max) });
+            input.value = profile.fields[key] || '';
+            inputs[key] = input;
+            grid.appendChild(field(data.fields[key].label + (data.publicFields.indexOf(key) !== -1 ? '（可公開）' : ''), input));
+        });
+        var visibility = {};
+        var checks = h('div', { class: 'org-checks org-row' });
+        [['name', '公開姓名'], ['photo', '公開大頭照'], ['bio', '公開自我介紹']].forEach(function (pair) {
+            var box = h('input', { type: 'checkbox' });
+            box.checked = !!(profile.visibility && profile.visibility[pair[0]] === true);
+            visibility[pair[0]] = box;
+            checks.appendChild(h('label', {}, box, h('span', { text: pair[1] })));
+        });
+        var save = h('button', { class: 'btn btn-primary', type: 'button', text: '儲存' });
+        var cancel = h('button', { class: 'btn btn-secondary', type: 'button', text: '取消' });
+        var card = h('div', { class: 'org-card' }, h('h2', { text: '編輯幹部資料：' + (row.displayName || row.username) + '（' + positionName(row.position) + '）' }),
+            grid, checks, h('div', { class: 'org-row' }, save, cancel));
+        cancel.addEventListener('click', function () { card.remove(); });
+        save.addEventListener('click', async function () {
+            var fields = {}; var vis = {};
+            Object.keys(inputs).forEach(function (key) { fields[key] = inputs[key].value; });
+            Object.keys(visibility).forEach(function (key) { vis[key] = visibility[key].checked; });
+            if (await attempt(function () { return api('/api/officers/profile/' + encodeURIComponent(row.username), 'PUT', { fields: fields, visibility: vis }); }, '已儲存')) loadOfficers(year);
+        });
+        officersPanel.insertBefore(card, officersPanel.children[1] || null);
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     function rosterCard(data) {
         var years = {};
         (data.terms || []).forEach(function (term) { years[term.year] = true; });
@@ -322,6 +361,9 @@
             });
             actions.appendChild(history);
             if (canChange && data.canManage !== false) {
+                var editProfile = h('button', { class: 'btn btn-secondary', type: 'button', text: '編輯資料' });
+                editProfile.addEventListener('click', function () { openProfileEditor(row, data.year); });
+                actions.appendChild(editProfile);
                 var end = h('button', { class: 'btn btn-secondary', type: 'button', text: '解任' });
                 end.addEventListener('click', async function () {
                     var date = prompt('解任生效日（YYYY-MM-DD，留空＝今天立即生效）', '');
