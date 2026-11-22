@@ -7,7 +7,7 @@
     var main = document.querySelector('.main-content');
     if (!nav || !main) return;
 
-    var state = { meetings: [], me: {}, options: { types: {}, kinds: {}, thresholds: {}, statuses: {} }, roster: [], ai: false, currentId: '', amendments: [] };
+    var state = { meetings: [], me: {}, options: { types: {}, kinds: {}, thresholds: {}, statuses: {} }, roster: [], ai: false, currentId: '', amendments: [], financeReports: [] };
     var timer = null;
 
     function esc(value) { return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -68,7 +68,7 @@
     async function load() {
         try {
             var data = await api('/api/meetings');
-            state.meetings = data.meetings; state.me = data.me; state.options = data.options; state.roster = data.roster; state.ai = data.ai;
+            state.financeReports = data.financeReports || []; state.meetings = data.meetings; state.me = data.me; state.options = data.options; state.roster = data.roster; state.ai = data.ai;
             if (state.me.officer && !state.amendments.length) {
                 try { state.amendments = (await api('/api/regulation-amendments')).filter(function (a) { return a.status === 'proposed'; }); } catch (e) { state.amendments = []; }
             }
@@ -133,13 +133,16 @@
     function agendaRow(item) {
         item = item || { kind: 'discussion', threshold: '', title: '', description: '', amendmentId: '' };
         var amendmentOptions = '<option value="">不連結修正案</option>' + state.amendments.map(function (a) { return '<option value="' + esc(a.id) + '"' + (a.id === item.amendmentId ? ' selected' : '') + '>修正案：' + esc(a.title) + '</option>'; }).join('');
+        var attached = item.financeReport && item.financeReport.id || '';
+        var reportOptions = '<option value="">選擇已送審的財務報告</option>' + state.financeReports.map(function (r) { return '<option value="' + esc(r.id) + '"' + (r.id === attached ? ' selected' : '') + '>' + esc(r.title + '（版本 ' + r.version + '・' + r.statusLabel + '）') + '</option>'; }).join('');
+        var reportSelect = '<select class="form-control mt-report" style="margin-top:8px;' + (item.kind === 'finance' ? '' : ' display:none;') + '" aria-label="附件財務報告">' + reportOptions + '</select>';
         return '<div class="mt-item mt-agenda" data-id="' + esc(item.id || '') + '"><div class="mt-agenda-row"><select class="form-control mt-kind" aria-label="議程類別">' + options(state.options.kinds, item.kind) + '</select><input class="form-control mt-title" maxlength="200" placeholder="案由，例如：115-1 學期社費調整案" value="' + esc(item.title) + '"><select class="form-control mt-threshold" aria-label="表決門檻"><option value="">依會議類型預設</option>' + options(state.options.thresholds, item.threshold) + '</select><button type="button" class="btn btn-danger mt-remove">刪除</button></div>' +
-            '<textarea class="form-control mt-desc" rows="2" maxlength="3000" placeholder="說明（選填）">' + esc(item.description) + '</textarea>' + (state.amendments.length ? '<select class="form-control mt-amendment" style="margin-top:8px;" aria-label="連結修正案">' + amendmentOptions + '</select>' : '') + '</div>';
+            '<textarea class="form-control mt-desc" rows="2" maxlength="3000" placeholder="說明（選填）">' + esc(item.description) + '</textarea>' + reportSelect + (state.amendments.length ? '<select class="form-control mt-amendment" style="margin-top:8px;" aria-label="連結修正案">' + amendmentOptions + '</select>' : '') + '</div>';
     }
     function readAgenda(container) {
         return Array.prototype.map.call(container.querySelectorAll('.mt-agenda'), function (row) {
-            var amendment = row.querySelector('.mt-amendment');
-            return { id: row.dataset.id || undefined, kind: row.querySelector('.mt-kind').value, title: row.querySelector('.mt-title').value, threshold: row.querySelector('.mt-threshold').value, description: row.querySelector('.mt-desc').value, amendmentId: amendment ? amendment.value : '' };
+            var amendment = row.querySelector('.mt-amendment'), report = row.querySelector('.mt-report');
+            return { financeReportId: report && row.querySelector('.mt-kind').value === 'finance' ? report.value : '', id: row.dataset.id || undefined, kind: row.querySelector('.mt-kind').value, title: row.querySelector('.mt-title').value, threshold: row.querySelector('.mt-threshold').value, description: row.querySelector('.mt-desc').value, amendmentId: amendment ? amendment.value : '' };
         });
     }
     function renderEditor(meeting, isTemplate) {
@@ -162,6 +165,11 @@
             '<h3 style="margin:16px 0 8px;">議程</h3><div id="mt-agenda">' + m.agenda.map(agendaRow).join('') + '</div><button type="button" class="btn btn-secondary" id="mt-add-item">新增議案</button>' +
             '<div class="mt-row" style="margin-top:16px;"><button type="submit" class="btn btn-primary">儲存</button></div></form>';
         var agenda = document.getElementById('mt-agenda');
+        agenda.addEventListener('change', function (event) {
+            if (!event.target.classList.contains('mt-kind')) return;
+            var select = event.target.closest('.mt-agenda').querySelector('.mt-report');
+            if (select) select.style.display = event.target.value === 'finance' ? '' : 'none';
+        });
         function bindRemove() { agenda.querySelectorAll('.mt-remove').forEach(function (button) { button.onclick = function () { button.closest('.mt-agenda').remove(); }; }); }
         bindRemove();
         document.getElementById('mt-add-item').onclick = function () { agenda.insertAdjacentHTML('beforeend', agendaRow(null)); bindRemove(); };
@@ -255,10 +263,13 @@
             if (m.checkedIn) html += '<p class="mt-pass" style="margin-top:8px;">✅ 您已簽到</p>';
             else if (state.me.memberId && (m.type === 'assembly' || m.type === 'extraordinary' || officer)) html += '<div class="mt-row">' + (m.requiresCode && !officer ? '<input id="mt-code" class="form-control" style="max-width:200px;" maxlength="12" placeholder="現場簽到碼">' : '') + '<button type="button" class="btn btn-primary" id="mt-checkin">我要簽到</button>' + (!state.me.voting && (m.type === 'assembly' || m.type === 'extraordinary') ? '<span class="mt-muted">（您目前不具表決權，簽到後列為列席）</span>' : '') + '</div>';
             else if (!state.me.memberId) html += '<p class="mt-muted" style="margin-top:8px;">您的帳號尚未綁定社員資料，無法線上簽到與投票；請聯絡社長綁定。</p>';
-            if (officer) html += '<div class="mt-row"><select id="mt-attendee" class="form-control" style="max-width:320px;" aria-label="登記出席社員"><option value="">選擇社員登記出席（現場簽到）</option>' + state.roster.filter(function (r) { return !m.attendance.some(function (a) { return a.memberId === r.id; }); }).map(function (r) { return '<option value="' + esc(r.id) + '">' + esc((r.name || '（未填姓名）') + (r.studentId ? '（' + r.studentId + '）' : '') + (r.voting ? '' : '・無表決權')) + '</option>'; }).join('') + '</select><button type="button" class="btn btn-secondary" id="mt-add-attendee">登記出席</button></div>';
+            if (officer) html += '<div class="mt-row"><select id="mt-attendee" class="form-control" style="max-width:320px;" aria-label="登記出席社員"><option value="">選擇社員登記出席（現場簽到）</option>' + state.roster.filter(function (r) { return (!m.committeeRoster || m.committeeRoster.some(function (c) { return c.memberId === r.id; })) && !m.attendance.some(function (a) { return a.memberId === r.id; }); }).map(function (r) { return '<option value="' + esc(r.id) + '">' + esc((r.name || '（未填姓名）') + (r.studentId ? '（' + r.studentId + '）' : '') + (r.voting ? '' : '・無表決權')) + '</option>'; }).join('') + '</select><button type="button" class="btn btn-secondary" id="mt-add-attendee">登記出席</button></div>';
         }
         if (officer && m.attendance.length) html += '<details style="margin-top:10px;"><summary style="cursor:pointer;">簽到名單（' + m.attendance.length + ' 人）</summary><div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">' + m.attendance.map(function (a) { return '<span class="mt-stat" style="padding:4px 10px;">' + esc(a.name) + (a.voting ? '' : '（列席）') + (a.by === 'guest' ? '<small class="mt-muted">・學號簽到 ' + esc(a.ip || '') + '</small>' : '') + (m.status === 'open' ? ' <button type="button" class="btn btn-danger" style="padding:0 6px; font-size:.75rem;" data-remove="' + esc(a.memberId) + '">×</button>' : '') + '</span>'; }).join('') + '</div></details>';
         html += '</div>';
+
+        // 本屆委員 (frozen when the meeting opened): only they register and vote
+        if (m.committeeRoster && m.committeeRoster.length) html += '<p class="mt-muted" style="margin-top:8px;">本屆委員（' + m.committeeRoster.length + ' 人，開會時固定）：' + esc(m.committeeRoster.map(function (c) { return c.name + (c.memberId ? '' : '（未綁定社員，無法登記出席與投票）'); }).join('、')) + '</p>';
 
         // Agenda
         html += '<h2 style="font-size:1.1rem; margin:18px 0 10px;">議程</h2>' + (m.agenda.length ? '' : '<p class="mt-muted">尚無議程。</p>');
@@ -266,6 +277,7 @@
             html += '<div class="mt-item"><p class="mt-muted">' + esc((state.options.kinds[item.kind] || '') + '・第 ' + (index + 1) + ' 案・' + item.thresholdLabel) + '</p><h3 style="margin:4px 0 6px;">' + esc(item.title) + '</h3>' + (item.description ? '<p style="white-space:pre-wrap; line-height:1.7;">' + esc(item.description) + '</p>' : '') + voteBlock(m, item);
             if (officer && !(m.minutes && m.minutes.finalizedAt) && m.status !== 'draft') html += '<label class="mt-field" style="margin-top:10px;">現場紀錄（關鍵字即可，AI 會整理成會議紀錄）<textarea class="form-control" rows="2" maxlength="5000" data-notes="' + esc(item.id) + '" placeholder="例如：小明贊成調漲、擔心新生負擔、建議分期">' + esc(item.notes || '') + '</textarea></label><label class="mt-field" style="margin-top:6px;">決議<input class="form-control" maxlength="2000" data-resolution="' + esc(item.id) + '" value="' + esc(item.resolution || '') + '" placeholder="表決後自動帶入，可修改"></label>';
             else if (item.resolution && m.status === 'closed') html += '<p style="margin-top:8px;"><strong>決議：</strong>' + esc(item.resolution) + '</p>';
+            html += reportBlock(item, m);
             html += '</div>';
         });
 
@@ -293,9 +305,39 @@
         toast('已填入文章編輯器，請填寫網址代稱後儲存');
     }
 
+    // A finance report attached to an agenda item: its status, who steps aside, and (for people who may read it) the full content.
+    function reportBlock(item, m) {
+        var out = '';
+        if (item.recused) out += '<p class="mt-fail" style="margin-top:8px;">⚠ 利益迴避：本案您不能投票，也不計入本案出席與同意人數。</p>';
+        else if (item.recusal && item.recusal.length) out += '<p class="mt-muted" style="margin-top:8px;">利益迴避：' + esc(item.recusal.map(function (r) { return r.name + '（' + r.reason + '）'; }).join('、')) + '，不計入本案出席與同意人數。</p>';
+        var report = item.financeReport;
+        if (!report) return out;
+        out += '<div class="mt-card" style="margin-top:10px;"><h3 style="margin:0 0 6px;">附件：' + esc(report.title) + '（版本 ' + esc(report.version) + '）' + (report.statusLabel ? ' ' + badge(report.statusLabel, report.status === 'approved' ? '#34d399' : report.status === 'returned' ? '#f87171' : '#60a5fa') : '') + '</h3>';
+        if (report.missing) out += '<p class="mt-muted">找不到這份報告。</p>';
+        else if (report.detail && typeof FinanceReportView !== 'undefined') {
+            if (report.detail.changed) out += '<p style="color:#fbbf24;">帳目在送審後已變動；本案審核的是送審當時的固定版本。</p>';
+            out += '<details open><summary style="cursor:pointer;">財務報告內容與質詢</summary><div class="fr-host" data-report="' + esc(report.id) + '" data-item="' + esc(item.id) + '">' + FinanceReportView.render({ snapshot: report.detail.snapshot, version: report.version }, { comments: report.detail.comments, canComment: report.detail.canComment, canReply: report.detail.canReply }) + '</div></details>';
+        } else out += '<p class="mt-muted">財務報告的內容只提供給法規監察委員與財務幹部查看。</p>';
+        return out + '</div>';
+    }
+
     function bindDetail(m) {
         var $ = function (id) { return document.getElementById(id); };
         var on = function (id, handler) { var node = $(id); if (node) node.onclick = handler; };
+        document.querySelectorAll('.fr-host').forEach(function (host) {
+            host.querySelectorAll('.fr-ask').forEach(function (button) {
+                button.onclick = async function () {
+                    var text = prompt(button.dataset.tx ? '對這筆交易的質詢或意見' : '對整份報告的意見'); if (!text) return;
+                    try { await api('/api/finance/reports/' + host.dataset.report + '/comments', 'POST', { transactionId: button.dataset.tx || undefined, text: text }); toast('已送出'); var fresh = await api('/api/meetings/' + m.id); replaceMeeting(fresh); renderDetail(fresh); } catch (error) { toast(error.message, true); }
+                };
+            });
+            host.querySelectorAll('.fr-reply').forEach(function (button) {
+                button.onclick = async function () {
+                    var text = prompt('回覆委員的質詢'); if (!text) return;
+                    try { await api('/api/finance/reports/' + host.dataset.report + '/comments/' + button.dataset.comment + '/reply', 'POST', { text: text }); toast('已回覆'); var fresh = await api('/api/meetings/' + m.id); replaceMeeting(fresh); renderDetail(fresh); } catch (error) { toast(error.message, true); }
+                };
+            });
+        });
         on('mt-edit', function () { renderEditor(m); });
         on('mt-copy-link', function () { var link = location.origin + '/meeting/' + m.id; if (navigator.clipboard) navigator.clipboard.writeText(link).then(function () { toast('已複製，可以貼到社團群組'); }); });
         on('mt-delete', async function () { if (!confirm('確定刪除這場會議？')) return; try { await api(base(), 'DELETE'); state.meetings = state.meetings.filter(function (x) { return x.id !== m.id; }); state.currentId = ''; render(); } catch (error) { toast(error.message, true); } });

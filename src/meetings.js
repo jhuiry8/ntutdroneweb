@@ -18,7 +18,7 @@ export const MEETING_TYPES = {
     committee: { label: '法規監察委員會會議', assembly: false, threshold: 'committee' }
 };
 export const MEETING_STATUSES = { draft: '籌備中', announced: '已公告', open: '開會中', closed: '已散會' };
-export const AGENDA_KINDS = { report: '報告事項', discussion: '討論事項', election: '選舉', motion: '臨時動議' };
+export const AGENDA_KINDS = { report: '報告事項', discussion: '討論事項', election: '選舉', motion: '臨時動議', finance: '財務審核' };
 export const THRESHOLDS = {
     none: { label: '不表決' },
     ordinary: { label: '一般決議（社員總額 1/3 出席、出席 1/2 同意）', basis: '章程第十條第三款' },
@@ -78,11 +78,52 @@ export function voteRequirement(threshold, total, attendance) {
 export function voteResult(threshold, { total, attendance, agree, oppose = 0, abstain = 0 }) {
     const need = voteRequirement(threshold, total, attendance);
     if (!need) return null;
-    const base = { total, attendance, agree, oppose, abstain, needAttendance: need.attendance, needAgree: need.agree, basis: THRESHOLDS[threshold].basis };
-    if (attendance < need.attendance) return { ...base, passed: false, reason: `出席 ${attendance} 人，未達法定 ${need.attendance} 人，不得作成決議` };
+    const base = { total, attendance, agree, oppose, abstain, needAttendance: need.attendance, needAgree: need.agree, basis: THRESHOLDS[threshold].basis, established: true };
+    if (attendance < need.attendance) return { ...base, established: false, passed: false, reason: `出席 ${attendance} 人，未達法定 ${need.attendance} 人，不得作成決議` };
     if (agree < need.agree) return { ...base, passed: false, reason: `同意 ${agree} 票，未達 ${need.agree} 票` };
     if (need.tieFails && agree <= oppose) return { ...base, passed: false, reason: '可否同數，不通過' };
     return { ...base, passed: true, reason: `同意 ${agree} 票，達 ${need.agree} 票門檻，通過` };
+}
+
+// The attached 財務報告 as the route looked it up (never taken from the browser): which version, and who handled its entries.
+function cleanFinanceReport(value) {
+    if (!value || !/^[0-9a-f-]{36}$/.test(String(value.id || ''))) return null;
+    const handlers = (Array.isArray(value.handlers) ? value.handlers : []).map(name => String(name).slice(0, 50)).slice(0, 200);
+    return { id: value.id, version: Number(value.version) || 1, semester: String(value.semester || '').slice(0, 10), kind: String(value.kind || '').slice(0, 20), title: String(value.title || '').slice(0, 120), contentHash: String(value.contentHash || '').slice(0, 64), handlers };
+}
+
+// 利益迴避 (章程第十二條第三款、第四款): committee members who are also 總務, or who handled entries in the attached report,
+// do not vote on it and do not count in its attendance and agreement. Uses the committee list frozen when the meeting opened.
+export function recusedFor(meeting, item) {
+    if (meeting.type !== 'committee' || !item?.financeReport || !Array.isArray(meeting.committeeRoster)) return [];
+    const handlers = new Set(item.financeReport.handlers || []);
+    return meeting.committeeRoster.flatMap(entry => {
+        const reasons = [];
+        if (entry.treasurer) reasons.push('兼任總務');
+        if (handlers.has(entry.username)) reasons.push('經手報告中的帳目');
+        return reasons.length ? [{ memberId: entry.memberId, username: entry.username, name: entry.name, reason: reasons.join('、') }] : [];
+    });
+}
+// Electorate and attendance for one agenda item, without the recused members.
+export function itemElectorate(meeting, item) {
+    const recused = recusedFor(meeting, item);
+    if (!recused.length) return { total: meeting.totalMembers || 0, attendance: countedAttendance(meeting), recused };
+    const ids = new Set(recused.map(entry => entry.memberId));
+    return { total: Math.max((meeting.totalMembers || 0) - recused.length, 0), attendance: meeting.attendance.filter(entry => !ids.has(entry.memberId)).length, recused };
+}
+function recusalNote(recused) {
+    return `利益迴避：${recused.map(entry => `${entry.name}（${entry.reason}）`).join('、')}，不計入本案出席與同意人數，也不得投票。`;
+}
+// Finishes a vote result for an item: recusal is written into the result and the notes (the minutes), and a result
+// that is short of attendance because of recusal is "不成立".
+function sealResult(item, result, recused) {
+    if (!recused.length) return result;
+    const sealed = { ...result, recused: recused.map(entry => ({ memberId: entry.memberId, name: entry.name, reason: entry.reason })) };
+    if (!sealed.established || sealed.total <= 0) { sealed.established = false; sealed.passed = false; sealed.reason = `表決不成立：${sealed.reason}（${recused.length} 位委員迴避，不計入出席與同意人數）`; }
+    else sealed.reason = `${sealed.reason}（${recused.length} 位委員迴避，不計入出席與同意人數）`;
+    const line = recusalNote(recused);
+    if (!String(item.notes || '').includes(line)) item.notes = [item.notes, line].filter(Boolean).join('\n');
+    return sealed;
 }
 
 function normalizeAgenda(items, type, previous = []) {
@@ -91,7 +132,10 @@ function normalizeAgenda(items, type, previous = []) {
     return items.map((item, index) => {
         const old = previous.find(entry => entry.id === item?.id);
         const kind = AGENDA_KINDS[item?.kind] ? item.kind : 'discussion';
-        const threshold = THRESHOLDS[item?.threshold] ? item.threshold : (kind === 'report' ? 'none' : MEETING_TYPES[type].threshold);
+        // A finance review in an officers' meeting is for reporting unless the chair asks for a vote.
+        const threshold = THRESHOLDS[item?.threshold] ? item.threshold : (kind === 'report' || (kind === 'finance' && type === 'officers') ? 'none' : MEETING_TYPES[type].threshold);
+        const financeReport = kind === 'finance' ? cleanFinanceReport(item?.financeReport) : null;
+        if (old && old.vote.state !== 'none' && (old.financeReport?.id || '') !== (financeReport?.id || '')) throw new MeetingError(`第 ${index + 1} 案已開始表決，不能更換附件的財務報告`);
         if (old && old.vote.state !== 'none' && old.threshold !== threshold) throw new MeetingError(`第 ${index + 1} 案已開始表決，不能更改表決門檻`);
         return {
             id: old?.id || newId(),
@@ -99,6 +143,7 @@ function normalizeAgenda(items, type, previous = []) {
             description: text(item?.description, `第 ${index + 1} 案說明`, 3000),
             kind, threshold,
             amendmentId: /^[\w-]{1,80}$/.test(String(item?.amendmentId || '')) ? item.amendmentId : '',
+            financeReport,
             notes: old ? old.notes : text(item?.notes, `第 ${index + 1} 案紀錄`, 5000),
             resolution: old ? old.resolution : '',
             vote: old?.vote || { state: 'none', agree: 0, oppose: 0, abstain: 0, voters: [], result: null, source: '' }
@@ -170,6 +215,12 @@ export function applyMeetingOp(meeting, op, payload, actor, now) {
         if (next === 'open' && meeting.totalMembers === null) meeting.totalMembers = count(payload.totalMembers ?? 0, '應出席人數');
         // Guest check-in always needs an on-site code; create one if the chair did not set it.
         if (next === 'open' && meeting.guestAccess && !meeting.checkInCode) meeting.checkInCode = randomCode();
+        // The 本屆委員 are frozen when a committee meeting opens, so who may vote (and who must step aside) cannot change mid-meeting.
+        if (next === 'open' && meeting.type === 'committee' && !Array.isArray(meeting.committeeRoster) && Array.isArray(payload.committeeRoster)) {
+            meeting.committeeRoster = payload.committeeRoster.slice(0, 50).map(entry => ({ username: String(entry.username || '').slice(0, 50), memberId: String(entry.memberId || '').slice(0, 80), name: String(entry.name || '').slice(0, 50), position: String(entry.position || '').slice(0, 30), treasurer: entry.treasurer === true }));
+            // Anyone registered before the roster was fixed who is not a committee member does not count.
+            meeting.attendance = meeting.attendance.filter(entry => meeting.committeeRoster.some(member => member.memberId && member.memberId === entry.memberId));
+        }
         meeting.status = next;
         meeting[`${next}At`] = now;
         return meeting;
@@ -189,6 +240,8 @@ export function applyMeetingOp(meeting, op, payload, actor, now) {
             if (meeting.checkInCode && String(payload.code || '').trim().toUpperCase() !== meeting.checkInCode) throw new MeetingError('簽到碼錯誤，請向主席確認現場公布的簽到碼');
             if (!MEETING_TYPES[meeting.type].assembly) throw new MeetingError('幹部會議與委員會議由主席登記出席');
         }
+        const eligible = meeting.committeeRoster || payload.committeeRoster;
+        if (meeting.type === 'committee' && Array.isArray(eligible) && !eligible.some(entry => entry.memberId && entry.memberId === attendee.memberId)) throw new MeetingError('只有本屆委員可以登記出席', 403);
         if (meeting.attendance.some(entry => entry.memberId === attendee.memberId)) throw new MeetingError('已經簽到過了', 409);
         if (meeting.attendance.length >= MAX_ATTENDEES) throw new MeetingError('簽到人數已達上限');
         meeting.attendance.push({ memberId: attendee.memberId, name: text(attendee.name, '姓名', 50) || '（未填姓名）', voting: attendee.voting === true, at: now, by: actor.officer && payload.byOfficer ? actor.username : 'self' });
@@ -238,16 +291,18 @@ export function applyMeetingOp(meeting, op, payload, actor, now) {
             if (item.vote.state !== 'open') throw new MeetingError('此議案沒有進行中的投票');
             item.vote.state = 'closed';
             item.vote.closedAt = now;
-            item.vote.result = voteResult(item.threshold, { total: meeting.totalMembers || 0, attendance: countedAttendance(meeting), agree: item.vote.agree, oppose: item.vote.oppose, abstain: item.vote.abstain });
+            const electorate = itemElectorate(meeting, item);
+            item.vote.result = sealResult(item, voteResult(item.threshold, { total: electorate.total, attendance: electorate.attendance, agree: item.vote.agree, oppose: item.vote.oppose, abstain: item.vote.abstain }), electorate.recused);
             if (!item.resolution) item.resolution = item.vote.result.passed ? '照案通過。' : `未通過（${item.vote.result.reason}）。`;
             return meeting;
         }
         if (action === 'manual') {
             if (item.vote.state === 'open') throw new MeetingError('請先結束線上投票');
             const tally = { agree: count(payload.agree, '同意票'), oppose: count(payload.oppose, '反對票'), abstain: count(payload.abstain, '棄權票') };
-            const attendance = payload.attendance === undefined || payload.attendance === '' ? countedAttendance(meeting) : count(payload.attendance, '出席人數');
+            const electorate = itemElectorate(meeting, item);
+            const attendance = payload.attendance === undefined || payload.attendance === '' ? electorate.attendance : count(payload.attendance, '出席人數');
             if (tally.agree + tally.oppose + tally.abstain > attendance) throw new MeetingError('票數合計不可超過出席人數');
-            item.vote = { state: 'closed', ...tally, voters: [], source: 'manual', closedAt: now, round: (item.vote.round || 0) + 1, result: voteResult(item.threshold, { total: meeting.totalMembers || 0, attendance, ...tally }) };
+            item.vote = { state: 'closed', ...tally, voters: [], source: 'manual', closedAt: now, round: (item.vote.round || 0) + 1, result: sealResult(item, voteResult(item.threshold, { total: electorate.total, attendance, ...tally }), electorate.recused) };
             item.resolution = item.vote.result.passed ? '照案通過。' : `未通過（${item.vote.result.reason}）。`;
             return meeting;
         }
@@ -259,6 +314,8 @@ export function applyMeetingOp(meeting, op, payload, actor, now) {
         if (item.vote.state !== 'open') throw new MeetingError('此議案目前沒有開放投票');
         const attendee = meeting.attendance.find(entry => entry.memberId === actor.memberId);
         if (!actor.memberId || !attendee) throw new MeetingError('請先簽到才能投票', 403);
+        if (meeting.type === 'committee' && Array.isArray(meeting.committeeRoster) && !meeting.committeeRoster.some(entry => entry.memberId === actor.memberId)) throw new MeetingError('只有本屆委員可以投票', 403);
+        if (recusedFor(meeting, item).some(entry => entry.memberId === actor.memberId)) throw new MeetingError('利益迴避：您不能對本案投票（兼任總務或經手報告中的帳目）', 403);
         if (MEETING_TYPES[meeting.type].assembly && !attendee.voting) throw new MeetingError('您目前不具表決權（依社員分級細則，需為已繳費正式社員或正式幹部）', 403);
         if (item.vote.voters.includes(actor.memberId)) throw new MeetingError('您已經投過票了', 409);
         if (!['agree', 'oppose', 'abstain'].includes(payload.choice)) throw new MeetingError('請選擇同意、反對或棄權');
@@ -299,14 +356,21 @@ export function meetingView(meeting, viewer) {
         counted: countedAttendance(meeting),
         attendanceCount: attendance.length,
         checkedIn: Boolean(viewer.memberId && attendance.some(entry => entry.memberId === viewer.memberId)),
-        canVote: Boolean(viewer.memberId && attendance.some(entry => entry.memberId === viewer.memberId && (entry.voting || !MEETING_TYPES[meeting.type].assembly))),
+        canVote: Boolean(viewer.memberId && attendance.some(entry => entry.memberId === viewer.memberId && (entry.voting || !MEETING_TYPES[meeting.type].assembly))
+            && !(meeting.type === 'committee' && Array.isArray(meeting.committeeRoster) && !meeting.committeeRoster.some(member => member.memberId === viewer.memberId))),
         attendance: viewer.officer ? attendance : [],
         requiresCode: Boolean(meeting.checkInCode),
         agenda: meeting.agenda.map(item => {
             const { voters, ...vote } = item.vote;
             const live = vote.state === 'open';
+            const recused = recusedFor(meeting, item);
+            const { financeReport, ...itemRest } = item;
             return {
-                ...item,
+                ...itemRest,
+                // Who handled the entries stays on the server; the page only needs to know which report is attached.
+                financeReport: financeReport ? { id: financeReport.id, version: financeReport.version, semester: financeReport.semester, kind: financeReport.kind, title: financeReport.title } : null,
+                recusal: viewer.officer || viewer.committee ? recused.map(entry => ({ name: entry.name, reason: entry.reason })) : [],
+                recused: Boolean(viewer.memberId && recused.some(entry => entry.memberId === viewer.memberId)),
                 thresholdLabel: THRESHOLDS[item.threshold].label,
                 // Running totals are hidden while a vote is open so they cannot sway it.
                 vote: live ? { state: 'open', round: vote.round, openedAt: vote.openedAt, ballots: voters.length } : { ...vote, ballots: voters.length },
@@ -314,6 +378,7 @@ export function meetingView(meeting, viewer) {
             };
         })
     };
+    if (!viewer.officer && !viewer.committee) delete view.committeeRoster;
     if (!viewer.officer) {
         delete view.checkInCode;
         if (!meeting.minutes.finalizedAt) view.minutes = { content: '', finalizedAt: '' };
@@ -347,12 +412,15 @@ export function minutesFacts(meeting) {
         時間: `${meeting.date}${meeting.time ? ` ${meeting.time}` : ''}`,
         地點: [meeting.location, meeting.onlineUrl ? '線上同步' : ''].filter(Boolean).join('／') || '（未填）',
         召集人: meeting.convener || '（未填）', 主席: meeting.chair || '（未填）', 紀錄: meeting.recorder || '（未填）',
+        ...(Array.isArray(meeting.committeeRoster) ? { 本屆委員: meeting.committeeRoster.map(entry => entry.name) } : {}),
         應出席人數: meeting.totalMembers, 實到人數: meeting.attendance.length,
         計入法定人數: countedAttendance(meeting),
         出席名單: meeting.attendance.map(entry => entry.name).slice(0, 200),
         會議重點: meeting.keywords,
         議程: meeting.agenda.map((item, index) => ({
             序號: index + 1, 類別: AGENDA_KINDS[item.kind], 案由: item.title, 說明: item.description, 現場紀錄關鍵字: item.notes,
+            ...(item.financeReport ? { 附件財務報告: `${item.financeReport.title}（版本 ${item.financeReport.version}）` } : {}),
+            ...(recusedFor(meeting, item).length ? { 利益迴避: recusedFor(meeting, item).map(entry => `${entry.name}（${entry.reason}）`) } : {}),
             表決方式: THRESHOLDS[item.threshold].label,
             表決結果: item.vote.result ? { 同意: item.vote.agree, 反對: item.vote.oppose, 棄權: item.vote.abstain, 結果: item.vote.result.reason, 依據: item.vote.result.basis } : '未表決',
             決議: item.resolution

@@ -279,7 +279,7 @@ export async function messageOp(storage, op, payload, now = new Date().toISOStri
     }
 
     if (op === 'create-channel' || op === 'update-channel') {
-        if (!actor.officer) throw new MessageError('只有幹部可以建立或修改聊天室', 403);
+        if (!(actor.poster ?? actor.officer)) throw new MessageError('沒有建立或修改聊天室的權限', 403);
         if (op === 'create-channel') {
             const channels = await storage.list({ prefix: 'channel:' });
             if (channels.size >= MAX_CHANNELS) throw new MessageError(`聊天室最多 ${MAX_CHANNELS} 個`, 409);
@@ -302,7 +302,7 @@ export async function messageOp(storage, op, payload, now = new Date().toISOStri
     if (op === 'announcements') return announcementList(storage, actor, read);
 
     if (op === 'create-announcement') {
-        if (!actor.officer) throw new MessageError('只有幹部可以發布公告', 403);
+        if (!(actor.poster ?? actor.officer)) throw new MessageError('沒有發布公告的權限', 403);
         const all = [...(await storage.list({ prefix: 'ann:' })).values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
         // Oldest unpinned announcements make room for new ones.
         while (all.length >= MAX_ANNOUNCEMENTS) {

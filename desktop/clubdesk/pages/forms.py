@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QFormLa
                                QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QTableWidget,
                                QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget)
 
-from ..api import ApiError, can_manage_users
+from ..api import ApiError, can_change_settings
 from ..formschema import FORM_LABELS, FORM_TYPES, SCHEMAS, Field, defaults, items_total
 from ..widgets import DataTable, Page, busy, button_row, confirm, money, show_error
 from .members import dialog_buttons
@@ -381,7 +381,7 @@ class FormsPage(Page):
         print_button.clicked.connect(self.print_selected)
         settings = QPushButton("表單設定(&S)...")
         settings.clicked.connect(self.edit_settings)
-        settings.setEnabled(can_manage_users(self.role))
+        settings.setEnabled(can_change_settings(self.role))
         self.body.addLayout(button_row(new, edit, remove, print_button, blank, settings))
         self.body.addWidget(QLabel("列印時會以瀏覽器開啟 A4 表單，請在瀏覽器按「列印／另存 PDF」。審核與簽名仍在紙本上進行。"))
 

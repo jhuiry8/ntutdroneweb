@@ -1,5 +1,5 @@
 // Update check and release announcements for the desktop program (desktop/).
-import { canManageUsers, constantTimeEqual } from './auth.js';
+import { hasPermission, constantTimeEqual } from './auth.js';
 import { readJsonObject } from './request.js';
 import { sessionUser } from './session.js';
 import { ValidationError } from './validation.js';
@@ -60,7 +60,7 @@ export async function handleDesktopRequest(request, env) {
             if (bearer) return Response.json({ error: '發布權杖無效' }, { status: 401 });
             const user = await sessionUser(request, env);
             if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-            if (!canManageUsers(user)) return Response.json({ error: '只有社長可以發布桌面程式更新' }, { status: 403 });
+            if (!hasPermission(user, 'site.settings')) return Response.json({ error: '沒有發布桌面程式更新的權限' }, { status: 403 });
             publisher = user.username;
         }
         const release = normalizeDesktopRelease(await readJsonObject(request, 16 * 1024), publisher);

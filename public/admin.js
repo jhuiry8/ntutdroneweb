@@ -395,7 +395,7 @@ async function createUser(event) {
     if (res.ok) { event.target.reset(); loadUsers(); }
 }
 
-const financeCanReview = ADMIN.isPresident;
+const financeCanReview = ADMIN.canApprove ?? ADMIN.isPresident;
 let financeState = { transactions: [], budgets: [], totals: {} };
 const money = value => 'NT$ ' + new Intl.NumberFormat('zh-TW').format(Number(value || 0));
 const escapeText = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
@@ -731,7 +731,7 @@ if (typeof window !== 'undefined' && window.addEventListener) window.addEventLis
 
 let regulationCache = [];
 let amendmentCache = [];
-const isPresident = ADMIN.isPresident;
+const isPresident = ADMIN.canResolve ?? ADMIN.isPresident;
 const currentUsername = ADMIN.username;
 const canPropose = ADMIN.viewCms;
 const amendmentStatusLabels = { proposed: '提案中', awaiting_school: '已通過，待學校核備', effective: '已生效', rejected: '未通過', withdrawn: '已撤回' };
