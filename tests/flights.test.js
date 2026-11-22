@@ -201,11 +201,18 @@ test('daily cron sends each reminder once and leaves the weekly report path alon
 
 test('flight page and pure helpers', async () => {
     const { request } = fixture();
+    // The old standalone page now redirects into the dashboard panel; the panel itself carries the role flags.
     assert.equal((await request('/admin/flights')).status, 302);
-    const page = await request('/admin/flights', 'alice');
-    assert.equal(page.status, 200);
-    assert.ok(!page.body.includes('data-tab="club"'));
-    assert.ok((await request('/admin/flights', 'cadre1')).body.includes('data-tab="club"'));
+    const old = await request('/admin/flights', 'alice');
+    assert.equal(old.status, 302);
+    assert.equal(old.headers.get('location'), 'https://example.com/admin/dashboard#flights');
+    const member = await request('/admin/dashboard', 'alice');
+    assert.match(member.body, /id="panel-flights"[^>]*data-officer=""/);
+    assert.ok(member.body.includes("loadAdminFlights()"));
+    assert.ok(!member.body.includes('id="panel-events"'));
+    const officer = await request('/admin/dashboard', 'cadre1');
+    assert.match(officer.body, /id="panel-flights"[^>]*data-officer="1"/);
+    assert.ok(officer.body.includes('id="panel-events"'));
     assert.match(taipeiToday(), /^\d{4}-\d{2}-\d{2}$/);
     assert.equal(certStatus({ expiryDate: '2030-01-31' }, '2030-01-01').status, 'expiring30');
     assert.equal(summarizeFlights([]).hours, 0);

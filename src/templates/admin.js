@@ -60,8 +60,8 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                     </div>` : ''}
                     <div class="nav-group"><p class="nav-group-label">社務管理</p>
                         <button class="nav-item" onclick="showPanel('forms'); loadForms()"><i data-lucide="file-pen-line"></i> 表單申請</button>
-                        ${perm('events.manage') ? `<a class="nav-item" href="/admin/events"><i data-lucide="calendar-days"></i> 活動報名</a>` : ''}
-                        <a class="nav-item" href="/admin/flights"><i data-lucide="plane"></i> 飛行紀錄與證照</a>
+                        ${perm('events.manage') ? `<button class="nav-item" onclick="showPanel('events'); loadAdminEvents()"><i data-lucide="calendar-days"></i> 活動報名</button>` : ''}
+                        <button class="nav-item" onclick="showPanel('flights'); loadAdminFlights()"><i data-lucide="plane"></i> 飛行紀錄與證照</button>
                         ${manageMembers ? `<button class="nav-item" onclick="showPanel('members'); loadMembers()"><i data-lucide="contact-round"></i> 社員管理</button>` : ''}
                         ${manageFinance ? `<button class="nav-item" onclick="showPanel('finance'); loadFinance()"><i data-lucide="wallet-cards"></i> 財務管理</button>` : ''}
                         ${manageEquipment ? `<button class="nav-item" onclick="showPanel('equipment'); loadEquipment()"><i data-lucide="package-check"></i> 設備管理</button>` : ''}
@@ -603,6 +603,9 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 <div style="display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap;"><input id="equipment-search" class="form-control" style="max-width:480px;" placeholder="搜尋編號、名稱、序號、分類、保管人或位置" oninput="loadEquipment()"><select id="equipment-label-size" class="form-control" aria-label="財產標籤尺寸" style="max-width:180px;"><option value="40x20">標籤尺寸：4 × 2 cm</option><option value="20x10">標籤尺寸：2 × 1 cm</option></select><button type="button" class="btn btn-primary" onclick="printSelectedEquipmentLabels()">列印已選標籤 <span id="equipment-selected-count">0</span></button></div>
                 <div class="table-container"><table><thead><tr><th><input type="checkbox" aria-label="全選目前設備" onchange="toggleAllEquipment(this.checked)"></th><th>財產編號</th><th>設備／分類</th><th>狀態／狀況</th><th>存放位置／保管人</th><th>購入日期／金額</th><th>操作</th></tr></thead><tbody id="equipment-list"></tbody></table></div>
             </div>` : ''}
+            ${perm('events.manage') ? `<div id="panel-events" class="panel"></div>` : ''}
+            <div id="panel-flights" class="panel" data-officer="${viewCms ? '1' : ''}" data-editor="${canEditCms(user) ? '1' : ''}"></div>
+
             ${viewCms ? `<div id="panel-notes" class="panel">
                 <div class="content-header"><div><h1>社課備忘錄</h1><p style="color:var(--text-muted); margin-top:6px;">記錄每次社課重點，集中保存簡報、教材與相關網址。</p></div></div>
                 ${editNotes ? `<form onsubmit="createNote(event)" style="display:grid; gap:12px; max-width:900px; padding:18px; margin-bottom:24px; border:1px solid var(--border-glass); border-radius:12px;">
@@ -769,6 +772,8 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
         <script src="/admin-meetings.js" defer></script>
         <script src="/vendor/qrcode-generator-1.4.4.js" defer></script>
         <script src="/admin-classes.js" defer></script>
+        <script src="/admin-events.js" defer></script>
+        <script src="/admin-flights.js" defer></script>
         <script src="/admin-ai.js" defer></script>
         <script src="/admin-messages.js" defer></script>
         <script src="/admin-files.js" defer></script>
