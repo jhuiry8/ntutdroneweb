@@ -124,6 +124,10 @@ test('Drive link items are created, listed, edited and deleted like files, witho
     assert.equal(created.body.embedUrl, 'https://drive.google.com/file/d/1AbCdEfGhIjKlmn/preview');
     assert.equal(created.body.uploadedBy, 'cadre1');
     assert.equal((await api('/api/files', 'alice')).body.items[0].name, '預算表');
+    // A link card is neither a document nor an image (it has no file to download); it has its own kind.
+    assert.deepEqual((await api('/api/files?kind=document', 'alice')).body.items, []);
+    assert.deepEqual((await api('/api/files?kind=image', 'alice')).body.items, []);
+    assert.deepEqual((await api('/api/files?kind=drive', 'alice')).body.items.map(item => item.name), ['預算表']);
     assert.equal((await call(`/files/${created.body.id}`, 'alice')).status, 404);
     assert.equal((await api(`/api/files/${created.body.id}`, 'cadre1', 'PATCH', { name: '新標題', visibility: 'cadre' })).body.name, '新標題');
     assert.equal((await api(`/api/files/${created.body.id}`, 'cadre1', 'PATCH', { visibility: 'public' })).status, 400);

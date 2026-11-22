@@ -350,6 +350,11 @@ test('day-before reminder posts one announcement per event and only once', async
     assert.doesNotMatch(announcements[0].content, /王小明|alice|bob/, 'names are never broadcast');
     assert.deepEqual(await runEventReminders(f.env, { now }), { reminded: 0 }, 'sent only once');
     assert.equal((await f.request(`/api/events/${tomorrow.id}`, 'cadre1')).body.reminderSentAt !== '', true);
+    // Rescheduled after the reminder went out: reminded again the day before the new date.
+    const moved = (await f.request(`/api/events/${tomorrow.id}`, 'cadre1', 'PATCH', { startsAt: iso(30 + 24 * 3) })).body;
+    assert.equal(moved.reminderSentAt, '');
+    const newNow = new Date(Date.parse(moved.startsAt) - 24 * 3600000);
+    assert.deepEqual(await runEventReminders(f.env, { now: newNow }), { reminded: 1 });
     void empty;
     // The worker routes the daily cron to the reminders and any other cron to the weekly report.
     const waits = [];

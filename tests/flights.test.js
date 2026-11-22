@@ -109,6 +109,14 @@ test('members cannot touch other people\'s or confirmed records; officers log an
     const officerOwn = (await request('/api/flights', 'cadre1', 'POST', flight())).body;
     assert.equal(officerOwn.status, 'pending');
     assert.equal((await request(`/api/flights/${officerOwn.id}/confirm`, 'cadre1', 'POST')).status, 403);
+    // Another officer confirms it; editing it afterwards sends it back to pending (no self-confirmation by editing).
+    assert.equal((await request(`/api/flights/${officerOwn.id}/confirm`, 'president', 'POST')).body.status, 'confirmed');
+    const edited = (await request(`/api/flights/${officerOwn.id}`, 'cadre1', 'PATCH', { minutes: 300 })).body;
+    assert.equal(edited.status, 'pending');
+    assert.equal(edited.confirmedBy, undefined);
+    // An officer editing someone else's confirmed record keeps it confirmed, now vouched for by that officer.
+    const byPresident = (await request(`/api/flights/${own.id}`, 'president', 'PATCH', { minutes: 50 })).body;
+    assert.deepEqual([byPresident.status, byPresident.confirmedBy], ['confirmed', 'president']);
     assert.equal((await request(`/api/flights/${own.id}`, 'alice', 'DELETE')).status, 403);
     const pending = (await request('/api/flights', 'alice', 'POST', flight())).body;
     assert.equal((await request(`/api/flights/${pending.id}`, 'alice', 'DELETE')).status, 200);

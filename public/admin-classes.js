@@ -140,7 +140,7 @@
         on('cl-toggle', 'click', function () { update(api(base + '/status', 'POST', { status: c.status === 'open' ? 'closed' : 'open' })); });
         on('cl-delete', 'click', function () {
             if (!confirm('刪除「' + c.topic + '」與其 ' + c.attendanceCount + ' 筆簽到紀錄？已扣除的免費體驗次數會退回，無法復原。')) return;
-            guard(api(base, 'DELETE').then(function () { state.currentId = ''; state.detail = null; toast('已刪除場次'); return load(); }));
+            guard(api(base, 'DELETE').then(function (res) { state.currentId = ''; state.detail = null; if (res && res.warning) alert(res.warning); else toast('已刪除場次'); return load(); }));
         });
         on('cl-token', 'click', function () { update(api(base + '/token', 'POST', { ttlMinutes: Number(document.getElementById('cl-ttl').value) }), '已產生新的簽到連結，舊連結已失效'); });
         on('cl-copy', 'click', function () {

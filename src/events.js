@@ -3,6 +3,7 @@
 // 活動存成 `event:<id>`，每筆報名各自存成 `reg:<eventId>:<seq>`（Durable Object 單一值上限 128 KiB，
 // 全部放進活動物件會爆）。所有報名、取消、遞補都在同一個 DO 的 transaction 內完成，所以名額不會超賣。
 // 候補順序 = seq 大小（先報先補）。
+import { isExportRequest, exportStorage } from './do-export.js';
 export class EventError extends Error {
     constructor(message, status = 400) { super(message); this.status = status; }
 }
@@ -181,7 +182,10 @@ export async function eventOp(storage, op, payload, now = new Date().toISOString
 
     if (op === 'update') {
         officerOnly();
+        const previousStart = event.startsAt;
         Object.assign(event, normalizeEventFields(payload.fields, event));
+        // Rescheduled after the day-before reminder went out: remind again before the new date.
+        if (event.startsAt !== previousStart) event.reminderSentAt = '';
         // A bigger capacity (or no limit) frees seats for the waitlist; a smaller one never bumps anyone.
         return save(promoteWaitlist(event, regs, now));
     }
@@ -241,6 +245,7 @@ export class EventStore {
 
     async fetch(request) {
         try {
+            if (isExportRequest(request)) return await exportStorage(this.storage);
             const payload = await request.json();
             const op = new URL(request.url).pathname.slice(1);
             const body = await this.storage.transaction(storage => eventOp(storage, op, payload));

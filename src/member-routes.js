@@ -6,7 +6,7 @@ import { sessionUser, listUsers } from './session.js';
 import { ValidationError, financeAmount, financeText, financeDate, importedDate, parseStoredList } from './validation.js';
 import { MEMBERS_KEY, MEMBERSHIP_RECEIPTS_KEY } from './kv-keys.js';
 import { academicYearOf, trialSummary, trialUsesIn } from './classes.js';
-import { classAttendanceCounts } from './class-routes.js';
+import { classAttendanceCounts, syncTrialLedger } from './class-routes.js';
 
 export function normalizeMemberInput(body, index = null, defaultJoinedAt = true) {
     const prefix = index === null ? '' : `第 ${index + 1} 筆：`;
@@ -159,9 +159,12 @@ export async function handleMemberRequest(request, env) {
         const studentId = fields.studentId;
         if (studentId && members.some(item => item.id !== id && String(item.studentId || '').trim().toUpperCase() === studentId)) return Response.json({ error: '學號已存在' }, { status: 409 });
         // An officer changing the free-class counter means "this year's count", so it is stamped with the current year.
-        if (fields.trialUses !== trialUsesIn(member, academicYearOf())) fields.trialYear = academicYearOf();
+        const trialChanged = fields.trialUses !== trialUsesIn(member, academicYearOf());
+        if (trialChanged) fields.trialYear = academicYearOf();
         Object.assign(member, fields, { updatedAt: new Date().toISOString() });
         await env.DRONE_DB.put(MEMBERS_KEY, JSON.stringify(members));
+        // Class check-ins count free classes in the class store; keep it in step with the officer's correction.
+        if (trialChanged) await syncTrialLedger(env, member.id, academicYearOf(), fields.trialUses);
         return Response.json(memberView(member, await accountsByMemberId(env), await classAttendanceCounts(env)));
     }
 

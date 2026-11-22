@@ -135,6 +135,35 @@
         settings[key] = value;
         save(KEY_SETTINGS, settings);
         render();
+        if (['system', 'announcements', 'messages', 'mute'].indexOf(key) >= 0) syncPush();
+    }
+
+    // Browser push: lets the server notify this browser even when the site is closed.
+    function keyBytes(text) {
+        var raw = atob((text + '===='.slice(text.length % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+        return Uint8Array.from(raw, function (c) { return c.charCodeAt(0); });
+    }
+    async function syncPush() {
+        try {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window) || !supported()) return;
+            var reg = await navigator.serviceWorker.getRegistration('/') || await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+            reg = await navigator.serviceWorker.ready || reg;
+            var sub = await reg.pushManager.getSubscription();
+            if (!settings.system || Notification.permission !== 'granted') {
+                if (sub) {
+                    await fetch('/api/push/unsubscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint: sub.endpoint }) });
+                    await sub.unsubscribe();
+                }
+                return;
+            }
+            var info = await (await fetch('/api/push/public-key')).json();
+            if (!info.enabled) return;
+            if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(info.publicKey) });
+            await fetch('/api/push/subscribe', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subscription: sub.toJSON(), prefs: { announcements: settings.announcements, messages: settings.messages, mute: settings.mute } })
+            });
+        } catch (e) { /* push is optional; in-page notifications keep working */ }
     }
 
     function beep() {
@@ -216,5 +245,6 @@
             if (!reg) navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () { /* optional */ });
         }).catch(function () { /* optional */ });
     }
+    syncPush();
     window.ClubNotifications = { open: function () { bell.click(); }, settings: function () { return Object.assign({}, settings); } };
 })();

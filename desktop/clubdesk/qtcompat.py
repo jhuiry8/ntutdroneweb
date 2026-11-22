@@ -25,6 +25,7 @@ def _install_pyside2() -> None:
 
     # Qt 6 moved these from QtWidgets to QtGui.
     QtGui.QAction = QtWidgets.QAction
+    QtGui.QActionGroup = QtWidgets.QActionGroup
     QtGui.QShortcut = QtWidgets.QShortcut
 
     # QLibraryInfo.path(...) is the Qt 6 spelling of location(...).

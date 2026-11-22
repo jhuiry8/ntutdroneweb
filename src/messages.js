@@ -178,6 +178,17 @@ export async function messageOp(storage, op, payload, now = new Date().toISOStri
     }
     if (op === 'conversations') return conversations(storage, actor, read);
 
+    // Who (among payload.users, each { username, officer, president }) should be pushed about a new item in conv.
+    if (op === 'recipients') {
+        const conv = String(payload.conv || '');
+        const users = (Array.isArray(payload.users) ? payload.users : []).filter(user => user.username !== actor.username);
+        const pair = dmParticipants(conv);
+        if (pair) return { usernames: users.filter(user => pair.includes(user.username)).map(user => user.username) };
+        const channel = CONVERSATION.test(conv) ? await storage.get(`channel:${conv.slice(3)}`) : null;
+        if (!channel || channel.archived) return { usernames: [] };
+        return { name: channel.name, usernames: users.filter(user => canSeeChannel(channel, user)).map(user => user.username) };
+    }
+
     if (op === 'messages') {
         const conv = String(payload.conv || '');
         await access(storage, conv, actor, null);

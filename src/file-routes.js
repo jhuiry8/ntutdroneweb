@@ -3,7 +3,7 @@
 //
 //   GET    /files/:id              download / display (public files need no session)
 //   GET    /api/files/config       limits, allowed types, categories and what the caller may do
-//   GET    /api/files              list (?category= &kind=image &q= &limit= &cursor=)
+//   GET    /api/files              list (?category= &kind=image|document|drive &q= &limit= &cursor=)
 //   POST   /api/files/links        add a Google Drive link (JSON: url, name, category, visibility, description)
 //   POST   /api/files              upload, multipart/form-data: file, category, visibility, description
 //   GET    /api/files/:id          metadata
@@ -153,7 +153,7 @@ export async function handleFileRequest(request, env) {
     if (path === '/api/files' && method === 'GET') {
         const params = url.searchParams;
         const result = await fileStoreRequest(env, 'list', {
-            levels: visibleLevels(user), category: params.get('category') || '', kind: params.get('kind') === 'image' ? 'image' : params.get('kind') === 'document' ? 'document' : '',
+            levels: visibleLevels(user), category: params.get('category') || '', kind: ['image', 'document', 'drive'].includes(params.get('kind')) ? params.get('kind') : '',
             query: (params.get('q') || '').slice(0, 100), cursor: (params.get('cursor') || '').slice(0, 100), limit: Number(params.get('limit')) || 24
         });
         if (result.status !== 200) return json(result.body, result.status);

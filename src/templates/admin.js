@@ -639,7 +639,7 @@ export function renderAdminDashboard(posts = [], pages = [], user = { username: 
                 </details>` : ''}
                 <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
                     <select id="files-filter-category" class="form-control" style="max-width:200px;" aria-label="分類篩選"></select>
-                    <select id="files-filter-kind" class="form-control" style="max-width:160px;" aria-label="類型篩選"><option value="">全部類型</option><option value="image">圖片</option><option value="document">文件</option></select>
+                    <select id="files-filter-kind" class="form-control" style="max-width:160px;" aria-label="類型篩選"><option value="">全部類型</option><option value="image">圖片</option><option value="document">文件</option><option value="drive">雲端硬碟連結</option></select>
                     <input id="files-search" class="form-control" style="max-width:320px;" placeholder="搜尋檔名或說明">
                 </div>
                 <div id="files-grid" class="files-grid"><p style="color:var(--text-muted);">尚未載入。</p></div>

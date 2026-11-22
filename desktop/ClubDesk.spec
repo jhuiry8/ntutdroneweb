@@ -61,8 +61,15 @@ DROP = re.compile(r"""(?ix)
 """)
 
 
+# PySide2's pyside2.abi3.dll (which every PySide2 module loads) links Qt5Qml.dll, so it must stay even
+# though QML itself is unused; without it "import PySide2.QtCore" fails with "DLL load failed".
+KEEP = re.compile(r"(?i)(^|/)Qt5Qml\.dll$")
+
+
 def keep(entry) -> bool:
     name = entry[0].replace("\\", "/")
+    if KEEP.search(name):
+        return True
     # Qt on Linux links the platform plugin to libQt5/6XcbQpa, so keep it there.
     if "XcbQpa" in name and not name.lower().endswith(".dll"):
         return True

@@ -19,8 +19,8 @@ const KV_BULK_SIZE = 100;
 
 // Fixed KV keys: everything in kv-keys.js plus the CMS/login keys defined elsewhere.
 const EXTRA_KEYS = ['posts_list', 'pages_list', 'homepage_content', 'admin_password_hash', PUSH_SETTINGS_KEY];
-// KV prefixes copied whole (accounts, posts, custom pages). session:* is not among them.
-const KV_PREFIXES = ['user:', 'post:', 'page:', 'finance:report:'];
+// KV prefixes copied whole (accounts, posts, custom pages, calendar feed tokens, finance reports). session:* is not among them.
+const KV_PREFIXES = ['user:', 'post:', 'page:', 'calendar:', 'finance:report:'];
 
 // [binding, Durable Object name used by its routes]
 export const DURABLE_OBJECTS = [
@@ -29,6 +29,10 @@ export const DURABLE_OBJECTS = [
     ['SITE_STORE', 'site-security'],
     ['MEETING_STORE', 'club-meetings'],
     ['MESSAGE_STORE', 'club-messages'],
+    ['FILE_STORE', 'club-files'],
+    ['CLASS_STORE', 'club-classes'],
+    ['EVENT_STORE', 'club-events'],
+    ['FLIGHT_STORE', 'club-flights'],
     // 職位、權限設定與幹部名冊（含幹部個人資料）
     ['ORG_STORE', 'club-org']
 ];

@@ -29,6 +29,7 @@ import { handleAiRequest, generateClubReport } from './ai-routes.js';
 import { handleMeetingRequest } from './meeting-routes.js';
 import { handleClassRequest } from './class-routes.js';
 import { handleMessageRequest } from './message-routes.js';
+import { handlePushRequest } from './push-routes.js';
 import { handleFileRequest } from './file-routes.js';
 import { handleDriveRequest } from './drive-routes.js';
 import { handleBackupRequest, runBackupRecorded, BACKUP_CRON } from './backup.js';
@@ -97,7 +98,8 @@ const ROUTES = [
     (request, env) => handleAiRequest(request, env, aiDeps),
     (request, env) => handleMeetingRequest(request, env, aiDeps),
     (request, env) => handleClassRequest(request, env, aiDeps),
-    (request, env) => handleMessageRequest(request, env, aiDeps),
+    (request, env, ctx) => handleMessageRequest(request, env, aiDeps, ctx),
+    (request, env, ctx) => handlePushRequest(request, env, ctx, aiDeps),
     (request, env) => handleEventRequest(request, env, aiDeps),
     (request, env) => handleFlightRequest(request, env, aiDeps),
     handleCmsRequest,
@@ -119,7 +121,6 @@ export default {
         const response = await handleRequest(request, env, ctx);
         return addSecurityHeaders(response, request);
     },
-    // Cron triggers (wrangler.toml): Monday 01:00 UTC builds the weekly club report and posts it to
     // Cron triggers (wrangler.toml): Monday 01:00 UTC builds the weekly club report and posts it to
     // REPORT_WEBHOOK_URL; daily 19:00 UTC (03:00 Taipei) backs up to R2; daily 18:00 UTC (02:00 Taipei)
     // reminds about overdue equipment loans; daily 12:00 UTC (20:00 Taipei) sends day-before event

@@ -4,6 +4,7 @@ import { readJsonObject } from './request.js';
 import { sessionUser } from './session.js';
 import { ValidationError } from './validation.js';
 import { DESKTOP_RELEASE_KEY } from './kv-keys.js';
+import { renderDownloadPage } from './templates/download.js';
 
 // Latest desktop program release (desktop/). Installers are published as GitHub
 // release assets; the program checks the SHA-256 before running a download.
@@ -35,7 +36,7 @@ function parseDesktopRelease(json) {
     } catch { return null; }
 }
 
-// Returns a Response for /api/desktop/version, or null for any other path.
+// Returns a Response for /api/desktop/version and the public /download page, or null for any other path.
 export async function handleDesktopRequest(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
@@ -72,6 +73,14 @@ export async function handleDesktopRequest(request, env) {
         if (automated && current?.version === release.version && current.mandatory) release.mandatory = true;
         await env.DRONE_DB.put(DESKTOP_RELEASE_KEY, JSON.stringify(release));
         return Response.json(release);
+    }
+
+    // ==================== Public download page ====================
+    if ((path === '/download' || path === '/download/') && method === 'GET') {
+        const release = parseDesktopRelease(await env.DRONE_DB.get(DESKTOP_RELEASE_KEY));
+        const safe = release && /^https:\/\/github\.com\//.test(String(release.url || '')) ? release : null;
+        const html = renderDownloadPage({ lang: url.searchParams.get('lang'), release: safe });
+        return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
     }
 
     return null;

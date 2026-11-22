@@ -1,7 +1,7 @@
 // NTUT Drone Club - Progressive Web App Service Worker
 // Bump this whenever the precached shell changes; activate() deletes every other cache
 // (v1 could hold private admin pages, so it must not survive).
-const CACHE_NAME = 'ntut-drone-pwa-v3';
+const CACHE_NAME = 'ntut-drone-pwa-v4';
 
 // Pages that depend on the logged-in user are never written to Cache Storage.
 const PRIVATE_PATHS = [/^\/admin(\/|$)/, /^\/meeting\//, /^\/class\//, /^\/forms\/[^/]+\/(responses|records)/, /^\/login(\/|$)/];
@@ -162,6 +162,26 @@ self.addEventListener('notificationclick', (event) => {
                 return tab.focus();
             }
             return self.clients.openWindow(target);
+        })
+    );
+});
+
+// Web Push (src/webpush.js): the server sends { title, body, tab, conv, tag } even when no tab is open.
+// While a back-office tab is visible and focused it already shows a toast, so stay silent then.
+self.addEventListener('push', (event) => {
+    let data = {};
+    try { data = event.data ? event.data.json() : {}; } catch (e) { data = { title: '北科無人機社', body: event.data ? event.data.text() : '' }; }
+    event.waitUntil(
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+            if (clients.some((client) => client.visibilityState === 'visible' && client.focused && new URL(client.url).pathname.startsWith('/admin'))) return null;
+            return self.registration.showNotification(data.title || '北科無人機社', {
+                body: data.body || '',
+                icon: '/assets/icons/icon-192x192.png',
+                badge: '/assets/icons/icon-192x192.png',
+                tag: data.tag || undefined,
+                renotify: Boolean(data.tag),
+                data: { url: '/admin/dashboard#notify=' + encodeURIComponent(data.tab || 'chat') + ':' + encodeURIComponent(data.conv || ''), tab: data.tab || 'chat', conv: data.conv || '' }
+            });
         })
     );
 });

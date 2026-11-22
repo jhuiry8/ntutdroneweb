@@ -237,7 +237,7 @@
 
 每天 03:00（台北時間）Cron 會把資料備份到獨立的 R2 bucket（binding `BACKUPS`），檔名為 `backups/YYYY-MM-DD.json`，只保留最近 30 份（可用變數 `BACKUP_KEEP` 調整），更早的自動刪除。同一天重跑會覆蓋當天檔案。每日排程在 `wrangler.toml` 的 `crons` 第二項（`0 19 * * *`，UTC），週報排程不受影響；`scheduled()` 依 `controller.cron` 分辨要跑哪一個，改動排程字串時請同步修改 `src/backup.js` 的 `BACKUP_CRON`。
 
-**備份內容**：KV 中 `src/kv-keys.js` 列出的資料、`user:*` 帳號、文章與頁面（`posts_list`、`post:*`、`pages_list`、`page:*`、`homepage_content`）、`admin_password_hash`、推播設定；以及 EquipmentStore、FormStore、SiteStore、MeetingStore、MessageStore 五個 Durable Object 的完整儲存內容（各 DO 的內部匯出端點，外部無法呼叫）。**不含** `session:*` 登入狀態，以及 SiteStore 中幾分鐘就過期的驗證碼與登入次數計數。
+**備份內容**：KV 中 `src/kv-keys.js` 列出的資料、`user:*` 帳號、文章與頁面（`posts_list`、`post:*`、`pages_list`、`page:*`、`homepage_content`）、`admin_password_hash`、推播設定；行事曆訂閱權杖（`calendar:*`）；以及 EquipmentStore、FormStore、SiteStore、MeetingStore、MessageStore、FileStore（檔案庫中繼資料，檔案本身在 R2 檔案庫 bucket）、ClassStore、EventStore、FlightStore 九個 Durable Object 的完整儲存內容（各 DO 的內部匯出端點，外部無法呼叫）。**不含** `session:*` 登入狀態，以及 SiteStore 中幾分鐘就過期的驗證碼與登入次數計數。
 
 **自動建立 bucket**：部署流程（`deploy.yml` 的「Ensure R2 buckets exist」）會檢查 `wrangler.toml` 裡的 R2 bucket，不存在就自動建立（預設私有）；若 API Token 沒有 R2 權限，會停在這一步並顯示清楚的錯誤訊息，而不是讓 `wrangler deploy` 失敗。
 
@@ -249,7 +249,7 @@
 
 **失敗通知**：排程備份失敗時會記錄失敗原因（`GET /api/backup/status` 可查），並且若已設定 `REPORT_WEBHOOK_URL`，會往同一個群組發送「網站自動備份失敗」。建議設定該變數，並偶爾看一下 `status`，不要等到要還原時才發現備份早已中斷。
 
-**Cloudflare 子請求上限**：KV 已用批次讀取（每 100 個 key 算 1 次），一次備份約需 `3 + ⌈key 數 ÷ 100⌉ + 5 + 3` 次子請求（KV 列表、KV 讀取、5 個 DO、R2 寫入與整理）。免費方案上限 50 次，約可支撐 3,000 個 KV key；帳號、文章、頁面特別多時請升級付費方案（上限 1,000 次）。
+**Cloudflare 子請求上限**：KV 已用批次讀取（每 100 個 key 算 1 次），一次備份約需 `4 + ⌈key 數 ÷ 100⌉ + 9 + 3` 次子請求（KV 列表、KV 讀取、9 個 DO、R2 寫入與整理）。免費方案上限 50 次，約可支撐 3,000 個 KV key；帳號、文章、頁面特別多時請升級付費方案（上限 1,000 次）。
 
 **手動還原步驟**（尚無自動還原功能）：
 1. 下載備份檔（`GET /api/backup/latest` 或 R2 控制台），確認 `format` 為 1。
@@ -289,6 +289,10 @@
 5. **跨端同步與桌面版整合**：
    * 網頁後台提供紅色未讀徽章、瀏覽器標題未讀提示 `(N)` 與即時 Toast 提醒。
    * 桌面版「社務管理系統」支援背景執行、Windows 系統匣氣泡推播通知與側邊功能樹未讀計數。
+6. **瀏覽器推播通知（Web Push）**：後台「通知中心 → 通知設定 → 顯示系統通知」開啟後，即使網站分頁已關閉、人在背景（手機加入主畫面的 PWA、電腦瀏覽器在背景），有新公告或聊天訊息時仍會收到系統通知，點擊直接開啟對應對話。
+   * 每個瀏覽器各自訂閱；可個別設定要收「公告」「訊息」或勿擾。只會推給有權限看到該內容的人（幹部限定公告與幹部聊天室不會推給一般社員），內容以 VAPID＋端對端加密傳送。
+   * **一次性設定（沒設定則不會推播，其他功能不受影響）**：本機執行 `node tools/generate-vapid.mjs` 產生金鑰，到 Cloudflare Dashboard → Workers → 此網站 → Settings → Variables and Secrets，新增 Secret：`VAPID_PUBLIC_KEY`、`VAPID_PRIVATE_KEY`，以及 `VAPID_SUBJECT`（如 `mailto:你的信箱`）。重新部署後各人在通知設定重新勾選一次即可。
+   * iPhone 需 iOS 16.4 以上並先「加入主畫面」才支援網頁推播。
 * **部署說明**：使用 `MESSAGE_STORE` Durable Object（`wrangler.toml` 的 migration `v5`），推送至 GitHub 後 GitHub Actions 自動部署套用 migration，無須手動設定。
 
 

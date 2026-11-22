@@ -3,6 +3,7 @@
 // every change runs in one transaction, so concurrent uploads and edits cannot overwrite each other.
 // The bytes live in R2 under `files/<id>`; this object never sees them.
 import { FileError, MAX_FILES, cleanCategory, cleanDescription, cleanFileName, cleanLinkVisibility, cleanTitle, cleanVisibility, isDriveLink, isImageType } from './files.js';
+import { isExportRequest, exportStorage } from './do-export.js';
 
 const FILE_PREFIX = 'file:';
 const AUDIT_PREFIX = 'audit:';
@@ -21,6 +22,9 @@ export async function fileStoreRequest(env, op, payload = {}) {
 
 const newestFirst = (a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? 1 : -1);
 
+// image / document for uploaded files, drive for Google Drive link cards (they have no file to download).
+const kindOf = record => (record.type === 'drive' ? 'drive' : isImageType(record.type) ? 'image' : 'document');
+
 export class FileStore {
     constructor(ctx) { this.storage = ctx.storage; }
 
@@ -36,6 +40,7 @@ export class FileStore {
 
     async fetch(request) {
         try {
+            if (isExportRequest(request)) return await exportStorage(this.storage);
             if (request.method !== 'POST') return Response.json({ error: '方法不允許' }, { status: 405 });
             const op = new URL(request.url).pathname.replace(/^\//, '');
             const payload = await request.json();
@@ -71,7 +76,7 @@ export class FileStore {
             const all = [...(await storage.list({ prefix: FILE_PREFIX, limit: MAX_FILES + 1 })).values()]
                 .filter(record => levels.includes(record.visibility)
                     && (!category || record.category === category)
-                    && (!kind || (kind === 'image') === isImageType(record.type))
+                    && (!kind || kindOf(record) === kind)
                     && (!q || `${record.name} ${record.description}`.toLowerCase().includes(q)))
                 .sort(newestFirst);
             // The cursor is the (createdAt|id) of the last record already sent. Resume at the first record
