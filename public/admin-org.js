@@ -16,11 +16,14 @@
             else if (key === 'style') node.style.cssText = props[key];
             else node.setAttribute(key, props[key]);
         });
-        for (var i = 2; i < arguments.length; i++) {
-            var child = arguments[i];
-            if (child === null || child === undefined || child === false) continue;
-            node.appendChild(typeof child === 'string' ? document.createTextNode(child) : child);
-        }
+        // Children may be nodes, strings, or arrays of them (e.g. a list of position chips).
+        (function append(children) {
+            children.forEach(function (child) {
+                if (child === null || child === undefined || child === false) return;
+                if (Array.isArray(child)) append(child);
+                else node.appendChild(typeof child === 'string' ? document.createTextNode(child) : child);
+            });
+        })(Array.prototype.slice.call(arguments, 2));
         return node;
     }
     async function api(path, method, body) {
