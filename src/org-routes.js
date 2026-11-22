@@ -70,6 +70,22 @@ export async function handleOrgRequest(request, env) {
             const members = await fieldDefaults(env, user);
             return json({ username: user.username, assignments: mine, profile, defaults: members, fields: PROFILE_FIELDS, publicFields: PUBLIC_PROFILE_FIELDS, canEdit: mine.some(a => ['active', 'upcoming'].includes(a.status)) });
         }
+        return saveProfile(user.username);
+    }
+
+    // 社長／幹部名冊管理者 (officers.manage) edit any officer's profile; officers.manage is held by the 社長 by default.
+    const profileMatch = /^\/api\/officers\/profile\/([a-z0-9._-]{3,40})$/.exec(path);
+    if (profileMatch && ['GET', 'PUT'].includes(method)) {
+        if (!hasPermission(user, 'officers.manage')) return forbidden('沒有編輯幹部資料的權限');
+        const target = profileMatch[1];
+        if (method === 'GET') {
+            const profile = (await org('profile-get', { username: target })).body;
+            return json({ username: target, profile, fields: PROFILE_FIELDS, publicFields: PUBLIC_PROFILE_FIELDS });
+        }
+        return saveProfile(target);
+    }
+
+    async function saveProfile(targetUsername) {
         const input = await readJsonObject(request, 32 * 1024);
         if (input.photoFileId && !/^[0-9a-f-]{36}$/.test(String(input.photoFileId))) return json({ error: '大頭照檔案編號無效' }, 400);
         if (input.photoFileId) {
@@ -77,15 +93,15 @@ export async function handleOrgRequest(request, env) {
             const { status, body } = await fileStoreRequest(env, 'get', { id: String(input.photoFileId) });
             if (status !== 200 || !visibleLevels(user).includes(body.visibility)) return json({ error: '找不到這個檔案' }, 404);
             if (!isImageType(body.type)) return json({ error: '大頭照必須是圖片' }, 400);
-            const profile = (await org('profile-get', { username: user.username })).body;
+            const profile = (await org('profile-get', { username: targetUsername })).body;
             const wantsPublic = input.visibility?.photo !== undefined ? input.visibility.photo === true : profile.visibility?.photo === true;
             if (wantsPublic && body.visibility !== 'public') return json({ error: '公開顯示的大頭照必須是檔案庫中「公開」的圖片' }, 400);
         } else if (input.visibility?.photo === true) {
-            const profile = (await org('profile-get', { username: user.username })).body;
+            const profile = (await org('profile-get', { username: targetUsername })).body;
             const photoId = input.photoFileId === undefined ? profile.photoFileId : '';
             if (photoId && !(await publicPhotoUrl(env, photoId))) return json({ error: '公開顯示的大頭照必須是檔案庫中「公開」的圖片' }, 400);
         }
-        return reply(await org('profile-set', { username: user.username, input }));
+        return reply(await org('profile-set', { username: targetUsername, input }));
     }
 
     // ---------- overview, positions and permissions ----------
