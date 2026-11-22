@@ -71,7 +71,7 @@
             } else guestForm(card, ev, msg);
         }
         card.appendChild(msg);
-        var manage = h('a', { href: '/admin/events', text: T.evtManage, style: 'display:none;margin-top:12px;' });
+        var manage = h('a', { href: '/admin/dashboard#events', text: T.evtManage, style: 'display:none;margin-top:12px;' });
         root.appendChild(manage);
         if (ev.description !== undefined) manage.style.display = 'inline-block';
     }

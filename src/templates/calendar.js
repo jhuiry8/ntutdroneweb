@@ -149,17 +149,3 @@ export function renderEventPage({ lang = 'zh', event, turnstileSiteKey = '' }) {
         <script src="/events.js" defer></script>
         ${getFooter(lang, 'calendar')}`;
 }
-
-export function renderAdminEventsPage() {
-    return `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>活動管理 | 北科無人機社</title>
-<style>:root { color-scheme: dark; } * { box-sizing: border-box; } body { margin: 0; font-family: "Noto Sans TC", system-ui, sans-serif; background: #0b1120; color: #e2e8f0; line-height: 1.6; }
-main { max-width: 1000px; margin: 0 auto; padding: 20px 16px 64px; } a { color: #60a5fa; } h1 { font-size: 1.4rem; margin: 0 0 12px; }
-.card { background: #111a2e; border: 1px solid #23324d; border-radius: 14px; padding: 16px; margin-top: 14px; } .muted { color: #94a3b8; font-size: .9rem; }
-input, select, textarea { width: 100%; padding: 9px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font: inherit; margin-top: 4px; }
-label { display: block; font-size: .85rem; color: #cbd5e1; } .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
-button, .btn { padding: 8px 14px; border-radius: 8px; border: 0; font: inherit; font-weight: 700; cursor: pointer; background: #3b82f6; color: #fff; text-decoration: none; display: inline-block; }
-button.secondary, .btn.secondary { background: #334155; } button.danger { background: #ef4444; } .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
-table { width: 100%; border-collapse: collapse; font-size: .88rem; } th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #23324d; } .wrap { overflow-x: auto; }
-.msg { margin-top: 10px; padding: 8px 12px; border-radius: 8px; background: rgba(59,130,246,.15); } .msg.err { background: rgba(239,68,68,.15); } .tag { font-size: .75rem; padding: 1px 8px; border-radius: 999px; background: #334155; }
-</style></head><body><main id="app"><p class="muted">載入中…</p></main><script src="/admin-events.js"></script></body></html>`;
-}
