@@ -1,6 +1,6 @@
 // HTTP routes for the paper forms (表單): records, AI drafting, print pages and the
 // public equipment loan slip that needs no account.
-import { canViewCms, canManageUsers, canManageEquipment, constantTimeEqual } from './auth.js';
+import { hasPermission, constantTimeEqual } from './auth.js';
 import { renderPublicLoanForm } from './templates.js';
 import { createCaptcha, verifyCaptcha } from './captcha.js';
 import {
@@ -35,10 +35,10 @@ export function aiDailyLimit(env) {
 // Every signed-in account can fill in forms. Officers see everyone's forms;
 // members see only their own. Only the author or the president may change one.
 // Public loan slips (source 'public') have no author account; equipment managers may correct them.
-function canSeeForm(user, record) { return canViewCms(user) || (Boolean(record.createdBy) && record.createdBy === user.username); }
+function canSeeForm(user, record) { return hasPermission(user, 'forms.manage') || (Boolean(record.createdBy) && record.createdBy === user.username); }
 function canChangeForm(user, record) {
-    if (canManageUsers(user)) return true;
-    if (record.source === 'public') return canManageEquipment(user);
+    if (hasPermission(user, 'users.manage')) return true;
+    if (record.source === 'public') return hasPermission(user, 'loans.approve');
     return Boolean(record.createdBy) && record.createdBy === user.username;
 }
 // The print token of a public slip never leaves the server except to its submitter.
@@ -142,7 +142,7 @@ export async function handleFormRequest(request, env) {
             const provider = aiProvider(env);
             return Response.json({ ...(await readFormSettings(env)), ai: provider ? { provider: provider.name, model: provider.model } : null });
         }
-        if (!canManageUsers(user)) return Response.json({ error: '只有社長可以修改表單設定' }, { status: 403 });
+        if (!hasPermission(user, 'site.settings')) return Response.json({ error: '沒有修改表單設定的權限' }, { status: 403 });
         const settings = normalizeFormSettings(await readJsonLimited(request, 16 * 1024));
         await env.DRONE_DB.put(FORM_SETTINGS_KEY, JSON.stringify(settings));
         return Response.json(settings);
@@ -151,7 +151,7 @@ export async function handleFormRequest(request, env) {
     if (path === '/api/forms/ai-letter' && method === 'POST') {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canViewCms(user)) return Response.json({ error: '只有幹部可以使用 AI 公文產生' }, { status: 403 });
+        if (!hasPermission(user, 'forms.manage')) return Response.json({ error: '沒有使用 AI 公文產生的權限' }, { status: 403 });
         const body = await readJsonLimited(request, 32 * 1024);
         const plainText = String(body?.text ?? '').trim();
         if (!plainText || plainText.length > 4000) return Response.json({ error: '請輸入 1 至 4000 字的白話內容' }, { status: 400 });
@@ -167,7 +167,7 @@ export async function handleFormRequest(request, env) {
         const body = await readJsonLimited(request, 32 * 1024);
         const type = String(body?.type || '');
         if (!Object.hasOwn(FORM_TYPES, type)) return Response.json({ error: '表單類型無效' }, { status: 400 });
-        if (type === 'official-letter' && !canViewCms(user)) return Response.json({ error: '只有幹部可以使用 AI 公文產生' }, { status: 403 });
+        if (type === 'official-letter' && !hasPermission(user, 'forms.manage')) return Response.json({ error: '只有幹部可以使用 AI 公文產生' }, { status: 403 });
         const description = String(body?.text ?? '').trim();
         if (!description || description.length > 4000) return Response.json({ error: '請輸入 1 至 4000 字的描述' }, { status: 400 });
         if (!aiProvider(env)) return Response.json({ error: '尚未設定 GROQ_API_KEY，無法使用 AI 協助填寫' }, { status: 503 });

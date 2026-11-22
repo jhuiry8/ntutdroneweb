@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
                                QPlainTextEdit, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem,
                                QTabWidget, QVBoxLayout, QWidget)
 
-from ..api import ApiError, can_manage_users
+from ..api import ApiError, can_approve_finance
 from ..icons import icon
 from ..widgets import DataTable, Page, busy, button_row, confirm, money, show_error
 from .members import combo, date_edit, date_text, dialog_buttons
@@ -158,7 +158,7 @@ class FinancePage(Page):
         reject.clicked.connect(lambda: self.review("rejected"))
         remove = QPushButton("刪除(&D)")
         remove.clicked.connect(self.remove)
-        president = can_manage_users(self.role)
+        president = can_approve_finance(self.role)
         approve.setEnabled(president)
         reject.setEnabled(president)
         if not president:

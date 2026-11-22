@@ -2,7 +2,7 @@
 // the homepage text, the Markdown preview and club class notes (社課備忘).
 import { marked } from 'marked';
 import { sanitizeContent } from './html.js';
-import { canEditCms, canViewCms } from './auth.js';
+import { canEditCms, canViewCms, hasPermission, hasAnyPermission } from './auth.js';
 import { pushNewPost } from './message-routes.js';
 import { CONTENT_JSON_LIMIT, readJsonObject } from './request.js';
 import { siteStore, sessionUser } from './session.js';
@@ -231,10 +231,10 @@ export async function handleCmsRequest(request, env) {
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
         const notes = parseStoredList(await env.DRONE_DB.get(NOTES_KEY));
         if (method === 'GET') {
-            if (!canViewCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+            if (!hasAnyPermission(user, ['cms.view', 'notes.manage'])) return Response.json({ error: '權限不足' }, { status: 403 });
             return Response.json(notes.sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt)));
         }
-        if (!canEditCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+        if (!hasPermission(user, 'notes.manage')) return Response.json({ error: '權限不足' }, { status: 403 });
         const body = await readJsonObject(request);
         const title = financeText(body.title, '社課名稱', 120);
         const date = financeDate(body.date);
@@ -260,7 +260,7 @@ export async function handleCmsRequest(request, env) {
     if (path.startsWith('/api/notes/') && method === 'DELETE') {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canEditCms(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+        if (!hasPermission(user, 'notes.manage')) return Response.json({ error: '權限不足' }, { status: 403 });
         const id = path.slice('/api/notes/'.length);
         const notes = parseStoredList(await env.DRONE_DB.get(NOTES_KEY));
         if (!notes.some(note => note.id === id)) return Response.json({ error: '備忘錄不存在' }, { status: 404 });

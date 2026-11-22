@@ -17,8 +17,8 @@ from PySide6.QtWidgets import (QApplication, QDialog, QLabel, QMainWindow, QMenu
                                QStackedWidget, QSystemTrayIcon, QTreeWidget, QTreeWidgetItem)
 
 from . import __version__, autostart, saved_session
-from .api import (ROLE_LABELS, ApiClient, ApiError, can_manage_equipment, can_manage_finance, can_manage_members,
-                  can_manage_users, can_view_cms)
+from .api import (ApiClient, ApiError, access_of, can_manage_receipts, can_manage_users, can_view_cms,
+                  can_view_equipment, can_view_finance, can_view_members, can_view_notes, can_view_reports, position_text)
 from . import i18n
 from .help import HelpWindow, WelcomeDialog
 from .icons import app_icon, icon
@@ -41,18 +41,18 @@ APP_TITLE = "北科無人機社 社務管理系統"
 POLL_MS = 30000
 
 
-def navigation(role: str) -> list:
-    """(group, group icon, [(page class, allowed)]) in menu order."""
+def navigation(role) -> list:
+    """(group, group icon, [(page class, allowed)]) in menu order. `role` is a role name or an api.Access (with permissions)."""
     cms = can_view_cms(role)
     return [
         ("社團通訊", "messages", [(NotificationsPage, True), (AnnouncementsPage, True), (MessagesPage, True)]),
         ("網站管理", "site", [(PostsPage, cms), (PagesPage, cms), (HomepagePage, cms)]),
-        ("社務管理", "members", [(MembersPage, can_manage_members(role)), (FeeReceiptsPage, can_manage_members(role)),
-                             (MeetingsPage, True), (NotesPage, cms)]),
+        ("社務管理", "members", [(MembersPage, can_view_members(role)), (FeeReceiptsPage, can_manage_receipts(role)),
+                             (MeetingsPage, True), (NotesPage, can_view_notes(role))]),
         ("文書作業", "forms", [(FormsPage, True)]),
-        ("財務管理", "finance", [(FinancePage, can_manage_finance(role))]),
-        ("器材管理", "equipment", [(EquipmentPage, can_manage_equipment(role))]),
-        ("AI 工具", "ai", [(AssistantPage, True), (ReportsPage, cms)]),
+        ("財務管理", "finance", [(FinancePage, can_view_finance(role))]),
+        ("器材管理", "equipment", [(EquipmentPage, can_view_equipment(role))]),
+        ("AI 工具", "ai", [(AssistantPage, True), (ReportsPage, can_view_reports(role))]),
         ("系統管理", "users", [(UsersPage, can_manage_users(role)), (RegulationsPage, True), (AccountPage, True)]),
     ]
 
@@ -83,7 +83,7 @@ class MainWindow(QMainWindow):
         self.tree.setRootIsDecorated(True)
         self.tree.setMinimumWidth(240 if i18n.is_english() else 180)
         self.stack = QStackedWidget()
-        for group, group_icon, entries in navigation(user.get("role", "")):
+        for group, group_icon, entries in navigation(access_of(user)):
             allowed = [cls for cls, ok in entries if ok]
             if not allowed:
                 continue
@@ -139,7 +139,7 @@ class MainWindow(QMainWindow):
             act.setStatusTip(tip or act.text().replace("&", "").rstrip("."))
             return act
 
-        president = can_manage_users(self.user.get("role", ""))
+        president = can_manage_users(access_of(self.user))
         self.act_refresh = action("重新整理(&R)", self.refresh_current, "F5", "refresh", "重新從伺服器讀取資料")
         self.act_export = action("匯出 CSV(&E)...", self.export_current, "Ctrl+E", "export", "將目前表格匯出成 Excel 可開啟的 CSV 檔")
         self.act_word = action("匯出 Word(&W)...", self.export_word, "Ctrl+Shift+E", "word", "將目前畫面的資料匯出成 Word（.docx）文件")
@@ -232,7 +232,7 @@ class MainWindow(QMainWindow):
         self.unread_label = QLabel(" 訊息：— ")
         self.unread_label.setToolTip("未讀訊息與公告，每 30 秒更新")
         bar.addPermanentWidget(self.unread_label)
-        bar.addPermanentWidget(QLabel(f" 使用者：{self.user.get('username')}（{ROLE_LABELS.get(self.user.get('role'), self.user.get('role'))}） "))
+        bar.addPermanentWidget(QLabel(f" 使用者：{self.user.get('username')}（{position_text(self.user)}） "))
         bar.addPermanentWidget(QLabel(f" 伺服器：{self.api.base_url} "))
 
     def build_tray(self) -> None:

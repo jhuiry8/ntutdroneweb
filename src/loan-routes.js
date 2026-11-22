@@ -5,7 +5,7 @@
 //   lend:   EquipmentStore /lend (all-or-nothing, idempotent per slip)  ->  FormStore /loan-transition pending->lent
 //           if the second step fails the equipment is released again (rollback), unless another request already finished it
 //   return: EquipmentStore /return (idempotent)  ->  FormStore /loan-transition lent->returned; a failure is simply retried
-import { canManageEquipment } from './auth.js';
+import { hasPermission, hasAnyPermission } from './auth.js';
 import { sessionUser } from './session.js';
 import { equipmentStoreRequest, isLoanable } from './equipment-store.js';
 import { formStore, formRecordView } from './form-routes.js';
@@ -104,7 +104,8 @@ export async function handleLoanRequest(request, env) {
         return Response.json(assets.map(({ id, assetNo, assetName, category, condition, status }) => ({ id, assetNo, assetName, category, condition, status })), { headers: noStore });
     }
 
-    if (!canManageEquipment(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+    // Reading the loans and an asset's history: 借用草稿 (interns) and up; lending, returning and rejecting: loans.approve.
+    if (!hasAnyPermission(user, ['loans.draft', 'loans.approve', 'equipment.view'])) return Response.json({ error: '權限不足' }, { status: 403 });
 
     const history = /^\/api\/equipment\/([\w-]{1,80})\/history$/.exec(path);
     if (history && method === 'GET') {
@@ -120,6 +121,7 @@ export async function handleLoanRequest(request, env) {
 
     const action = /^\/api\/loans\/([\w-]{1,80})\/(lend|return|reject)$/.exec(path);
     if (action && method === 'POST') {
+        if (!hasPermission(user, 'loans.approve')) return Response.json({ error: '沒有審核借用的權限' }, { status: 403 });
         const record = await currentRecord(env, action[1]);
         if (!record) return Response.json({ error: '借據不存在' }, { status: 404 });
         const result = await ACTIONS[action[2]](env, record, user.username);

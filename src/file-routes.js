@@ -10,7 +10,7 @@
 //   PATCH  /api/files/:id          change name, description, category or visibility (JSON)
 //   DELETE /api/files/:id          delete
 //   GET    /api/files/audit        upload / edit / delete log (president)
-import { canManageUsers } from './auth.js';
+import { hasPermission } from './auth.js';
 import { PayloadTooLargeError, readBytesLimited, readJsonObject } from './request.js';
 import { takeAttempt, sessionUser } from './session.js';
 import {
@@ -88,8 +88,8 @@ async function addDriveLink(request, env, user) {
 }
 
 async function upload(request, env, user) {
-    const store = bucket(env);
     if (!canUploadFiles(user)) return json({ error: '權限不足' }, 403);
+    const store = bucket(env);
     if (!(await uploadAllowed(request, env, user))) return json({ error: '上傳過於頻繁，請稍後再試' }, 429);
 
     if (!/^multipart\/form-data\s*;/i.test(request.headers.get('Content-Type') || '')) return json({ error: '請以 multipart/form-data 上傳檔案' }, 415);
@@ -147,7 +147,7 @@ export async function handleFileRequest(request, env) {
         });
     }
     if (path === '/api/files/audit' && method === 'GET') {
-        if (!canManageUsers(user)) return json({ error: '權限不足' }, 403);
+        if (!hasPermission(user, 'files.admin')) return json({ error: '權限不足' }, 403);
         return json((await fileStoreRequest(env, 'audit')).body);
     }
     if (path === '/api/files' && method === 'GET') {
@@ -171,7 +171,7 @@ export async function handleFileRequest(request, env) {
 
     if (method === 'GET') return json({ ...withUrl(record), canManage: canManageFile(user, record) });
     if (!['PATCH', 'DELETE'].includes(method)) return json({ error: '方法不允許' }, 405);
-    if (!canManageFile(user, record)) return json({ error: '只有上傳者或社長可以修改或刪除此檔案' }, 403);
+    if (!canManageFile(user, record)) return json({ error: '只有上傳者或檔案管理員可以修改或刪除此檔案' }, 403);
 
     if (method === 'PATCH') {
         const fields = await readJsonObject(request);

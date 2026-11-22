@@ -147,7 +147,7 @@ export function contentDisposition(kind, name) {
     return `${kind}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
 
-import { canUploadFiles, canViewCms } from './auth.js';
+import { canUploadFiles, canViewCms, hasPermission } from './auth.js';
 export { canUploadFiles };
 export const canSeeCadreFiles = canViewCms;
 // Visibilities this viewer (null = not signed in) is allowed to open.
@@ -155,7 +155,7 @@ export function visibleLevels(user) {
     if (!user) return ['public'];
     return canSeeCadreFiles(user) ? ['public', 'member', 'cadre'] : ['public', 'member'];
 }
-export const canManageFile = (user, record) => !!user && (user.role === 'president' || (canUploadFiles(user) && record?.uploadedBy === user.username));
+export const canManageFile = (user, record) => !!user && (hasPermission(user, 'files.admin') || (canUploadFiles(user) && record?.uploadedBy === user.username));
 
 // ---- Google Drive links (no file is stored; only a link, a title, a category and who may see it) ----
 const DRIVE_ID = /^[A-Za-z0-9_-]{10,100}$/;

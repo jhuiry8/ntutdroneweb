@@ -1,4 +1,6 @@
-const roles = ['president', 'finance', 'cadre', 'member'];
+import { hasPermission, hasAnyPermission, ROLES } from './permissions.js';
+
+const roles = ROLES;
 const encoder = new TextEncoder();
 // Production Workers rejects PBKDF2 calls above 100,000 iterations, even
 // though Node.js and local workerd may accept them.
@@ -38,13 +40,22 @@ export function constantTimeEqual(left, right) {
 }
 
 export function validRole(role) { return roles.includes(role); }
-export function canManageUsers(user) { return user?.role === 'president'; }
-export function canEditCms(user) { return ['president', 'cadre'].includes(user?.role); }
-export function canViewCms(user) { return ['president', 'finance', 'cadre'].includes(user?.role); }
-export function canManageFinance(user) { return ['president', 'finance'].includes(user?.role); }
-export function canManageMembers(user) { return ['president', 'finance'].includes(user?.role); }
-export function canManageEquipment(user) { return ['president', 'finance', 'cadre'].includes(user?.role); }
-export function canUploadFiles(user) { return ['president', 'cadre', 'finance'].includes(user?.role); }
+
+// Permission checks. Everything is decided by permission codes (see permissions.js); the
+// old role-named helpers below are kept so existing routes and other modules keep working.
+// `user.permissions` (set by sessionUser) wins; a user object without it falls back to its legacy role.
+export { hasPermission, hasAnyPermission };
+export function canManageUsers(user) { return hasPermission(user, 'users.manage'); }
+export function canEditCms(user) { return hasPermission(user, 'cms.edit'); }
+export function canViewCms(user) { return hasPermission(user, 'cms.view'); }
+export function canManageFinance(user) { return hasPermission(user, 'finance.edit'); }
+export function canManageMembers(user) { return hasPermission(user, 'members.edit'); }
+export function canManageEquipment(user) { return hasPermission(user, 'equipment.manage'); }
+export function canUploadFiles(user) { return hasPermission(user, 'files.upload'); }
+// What the API and the dashboard may tell the signed-in person about themself.
 export function publicUser(user) {
-    return { username: user.username, role: user.role, active: user.active !== false, createdAt: user.createdAt, memberId: user.memberId || '' };
+    return {
+        username: user.username, role: user.role, active: user.active !== false, createdAt: user.createdAt, memberId: user.memberId || '',
+        ...(Array.isArray(user.permissions) ? { positions: user.positions || [], permissions: user.permissions } : {})
+    };
 }

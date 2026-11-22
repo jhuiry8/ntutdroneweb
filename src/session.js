@@ -2,6 +2,7 @@
 // rate limits, CMS content lists), shared by every route module.
 import { parseCookies } from './request.js';
 import { SITE_SETTINGS_KEY } from './kv-keys.js';
+import { orgStoreRequest } from './org-store.js';
 
 // CAPTCHA challenges, login counters and the CMS content lists go through one
 // serialized Durable Object, so concurrent requests cannot race them.
@@ -52,6 +53,17 @@ export async function readSiteSettings(env) {
 }
 export const MEMBER_LOGIN_CLOSED = '目前未開放社員帳號登入。開會時請使用主席提供的會議連結，以學號與姓名簽到。';
 
+// Adds what the account may do: `positions` (職位), `permissions` (權限代碼) and the `role` that matches its
+// main position. Without an ORG_STORE binding the user is returned as it is and its legacy role decides
+// (see hasPermission in permissions.js), so deployments and tests that have no OrgStore keep working.
+// A failing OrgStore throws instead of guessing: a request must never get more rights than the store says.
+export async function withAccess(env, user) {
+    if (!user || !env.ORG_STORE) return user;
+    const { status, body } = await orgStoreRequest(env, 'resolve', { username: user.username, legacyRole: user.role });
+    if (status !== 200) throw new Error('Could not resolve account permissions');
+    return { ...user, role: body.role, positions: body.positions, permissions: body.permissions, realPresident: body.realPresident, actingPresident: body.acting };
+}
+
 export async function sessionUser(request, env) {
     const cookies = parseCookies(request);
     const sessionToken = cookies.session;
@@ -59,13 +71,14 @@ export async function sessionUser(request, env) {
 
     const sessionUser = await env.DRONE_DB.get(`session:${sessionToken}`);
     if (!sessionUser) return null;
-    if (sessionUser === 'admin') return await env.DRONE_DB.get('user:admin') ? null : { username: 'admin', role: 'president', active: true };
+    if (sessionUser === 'admin') return await env.DRONE_DB.get('user:admin') ? null : await withAccess(env, { username: 'admin', role: 'president', active: true });
     const session = JSON.parse(sessionUser);
     const userJson = await env.DRONE_DB.get(`user:${session.username}`);
     const user = userJson ? JSON.parse(userJson) : null;
     if (!user || user.active === false || user.version !== session.version) return null;
-    if (user.role === 'member' && !(await readSiteSettings(env)).memberLogin) return null;
-    return user;
+    const resolved = await withAccess(env, user);
+    if (resolved.role === 'member' && !(await readSiteSettings(env)).memberLogin) return null;
+    return resolved;
 }
 
 // Helper: Check Authentication

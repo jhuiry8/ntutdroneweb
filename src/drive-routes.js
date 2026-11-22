@@ -7,7 +7,7 @@
 //   PUT /api/drive/folders                      president: set folders [{ id|url, name, visibility }]
 //   GET /api/drive/list?root=&folder=&pageToken=    one folder's contents (folder defaults to root)
 //   GET /api/drive/thumb?root=&file=            thumbnail image proxied through the Worker
-import { canManageUsers } from './auth.js';
+import { hasPermission } from './auth.js';
 import { readJsonObject } from './request.js';
 import { sessionUser } from './session.js';
 import { VISIBILITIES, isDriveId, parseFolderInput, visibleLevels } from './files.js';
@@ -48,7 +48,7 @@ export async function handleDriveRequest(request, env) {
     const user = await sessionUser(request, env);
     if (!user) return json({ error: '未授權' }, 401);
     const enabled = driveEnabled(env);
-    if (path === '/api/drive/status' && request.method === 'GET') return json({ enabled, canConfigure: enabled && canManageUsers(user) });
+    if (path === '/api/drive/status' && request.method === 'GET') return json({ enabled, canConfigure: enabled && hasPermission(user, 'site.settings') });
     if (!enabled) return json({ error: '雲端硬碟功能尚未啟用' }, 404);
 
     try {
@@ -57,7 +57,7 @@ export async function handleDriveRequest(request, env) {
             return json((await configured(env)).filter(folder => levels.includes(folder.visibility)));
         }
         if (path === '/api/drive/folders' && request.method === 'PUT') {
-            if (!canManageUsers(user)) return json({ error: '只有社長可以設定雲端硬碟資料夾' }, 403);
+            if (!hasPermission(user, 'site.settings')) return json({ error: '沒有設定雲端硬碟資料夾的權限' }, 403);
             const body = await readJsonObject(request, 32 * 1024);
             const folders = normalizeFolders(body.folders);
             return json((await fileStoreRequest(env, 'drive-folders-set', { folders, by: user.username })).body);

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QFr
                                QHeaderView, QLabel, QMessageBox, QPushButton, QTableWidget,
                                QTableWidgetItem, QVBoxLayout, QWidget)
 
-from .api import ApiError
+from .api import ApiError, access_of
 from .docx import Document
 from .icons import icon
 
@@ -263,7 +263,8 @@ class Page(QWidget):
 
     @property
     def role(self) -> str:
-        return self.user.get("role", "")
+        # A str (the old role) that also carries the permission codes the server sent; see api.has_permission.
+        return access_of(self.user)
 
     def refresh(self) -> None:
         raise NotImplementedError

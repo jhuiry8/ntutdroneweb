@@ -1,6 +1,6 @@
 // HTTP routes for the AI features, the read-only tools the assistant may call,
 // and the weekly club report (also run by the Cron trigger).
-import { canEditCms, canViewCms, canManageFinance, canManageMembers, canManageEquipment, canManageUsers } from './auth.js';
+import { hasPermission, hasAnyPermission } from './auth.js';
 import { membershipStatus, MEMBER_LEVELS, semesterOf } from './membership.js';
 import { REGULATION_KINDS, AMENDMENT_ACTIONS, requirementsFor } from './regulation-rules.js';
 import { aiProvider, taipeiToday, FORM_TYPES, formTitle, FormValidationError } from './forms.js';
@@ -37,8 +37,9 @@ const text = (value, max = 100) => String(value ?? '').trim().slice(0, max);
 
 export function aiPermissions(user) {
     return {
-        editCms: canEditCms(user), viewCms: canViewCms(user), finance: canManageFinance(user),
-        members: canManageMembers(user), equipment: canManageEquipment(user), president: canManageUsers(user)
+        editCms: hasPermission(user, 'cms.edit'), viewCms: hasPermission(user, 'cms.view'), finance: hasAnyPermission(user, ['finance.view', 'finance.edit']),
+        financeEdit: hasPermission(user, 'finance.edit'), members: hasPermission(user, 'members.view'), equipment: hasPermission(user, 'equipment.view'),
+        reports: hasAnyPermission(user, ['reports.view', 'reports.finance']), president: hasPermission(user, 'users.manage')
     };
 }
 
@@ -319,7 +320,7 @@ export async function handleAiRequest(request, env, deps) {
 
     // Applies an AI-suggested (or manually chosen) budget category to one transaction.
     if (budgetMatch && method === 'PATCH') {
-        if (!can.finance) return json({ error: '權限不足' }, 403);
+        if (!can.financeEdit) return json({ error: '權限不足' }, 403);
         const body = await deps.readJsonLimited(request, LIMIT);
         const budgetId = String(body?.budgetId ?? '');
         const budgets = await readList(env, KEYS.budgets);
@@ -412,7 +413,7 @@ export async function handleAiRequest(request, env, deps) {
     }
 
     if (path === '/api/ai/reports' && ['GET', 'POST'].includes(method)) {
-        if (!can.viewCms) return json({ error: '權限不足' }, 403);
+        if (!can.viewCms && !can.reports) return json({ error: '權限不足' }, 403);
         if (method === 'GET') {
             const reports = await readList(env, KEYS.reports);
             // Finance, roster and equipment figures stay with the officers allowed to see them.
@@ -423,7 +424,7 @@ export async function handleAiRequest(request, env, deps) {
                 return { ...report, stats, summary: null, text: reportText(stats, null) };
             }));
         }
-        if (!can.president && !can.finance) return json({ error: '只有社長與財務可以手動產生週報' }, 403);
+        if (!can.president && !can.financeEdit) return json({ error: '沒有手動產生週報的權限' }, 403);
         if (!provider) return json(await generateClubReport(env, deps, { trigger: 'manual', username: user.username }), 201);
         return await deps.withAiQuota(env, user, () => generateClubReport(env, deps, { trigger: 'manual', username: user.username }));
     }

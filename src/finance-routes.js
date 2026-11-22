@@ -1,9 +1,14 @@
 // HTTP routes for the finance ledger: transactions, review, budgets and spreadsheet import.
-import { canManageUsers, canManageFinance } from './auth.js';
+import { hasPermission, hasAnyPermission } from './auth.js';
 import { readJsonObject } from './request.js';
 import { sessionUser } from './session.js';
 import { ValidationError, financeAmount, financeText, financeDate, importedDate, importAmount, parseStoredList } from './validation.js';
 import { FINANCE_BUDGETS_KEY, FINANCE_TRANSACTIONS_KEY } from './kv-keys.js';
+
+// Everyone who touched an entry: whoever entered, reviewed or categorised it.
+export const handledBy = (transaction, username) => [transaction.createdBy, transaction.reviewedBy, transaction.budgetSetBy].includes(username);
+const receiptId = value => (/^[0-9a-f-]{36}$/.test(String(value ?? '')) ? String(value) : '');
+const FINANCE_VIEW = ['finance.view', 'finance.edit', 'finance.approve', 'finance.audit'];
 
 function transactionTotals(transactions) {
     const approved = transactions.filter(item => item.status === 'approved');
@@ -26,7 +31,7 @@ export async function handleFinanceRequest(request, env) {
     if (path === '/api/finance/summary' && method === 'GET') {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canManageFinance(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+        if (!hasAnyPermission(user, FINANCE_VIEW)) return Response.json({ error: '權限不足' }, { status: 403 });
         const transactions = parseStoredList(await env.DRONE_DB.get(FINANCE_TRANSACTIONS_KEY));
         const budgets = parseStoredList(await env.DRONE_DB.get(FINANCE_BUDGETS_KEY));
         const approved = transactions.filter(item => item.status === 'approved');
@@ -42,7 +47,7 @@ export async function handleFinanceRequest(request, env) {
     if (path === '/api/finance/transactions' && method === 'POST') {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canManageFinance(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+        if (!hasPermission(user, 'finance.edit')) return Response.json({ error: '權限不足' }, { status: 403 });
         const body = await readJsonObject(request);
         const kind = String(body.kind || '');
         if (!['income', 'expense', 'transfer'].includes(kind)) return Response.json({ error: '收支類型無效' }, { status: 400 });
@@ -58,6 +63,7 @@ export async function handleFinanceRequest(request, env) {
             cashDelta: kind === 'transfer' ? (account === 'cash' ? -amount : amount) : (account === 'cash' ? (kind === 'income' ? amount : -amount) : 0),
             postalDelta: kind === 'transfer' ? (account === 'cash' ? amount : -amount) : (account === 'postal' ? (kind === 'income' ? amount : -amount) : 0),
             budgetId: typeof body.budgetId === 'string' ? body.budgetId : '', status: 'pending',
+            ...(receiptId(body.receiptFileId) ? { receiptFileId: receiptId(body.receiptFileId) } : {}),
             createdBy: user.username, createdAt: new Date().toISOString(), source: 'manual'
         };
         const transactions = parseStoredList(await env.DRONE_DB.get(FINANCE_TRANSACTIONS_KEY));
@@ -69,7 +75,7 @@ export async function handleFinanceRequest(request, env) {
     if (path.startsWith('/api/finance/transactions/') && path.endsWith('/review') && method === 'PATCH') {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canManageUsers(user)) return Response.json({ error: '僅社長可審核收支' }, { status: 403 });
+        if (!hasPermission(user, 'finance.approve')) return Response.json({ error: '沒有審核收支的權限' }, { status: 403 });
         const id = path.slice('/api/finance/transactions/'.length, -'/review'.length);
         const body = await readJsonObject(request);
         const status = body.status === 'approved' || body.status === 'rejected' ? body.status : null;
@@ -86,10 +92,50 @@ export async function handleFinanceRequest(request, env) {
         return Response.json(transaction);
     }
 
+    // The receipt (收據) of an entry is a file in the file library; reports link to it.
+    if (/^\/api\/finance\/transactions\/[^/]+\/receipt$/.test(path) && method === 'PATCH') {
+        const user = await sessionUser(request, env);
+        if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+        if (!hasPermission(user, 'finance.edit')) return Response.json({ error: '權限不足' }, { status: 403 });
+        const body = await readJsonObject(request);
+        const fileId = receiptId(body.receiptFileId);
+        if (body.receiptFileId && !fileId) return Response.json({ error: '收據檔案編號無效' }, { status: 400 });
+        const transactions = parseStoredList(await env.DRONE_DB.get(FINANCE_TRANSACTIONS_KEY));
+        const transaction = transactions.find(item => item.id === path.split('/')[4]);
+        if (!transaction) return Response.json({ error: '帳目不存在' }, { status: 404 });
+        if (fileId) transaction.receiptFileId = fileId; else delete transaction.receiptFileId;
+        await env.DRONE_DB.put(FINANCE_TRANSACTIONS_KEY, JSON.stringify(transactions));
+        return Response.json(transaction);
+    }
+
+    // 審核紀錄 (法規監察委員會, 章程第十二條): the committee signs off or leaves an opinion on a ledger entry. It never
+    // changes the entry itself. A member cannot audit an entry they handled (第四款), e.g. a committee member who is also 總務.
+    if (/^\/api\/finance\/transactions\/[^/]+\/audit$/.test(path) && method === 'POST') {
+        const user = await sessionUser(request, env);
+        if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+        if (!hasPermission(user, 'finance.audit')) return Response.json({ error: '沒有監察審核的權限' }, { status: 403 });
+        const id = path.split('/')[4];
+        const body = await readJsonObject(request);
+        const verdict = body.verdict === 'signed' || body.verdict === 'opinion' ? body.verdict : null;
+        if (!verdict) return Response.json({ error: '審核結果必須是「簽核」或「意見」' }, { status: 400 });
+        const note = String(body.note ?? '').trim();
+        if (note.length > 300) return Response.json({ error: '意見不可超過 300 字' }, { status: 400 });
+        if (verdict === 'opinion' && !note) return Response.json({ error: '請填寫審核意見' }, { status: 400 });
+        const transactions = parseStoredList(await env.DRONE_DB.get(FINANCE_TRANSACTIONS_KEY));
+        const transaction = transactions.find(item => item.id === id);
+        if (!transaction) return Response.json({ error: '帳目不存在' }, { status: 404 });
+        if (handledBy(transaction, user.username)) return Response.json({ error: '利益迴避：不能審核自己經手的帳目（章程第十二條第四款）' }, { status: 403 });
+        transaction.audits = Array.isArray(transaction.audits) ? transaction.audits : [];
+        if (transaction.audits.length >= 20) return Response.json({ error: '每筆帳目最多 20 筆審核紀錄' }, { status: 409 });
+        transaction.audits.push({ id: crypto.randomUUID(), by: user.username, at: new Date().toISOString(), verdict, note });
+        await env.DRONE_DB.put(FINANCE_TRANSACTIONS_KEY, JSON.stringify(transactions));
+        return Response.json(transaction, { status: 201 });
+    }
+
     if (path.startsWith('/api/finance/transactions/') && method === 'DELETE') {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canManageFinance(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+        if (!hasPermission(user, 'finance.edit')) return Response.json({ error: '權限不足' }, { status: 403 });
         const id = path.slice('/api/finance/transactions/'.length);
         if (!id || id.includes('/')) return Response.json({ error: '帳目編號無效' }, { status: 400 });
         const transactions = parseStoredList(await env.DRONE_DB.get(FINANCE_TRANSACTIONS_KEY));
@@ -103,7 +149,7 @@ export async function handleFinanceRequest(request, env) {
     if (path === '/api/finance/budgets' && ['GET', 'PUT'].includes(method)) {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canManageFinance(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+        if (!hasAnyPermission(user, method === 'GET' ? FINANCE_VIEW : ['finance.edit'])) return Response.json({ error: '權限不足' }, { status: 403 });
         if (method === 'GET') return Response.json(parseStoredList(await env.DRONE_DB.get(FINANCE_BUDGETS_KEY)));
         const { budgets } = await readJsonObject(request);
         if (!Array.isArray(budgets) || budgets.length > 100) return Response.json({ error: '預算最多 100 個分類' }, { status: 400 });
@@ -123,7 +169,7 @@ export async function handleFinanceRequest(request, env) {
     if (path === '/api/finance/import' && method === 'POST') {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canManageFinance(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+        if (!hasPermission(user, 'finance.edit')) return Response.json({ error: '權限不足' }, { status: 403 });
         const { rows } = await readJsonObject(request);
         if (!Array.isArray(rows) || rows.length < 1 || rows.length > 1000) return Response.json({ error: '匯入資料需介於 1 至 1,000 筆' }, { status: 400 });
         let previousCash = 0, previousPostal = 0;

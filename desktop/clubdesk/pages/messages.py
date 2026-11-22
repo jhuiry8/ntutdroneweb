@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout, QGrid
                                QPlainTextEdit, QSplitter, QTextBrowser, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
                                QWidget)
 
-from ..api import ApiError, can_manage_users, can_view_cms
+from ..api import ApiError, can_change_settings, can_view_cms
 from ..icons import icon
 from ..docx import Document
 from ..i18n import raw
@@ -538,7 +538,7 @@ class AnnouncementsPage(Page):
         for button in (add, edit, remove):
             button.setVisible(self.officer)
         buttons = [add, edit, remove]
-        if can_manage_users(self.role):
+        if can_change_settings(self.role):
             push = icon_button("外部推播設定...", "publish")
             push.clicked.connect(lambda: PushSettingsDialog(self, self.api).exec())
             buttons.append(push)

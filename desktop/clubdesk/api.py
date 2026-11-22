@@ -34,29 +34,125 @@ ROLE_LABELS = {
 }
 
 
-# Same permission rules as src/auth.js.
-def can_manage_users(role: str) -> bool:
-    return role == "president"
+# Same permission rules as src/auth.js / src/permissions.js. The server sends the account's
+# permission codes in /api/me ("permissions"); when it does, they decide what the program shows.
+# Older servers only send "role", so the old four roles map to the permissions they always had.
+_LEGACY_CADRE = frozenset({
+    "cms.view", "cms.edit", "notes.manage", "events.manage", "announce.post", "files.upload", "classes.manage",
+    "classes.checkin", "surveys.manage", "equipment.view", "equipment.manage", "loans.draft", "loans.approve",
+    "meetings.manage", "forms.manage", "regulations.amend",
+})
+LEGACY_ROLE_PERMISSIONS = {
+    "president": None,  # everything
+    "finance": frozenset({
+        "cms.view", "files.upload", "classes.manage", "classes.checkin", "events.manage", "announce.post",
+        "meetings.manage", "forms.manage", "regulations.amend", "equipment.view", "equipment.manage", "loans.draft",
+        "loans.approve", "members.view", "members.edit", "receipts.manage", "finance.view", "finance.edit",
+        "reports.view", "reports.finance",
+    }),
+    "cadre": _LEGACY_CADRE,
+    "member": frozenset(),
+}
 
 
-def can_view_cms(role: str) -> bool:
-    return role in ("president", "finance", "cadre")
+class Access(str):
+    """The signed-in account's role (still a plain str, so old code keeps working) plus the server's permission codes."""
+
+    permissions = None  # None = the server did not send any: the role decides
+
+    def __new__(cls, role: str = "", permissions=None):
+        obj = super().__new__(cls, role or "")
+        obj.permissions = None if permissions is None else frozenset(permissions)
+        return obj
 
 
-def can_edit_cms(role: str) -> bool:
-    return role in ("president", "cadre")
+def access_of(user: dict) -> Access:
+    """Role and permissions of a /api/me (or login) answer."""
+    user = user or {}
+    permissions = user.get("permissions")
+    return Access(user.get("role", ""), permissions if isinstance(permissions, (list, tuple, set, frozenset)) else None)
 
 
-def can_manage_finance(role: str) -> bool:
-    return role in ("president", "finance")
+def has_permission(role, code: str) -> bool:
+    """`role` is an Access, or a plain role name (as the old code passed)."""
+    permissions = getattr(role, "permissions", None)
+    if permissions is not None:
+        return code in permissions
+    legacy = LEGACY_ROLE_PERMISSIONS.get(str(role or ""), frozenset())
+    return legacy is None or code in legacy
 
 
-def can_manage_members(role: str) -> bool:
-    return role in ("president", "finance")
+def has_any_permission(role, *codes: str) -> bool:
+    return any(has_permission(role, code) for code in codes)
 
 
-def can_manage_equipment(role: str) -> bool:
-    return role in ("president", "finance", "cadre")
+def can_manage_users(role) -> bool:
+    return has_permission(role, "users.manage")
+
+
+def can_view_cms(role) -> bool:
+    return has_permission(role, "cms.view")
+
+
+def can_edit_cms(role) -> bool:
+    return has_permission(role, "cms.edit")
+
+
+def can_manage_finance(role) -> bool:
+    return has_permission(role, "finance.edit")
+
+
+def can_view_finance(role) -> bool:
+    return has_any_permission(role, "finance.view", "finance.edit", "finance.approve", "finance.audit")
+
+
+def can_approve_finance(role) -> bool:
+    return has_permission(role, "finance.approve")
+
+
+def can_manage_members(role) -> bool:
+    return has_permission(role, "members.edit")
+
+
+def can_view_members(role) -> bool:
+    return has_any_permission(role, "members.view", "members.edit")
+
+
+def can_manage_receipts(role) -> bool:
+    return has_any_permission(role, "receipts.manage", "members.edit")
+
+
+def can_manage_equipment(role) -> bool:
+    return has_permission(role, "equipment.manage")
+
+
+def can_view_equipment(role) -> bool:
+    return has_any_permission(role, "equipment.view", "equipment.manage")
+
+
+def can_edit_notes(role) -> bool:
+    return has_permission(role, "notes.manage")
+
+
+def can_view_notes(role) -> bool:
+    return has_any_permission(role, "cms.view", "notes.manage")
+
+
+def can_view_reports(role) -> bool:
+    return has_any_permission(role, "cms.view", "reports.view", "reports.finance")
+
+
+def can_change_settings(role) -> bool:
+    return has_permission(role, "site.settings")
+
+
+def position_text(user: dict) -> str:
+    """Positions for the status bar and the account page: the server's names, else the old role label."""
+    names = [name for name in (user or {}).get("positionNames", []) if isinstance(name, str) and name]
+    if names:
+        return "、".join(names)
+    role = (user or {}).get("role", "")
+    return ROLE_LABELS.get(role, role)
 
 
 class ApiError(Exception):

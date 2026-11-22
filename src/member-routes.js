@@ -1,6 +1,6 @@
 // HTTP routes for the member roster (社員名冊) and membership fee receipts.
 import { MEMBER_LEVELS, semesterOf, parseMemberLevel, parseFeeStatus, validSemester, membershipStatus, receiptFeeType, applyFeeReceipt } from './membership.js';
-import { canManageMembers } from './auth.js';
+import { hasPermission, hasAnyPermission } from './auth.js';
 import { PayloadTooLargeError, readJsonLimited, readJsonObject } from './request.js';
 import { sessionUser, listUsers } from './session.js';
 import { ValidationError, financeAmount, financeText, financeDate, importedDate, parseStoredList } from './validation.js';
@@ -59,7 +59,7 @@ export async function handleMemberRequest(request, env) {
     if (path === '/api/members/import' && method === 'POST') {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+        if (!hasPermission(user, 'members.edit')) return Response.json({ error: '權限不足' }, { status: 403 });
         if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get('Content-Type') || '')) return Response.json({ error: 'Content-Type 必須為 application/json' }, { status: 415 });
         const contentLength = Number(request.headers.get('Content-Length') || 0);
         if (contentLength > 1_000_000) throw new PayloadTooLargeError(1_000_000);
@@ -88,7 +88,7 @@ export async function handleMemberRequest(request, env) {
     if (path === '/api/members' && ['GET', 'POST'].includes(method)) {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+        if (!hasAnyPermission(user, method === 'GET' ? ['members.view', 'members.edit'] : ['members.edit'])) return Response.json({ error: '權限不足' }, { status: 403 });
         const members = parseStoredList(await env.DRONE_DB.get(MEMBERS_KEY));
         if (method === 'GET') {
             const query = String(url.searchParams.get('q') || '').trim().toLowerCase();
@@ -118,7 +118,7 @@ export async function handleMemberRequest(request, env) {
     if (path === '/api/members/bulk' && method === 'POST') {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+        if (!hasPermission(user, 'members.edit')) return Response.json({ error: '權限不足' }, { status: 403 });
         const body = await readJsonObject(request);
         const ids = Array.isArray(body.ids) ? [...new Set(body.ids.filter(id => typeof id === 'string'))] : [];
         if (!ids.length || ids.length > 1000) return Response.json({ error: '請選擇 1 至 1,000 位社員' }, { status: 400 });
@@ -149,7 +149,7 @@ export async function handleMemberRequest(request, env) {
     if (path.startsWith('/api/members/') && method === 'PATCH') {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+        if (!hasPermission(user, 'members.edit')) return Response.json({ error: '權限不足' }, { status: 403 });
         const id = path.slice('/api/members/'.length);
         const members = parseStoredList(await env.DRONE_DB.get(MEMBERS_KEY));
         const member = members.find(item => item.id === id);
@@ -171,7 +171,7 @@ export async function handleMemberRequest(request, env) {
     if (path === '/api/member-fee-receipts' && ['GET', 'POST'].includes(method)) {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+        if (!hasAnyPermission(user, method === 'GET' ? ['receipts.manage', 'members.edit'] : ['receipts.manage'])) return Response.json({ error: '權限不足' }, { status: 403 });
         const receipts = parseStoredList(await env.DRONE_DB.get(MEMBERSHIP_RECEIPTS_KEY));
         if (method === 'GET') return Response.json(receipts.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)));
         const body = await readJsonObject(request);
@@ -209,7 +209,7 @@ export async function handleMemberRequest(request, env) {
     if (path.startsWith('/api/member-fee-receipts/') && method === 'DELETE') {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+        if (!hasPermission(user, 'receipts.manage')) return Response.json({ error: '權限不足' }, { status: 403 });
         const id = path.slice('/api/member-fee-receipts/'.length);
         const receipts = parseStoredList(await env.DRONE_DB.get(MEMBERSHIP_RECEIPTS_KEY));
         if (!receipts.some(item => item.id === id)) return Response.json({ error: '簽收紀錄不存在' }, { status: 404 });
@@ -220,7 +220,7 @@ export async function handleMemberRequest(request, env) {
     if (path.startsWith('/api/members/') && method === 'DELETE') {
         const user = await sessionUser(request, env);
         if (!user) return Response.json({ error: '未授權' }, { status: 401 });
-        if (!canManageMembers(user)) return Response.json({ error: '權限不足' }, { status: 403 });
+        if (!hasPermission(user, 'members.edit')) return Response.json({ error: '權限不足' }, { status: 403 });
         const id = path.slice('/api/members/'.length);
         const members = parseStoredList(await env.DRONE_DB.get(MEMBERS_KEY));
         if (!members.some(member => member.id === id)) return Response.json({ error: '社員不存在' }, { status: 404 });
