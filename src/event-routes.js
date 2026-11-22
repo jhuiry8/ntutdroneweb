@@ -16,7 +16,7 @@ import {
     EventError, EVENT_AUDIENCES, EVENT_CATEGORIES, canViewEvent, canRegisterEvent, registrationOpen, registrationDeadlineOf,
     confirmedOf, waitlistOf, taipeiParts, taipeiInput, sha256Hex
 } from './events.js';
-import { renderCalendarPage, renderEventPage, renderAdminEventsPage } from './templates/calendar.js';
+import { renderCalendarPage, renderEventPage } from './templates/calendar.js';
 
 const json = (body, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
 const randomHex = bytes => Array.from(crypto.getRandomValues(new Uint8Array(bytes)), value => value.toString(16).padStart(2, '0')).join('');
@@ -241,7 +241,7 @@ export async function handleEventRequest(request, env, deps) {
         const actor = await actorFor(request, env, deps);
         if (!actor.username) return Response.redirect(`${url.origin}/admin`, 302);
         if (!actor.officer) return new Response('只有幹部可以管理活動', { status: 403, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
-        return html(renderAdminEventsPage());
+        return Response.redirect(`${url.origin}/admin/dashboard#events`, 302);
     }
 
     if (path === '/api/calendar/token') {

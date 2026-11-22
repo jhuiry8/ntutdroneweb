@@ -328,7 +328,7 @@ test('admin events page is for officers only', async () => {
     const f = fixture();
     assert.equal((await f.raw('/admin/events', null)).status, 302);
     assert.equal((await f.raw('/admin/events', 'alice')).status, 403);
-    assert.equal((await f.raw('/admin/events', 'cadre1')).status, 200);
+    assert.equal((await f.raw('/admin/events', 'cadre1')).status, 302);
 });
 
 test('day-before reminder posts one announcement per event and only once', async () => {

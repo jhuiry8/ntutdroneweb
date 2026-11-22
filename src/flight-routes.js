@@ -1,9 +1,9 @@
-// HTTP routes for 飛行紀錄簿 (/api/flights*) and 證照追蹤 (/api/certificates*), the
-// /admin/flights page, and the daily certificate-expiry reminders run from the cron trigger.
+// HTTP routes for 飛行紀錄簿 (/api/flights*) and 證照追蹤 (/api/certificates*); the UI is the
+// 飛行紀錄與證照 panel of the dashboard (/admin/flights redirects there). The daily
+// certificate-expiry reminders run from the cron trigger.
 import { canViewCms, canEditCms } from './auth.js';
 import { FlightError, FLIGHT_TYPES, REMINDER_DAYS } from './flight-store.js';
 import { dmConversation } from './messages.js';
-import { renderFlightPage } from './flight-page.js';
 
 const json = (body, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
 const SYSTEM_ACTOR = { username: 'system', name: '系統通知', officer: true, president: false };
@@ -40,7 +40,7 @@ export async function handleFlightRequest(request, env, deps) {
     if (path === '/admin/flights') {
         if (method !== 'GET') return null;
         if (!user) return Response.redirect(`${url.origin}/admin`, 302);
-        return new Response(renderFlightPage({ officer: canViewCms(user), editor: canEditCms(user) }), { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+        return Response.redirect(`${url.origin}/admin/dashboard#flights`, 302);
     }
     if (!user) return json({ error: '未授權' }, 401);
 
