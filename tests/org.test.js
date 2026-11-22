@@ -597,6 +597,19 @@ test('a profile photo must be an image from the file library; a public photo mus
     assert.equal((await f.request('/api/officers/me', 'pubr', 'PUT', { visibility: { photo: false } })).status, 200);
 });
 
+test('the 社長 (officers.manage) can edit another officer\'s profile; other officers cannot', async () => {
+    const f = fixture();
+    const year = academicYearOf();
+    await f.request('/api/org/officers', 'admin', 'POST', { year, username: 'pubr', position: 'pr' });
+    await f.request('/api/org/officers', 'admin', 'POST', { year, username: 'tech', position: 'tech' });
+    const saved = await f.request('/api/officers/profile/pubr', 'admin', 'PUT', { fields: { name: '林小公', department: '電機三' }, visibility: { name: true } });
+    assert.equal(saved.status, 200);
+    assert.equal((await f.request('/api/officers/profile/pubr', 'admin')).body.profile.fields.department, '電機三');
+    assert.equal((await f.request('/api/officers/me', 'pubr')).body.profile.fields.name, '林小公');
+    assert.equal((await f.request('/api/officers/profile/pubr', 'tech', 'PUT', { fields: { name: '亂改' } })).status, 403);
+    assert.equal((await f.request('/api/officers/profile/mem', 'admin', 'PUT', { fields: { name: '路人' } })).status, 403, 'not an officer');
+});
+
 // ---------- the public page ----------
 
 test('the public /officers page is off by default and only shows what officers marked public', async () => {
