@@ -38,7 +38,7 @@ const text = (value, max = 100) => String(value ?? '').trim().slice(0, max);
 export function aiPermissions(user) {
     return {
         editCms: hasPermission(user, 'cms.edit'), viewCms: hasPermission(user, 'cms.view'), finance: hasAnyPermission(user, ['finance.view', 'finance.edit']),
-        financeEdit: hasPermission(user, 'finance.edit'), members: hasPermission(user, 'members.view'), equipment: hasPermission(user, 'equipment.view'),
+        financeEdit: hasPermission(user, 'finance.edit'), financeApprove: hasPermission(user, 'finance.approve'), members: hasPermission(user, 'members.view'), equipment: hasPermission(user, 'equipment.view'),
         reports: hasAnyPermission(user, ['reports.view', 'reports.finance']), president: hasPermission(user, 'users.manage')
     };
 }
@@ -330,8 +330,8 @@ export async function handleAiRequest(request, env, deps) {
         if (!transaction) return json({ error: '帳目不存在' }, 404);
         if (transaction.kind !== 'expense') return json({ error: '只有支出可以歸入預算分類' }, 400);
         if (transaction.status === 'rejected') return json({ error: '已退回的帳目不能修改' }, 409);
-        // Approved items keep their category unless it was empty, so reviewed totals do not shift silently.
-        if (transaction.status === 'approved' && transaction.budgetId) return json({ error: '已核准且已有分類的帳目不能改分類' }, 409);
+        // Approved items keep their category unless it was empty (or the 審核者 re-files it), so reviewed totals do not shift silently.
+        if (transaction.status === 'approved' && transaction.budgetId && !can.financeApprove) return json({ error: '已核准且已有分類的帳目不能改分類' }, 409);
         transaction.budgetId = budgetId;
         transaction.budgetSetBy = user.username;
         transaction.budgetSetAt = new Date().toISOString();

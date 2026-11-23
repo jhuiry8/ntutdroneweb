@@ -124,6 +124,26 @@ test('budget categories track approved expense and reject malformed imports', as
     assert.equal(invalid.status, 400);
 });
 
+test('budget matching suggests categories from names and history, and approvers can re-file approved entries', async () => {
+    const { request } = fixture();
+    await request('/api/finance/budgets', 'finance', 'PUT', { budgets: [{ id: 'gear', name: '器材', planned: 20000 }, { id: 'food', name: '餐費', planned: 5000 }] });
+    const add = async (item, budgetId = '') => (await (await request('/api/finance/transactions', 'finance', 'POST', { date: '2026-06-01', item, kind: 'expense', account: 'cash', amount: 100, budgetId })).json());
+    await add('社課便當', 'food');
+    const byName = await add('購買器材螺旋槳');
+    const byHistory = await add('社課便當');
+    const none = await add('完全無關事項');
+    const preview = await (await request('/api/finance/match-budgets', 'finance', 'POST', {})).json();
+    assert.deepEqual(preview.suggestions.map(s => [s.id, s.budgetId]).sort(), [[byName.id, 'gear'], [byHistory.id, 'food']].sort());
+    assert.equal(preview.unmatched, 1);
+    assert.equal((await request('/api/finance/match-budgets', 'cadre', 'POST', { apply: true })).status, 403);
+    const applied = await (await request('/api/finance/match-budgets', 'finance', 'POST', { apply: true })).json();
+    assert.equal(applied.applied, 2);
+    await request(`/api/finance/transactions/${byName.id}/review`, 'president', 'PATCH', { status: 'approved' });
+    assert.equal((await request(`/api/finance/transactions/${byName.id}/budget`, 'finance', 'PATCH', { budgetId: 'food' })).status, 409);
+    assert.equal((await request(`/api/finance/transactions/${byName.id}/budget`, 'president', 'PATCH', { budgetId: 'food' })).status, 200);
+    assert.ok(none.id);
+});
+
 test('finance can search, add, and delete member records without granting access to cadres', async () => {
     const { request } = fixture();
     assert.equal((await request('/api/members', 'cadre')).status, 403);
