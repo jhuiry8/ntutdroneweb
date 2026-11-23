@@ -3,6 +3,7 @@ import { hasPermission, hasAnyPermission } from './auth.js';
 import { readJsonObject } from './request.js';
 import { sessionUser } from './session.js';
 import { ValidationError, financeAmount, financeText, financeDate, importedDate, importAmount, parseStoredList } from './validation.js';
+import { suggestBudgets } from './finance-match.js';
 import { FINANCE_BUDGETS_KEY, FINANCE_TRANSACTIONS_KEY } from './kv-keys.js';
 
 // Everyone who touched an entry: whoever entered, reviewed or categorised it.
@@ -164,6 +165,30 @@ export async function handleFinanceRequest(request, env) {
         });
         await env.DRONE_DB.put(FINANCE_BUDGETS_KEY, JSON.stringify(normalized));
         return Response.json(normalized);
+    }
+
+    // Rule-based budget matching: previews (default) or applies (apply:true) suggested categories for uncategorised expenses.
+    if (path === '/api/finance/match-budgets' && method === 'POST') {
+        const user = await sessionUser(request, env);
+        if (!user) return Response.json({ error: '未授權' }, { status: 401 });
+        if (!hasPermission(user, 'finance.edit')) return Response.json({ error: '權限不足' }, { status: 403 });
+        const body = await readJsonObject(request);
+        const transactions = parseStoredList(await env.DRONE_DB.get(FINANCE_TRANSACTIONS_KEY));
+        const budgets = parseStoredList(await env.DRONE_DB.get(FINANCE_BUDGETS_KEY));
+        const suggestions = suggestBudgets(transactions, budgets);
+        const unmatched = transactions.filter(item => item.kind === 'expense' && item.status !== 'rejected' && !budgets.some(b => b.id === item.budgetId)).length - suggestions.length;
+        if (body.apply !== true) return Response.json({ suggestions, unmatched });
+        const allowed = Array.isArray(body.ids) ? new Set(body.ids) : null;
+        const now = new Date().toISOString();
+        let applied = 0;
+        for (const suggestion of suggestions) {
+            if (allowed && !allowed.has(suggestion.id)) continue;
+            const transaction = transactions.find(item => item.id === suggestion.id);
+            transaction.budgetId = suggestion.budgetId; transaction.budgetSetBy = user.username; transaction.budgetSetAt = now;
+            applied++;
+        }
+        if (applied) await env.DRONE_DB.put(FINANCE_TRANSACTIONS_KEY, JSON.stringify(transactions));
+        return Response.json({ applied, unmatched });
     }
 
     if (path === '/api/finance/import' && method === 'POST') {
